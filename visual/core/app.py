@@ -34,6 +34,9 @@ if __name__ == "__main__":
 	sys_argv += ['--style', 'imagine']
 	app = QApplication(sys.argv)
 	qInstallMessageHandler(qt_message_handler)
+	app.setOrganizationName("theseus")
+	app.setOrganizationDomain("ariadne")
+	app.setApplicationName("visualizer")
 	win = QMainWindow()
 	win.setStyleSheet("background-color:white")
 	widget = QWidget(win)
@@ -51,28 +54,30 @@ if __name__ == "__main__":
 	qmlwidget.setFocusPolicy(Qt.WheelFocus)
 	#qmlwidget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
+	basic_config = {
+		"cache_path": "",
+		"mode": "3d"
+	}
+	vis = Visualizer(basic_config, win)
+
+	canvas = MyCanvas(size=(400, 500))
+	canvas.build_axes()
+	vis.setup_from_vispy_pyqt5(win, canvas, sidePanelView)
+
 	def on_qml_loaded(a):
 		if a != QQuickView.Ready:
 			return
 
-		qmlwidget.setFixedHeight(80)
+		qmlwidget.setFixedHeight(140)
 
 		widget.layout().addWidget(qmlwidget)
-
-		canvas = MyCanvas(size=(400, 500))
-		canvas.build_axes()
-
-		basic_config = {
-			"cache_path": "",
-			"mode": "3d"
-		}
-		vis = Visualizer(basic_config, win)
-		vis.setup_from_vispy_pyqt5(win, canvas, sidePanelView)
 
 		widget.layout().addWidget(canvas.native)
 		win.show()
 		canvas.run_app()
+		exit()
 
 	sidePanelView.statusChanged.connect(on_qml_loaded)
 	sidePanelView.setSource(QUrl.fromLocalFile(os.path.dirname(os.path.abspath(__file__)) + "/../UI/TopPanel.qml"))
-	app.exec_()
+
+	assert False, "You should not enter this, something went wrong."
