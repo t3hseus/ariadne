@@ -30,13 +30,15 @@ class TrackNETv2Test(TestCase):
         )
 
     def test_output_shapes(self):
-        xy, r1_r2 = self._do_forward()
+        out = self._do_forward()
+        self.assertEqual(out.size(1), 4)
+        xy, r1_r2 = out[:, :2], out[:, 2:]
         self.assertEqual(xy.shape, r1_r2.shape)
-        self.assertEqual(list(xy.shape), [self._batch_size, 2])
+        self.assertListEqual(list(xy.shape), [self._batch_size, 2])
 
     def test_predicted_radius_range(self):
-        xy, r1_r2 = self._do_forward()
-        self.assertGreater(torch.min(r1_r2).item(), 0)
+        out = self._do_forward()
+        self.assertGreater(torch.min(out[:, 2:]).item(), 0)
 
 
 if __name__ == '__main__':

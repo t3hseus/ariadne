@@ -63,4 +63,4 @@ class TrackNETv2(nn.Module):
         # get result using only the output on the last timestep
         xy_coords = self.xy_coords(x[:, -1])
         r1_r2 = self.r1_r2(x[:, -1])
-        return xy_coords, r1_r2
+        return torch.cat([xy_coords, r1_r2], dim=1)
