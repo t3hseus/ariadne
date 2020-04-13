@@ -57,7 +57,7 @@ class Visualizer(QObject):
 	def current_event(self, value):
 		if self._current_event != value and type(value) is int:
 			single_event_data = self.pd_data[self.pd_data.event_id == value]
-			data = single_event_data[['x', 'y', 'z']].values
+			data = single_event_data[['x', 'z', 'y']].values
 			self.vispy_canvas.add_event_xyz(data, value)
 			self._current_event = value
 
@@ -93,13 +93,5 @@ class Visualizer(QObject):
 		self.columns_changed.emit()
 		self._cameras = MyCanvas.AVAILABLE_CAMERAS
 		self.cameras_changed.emit()
-		# # df = df.rename(columns={'track_id':'track'})
-		# event1 = df[df.event_id == 1]
-		# event1 = event1.rename(columns={'track_id': 'track'})
-		# self.pd_data = event1
-		# print(self.pd_data)
-		# scatter = scene.Markers()
-		# scatter.set_data(self.pd_data[['x', 'y', 'z']].values, edge_color=None, face_color=(1, 1, 1, .5), size=5)
-		# self.vispy_canvas.view.add(scatter)
 		return True
 

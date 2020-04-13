@@ -57,7 +57,7 @@ class MyCanvas(vispy.scene.SceneCanvas):
 			self._remove_event(self._current_event.node_data)
 
 		scatter = scene.Markers()
-		scatter.set_data(data_xyz, edge_color=(0, 0, 0, .5), face_color=(0, 0, 0, .5), size=5)
+		scatter.set_data(data_xyz, edge_color=(0.0, 0.0, 0.0, .5), face_color=(1, 1, 1, 0.0), size=1)
 		self.view.add(scatter)
 
 		self._current_event = CurrentEvent(event_id, scatter)

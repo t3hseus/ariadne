@@ -47,12 +47,17 @@ if __name__ == "__main__":
 	layout.setContentsMargins(0,0,0,0)
 	widget.setLayout(layout)
 
-	#qml view
-	sidePanelView = QQuickView()
-	sidePanelView.setResizeMode(QQuickView.SizeRootObjectToView)
-	qmlwidget = QWidget.createWindowContainer(sidePanelView, win)
-	qmlwidget.setFocusPolicy(Qt.WheelFocus)
-	#qmlwidget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+	#qml top panel view
+	top_panel_view = QQuickView()
+	top_panel_view.setResizeMode(QQuickView.SizeRootObjectToView)
+	qml_top_panel_widget = QWidget.createWindowContainer(top_panel_view, win)
+	qml_top_panel_widget.setFocusPolicy(Qt.WheelFocus)
+
+	#qml bot panel view
+	bot_panel_view = QQuickView()
+	bot_panel_view.setResizeMode(QQuickView.SizeRootObjectToView)
+	qml_bot_panel_widget = QWidget.createWindowContainer(bot_panel_view, win)
+	qml_bot_panel_widget.setFocusPolicy(Qt.WheelFocus)
 
 	basic_config = {
 		"cache_path": "",
@@ -62,22 +67,28 @@ if __name__ == "__main__":
 
 	canvas = MyCanvas(size=(400, 500))
 	canvas.build_axes()
-	vis.setup_from_vispy_pyqt5(win, canvas, sidePanelView)
+	vis.setup_from_vispy_pyqt5(win, canvas, top_panel_view)
 
 	def on_qml_loaded(a):
 		if a != QQuickView.Ready:
 			return
 
-		qmlwidget.setFixedHeight(140)
+		qml_top_panel_widget.setFixedHeight(140)
 
-		widget.layout().addWidget(qmlwidget)
-
+		widget.layout().addWidget(qml_top_panel_widget)
 		widget.layout().addWidget(canvas.native)
+		widget.layout().addWidget(bot_panel_view)
+
 		win.show()
 		canvas.run_app()
 		exit()
 
-	sidePanelView.statusChanged.connect(on_qml_loaded)
-	sidePanelView.setSource(QUrl.fromLocalFile(os.path.dirname(os.path.abspath(__file__)) + "/../UI/TopPanel.qml"))
+
+	bot_panel_view.setSource(QUrl.fromLocalFile(os.path.dirname(os.path.abspath(__file__)) + "/../UI/BotPanel.qml"))
+
+	top_panel_view.statusChanged.connect(on_qml_loaded)
+	top_panel_view.setSource(QUrl.fromLocalFile(os.path.dirname(os.path.abspath(__file__)) + "/../UI/TopPanel.qml"))
+
+
 
 	assert False, "You should not enter this, something went wrong."
