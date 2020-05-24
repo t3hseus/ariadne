@@ -74,10 +74,10 @@ if __name__ == "__main__":
 			return
 
 		qml_top_panel_widget.setFixedHeight(140)
-
+		qml_bot_panel_widget.setFixedHeight(200)
 		widget.layout().addWidget(qml_top_panel_widget)
 		widget.layout().addWidget(canvas.native)
-		widget.layout().addWidget(bot_panel_view)
+		widget.layout().addWidget(qml_bot_panel_widget)
 
 		win.show()
 		canvas.run_app()
