@@ -11,3 +11,7 @@ conda env update --file environment_cpu.yml --name condaenv_cpu
 conda activate condaenv_cpu
 ```
 
+### note: to delete the conda environment run 
+```
+conda remove --name %NAME% --all
+```
