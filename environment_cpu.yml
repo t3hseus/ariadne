@@ -1,4 +1,4 @@
-name: condaenv_cpu
+name: ariadne_cpu
 channels:
   - pytorch
   - conda-forge
@@ -17,5 +17,5 @@ dependencies:
   - pytorch=1.6.0
   - pyqt=5.12.*
   - vispy=0.6.4
-prefix: C:\Miniconda3\envs\condaenv_cpu
+prefix: C:\Miniconda3\envs\ariadne_cpu
 
