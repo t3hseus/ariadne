@@ -1,0 +1,21 @@
+name: condaenv_cpu
+channels:
+  - pytorch
+  - conda-forge
+  - anaconda-fusion
+  - defaults
+dependencies:
+  - python=3.7.*
+  - numpy=1.19.1
+  - matplotlib=3.3.1
+  - pyyaml=5.3.1
+  - pandas=1.1.1
+  - networkx=2.5
+  - notebook=6.1.3
+  - torchvision=0.7.0
+  - cudatoolkit=10.2
+  - pytorch=1.6.0
+  - pyqt=5.12.*
+  - vispy=0.6.4
+prefix: C:\Miniconda3\envs\condaenv_cpu
+
