@@ -2,7 +2,7 @@ import torch
 import unittest
 
 from unittest import TestCase
-from ariadne.models import TrackNETv2
+from ariadne.tracknet_v2.model import TrackNETv2
 
 
 class TrackNETv2Test(TestCase):

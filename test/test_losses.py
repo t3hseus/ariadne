@@ -2,7 +2,7 @@ import torch
 import unittest
 
 from unittest import TestCase
-from ariadne.losses import (
+from ariadne.tracknet_v2.loss import (
     PointInEllipseLoss,
     EllipseSquareLoss,
     TrackNetLoss

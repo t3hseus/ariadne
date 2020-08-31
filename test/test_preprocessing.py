@@ -2,9 +2,18 @@ import unittest
 import sys
 import pandas as pd
 
-from ariadne.preprocessing import StandartScale, MinMaxScale, \
-    ToPolar, Normalize, DropShort, DropSpinningTracks, DropMisses, ToCartesian, \
-    Compose, ToBuckets, ConstraintsNormalize
+from ariadne.preprocessing import (
+    StandartScale,
+    MinMaxScale,
+    ToCylindrical,
+    Normalize, 
+    DropShort, 
+    DropSpinningTracks, 
+    ToCartesian,
+    Compose, 
+    ToBuckets, 
+    ConstraintsNormalize
+)
 
 
 class StandartTestCase(unittest.TestCase):
@@ -113,10 +122,10 @@ class NormalTestCase(unittest.TestCase):
         self.assertEqual(self.scaler.drop_old, False)
         self.assertEqual(self.scaler(self.data).loc[0, 'x_old'], self.data.loc[0, 'x'])
 
-class PolarTestCase(unittest.TestCase):
+class CylindricalTestCase(unittest.TestCase):
 
     def _init_transformer(self, drop_old=True):
-        self.transformer = ToPolar(drop_old=drop_old)
+        self.transformer = ToCylindrical(drop_old=drop_old)
 
     def _init_data(self):
         self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
@@ -271,35 +280,35 @@ class DropWarpsTestCase(unittest.TestCase):
         self.transformer(self.data)
         self.assertEqual(self.transformer.get_num_broken(), 5)
 
-class DropMissesTestCase(unittest.TestCase):
-    def _init_transformer(self):
-        self.transformer = DropMisses()
+# class DropMissesTestCase(unittest.TestCase):
+#     def _init_transformer(self):
+#         self.transformer = DropMisses()
 
-    def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+#     def _init_data(self):
+#         self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
+#         self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
 
-    def test_init(self):
-        self._init_transformer()
-        self._init_data()
-        self.assertEqual(self.transformer._num_misses, None)
+#     def test_init(self):
+#         self._init_transformer()
+#         self._init_data()
+#         self.assertEqual(self.transformer._num_misses, None)
 
-    def test_transform(self):
-        self._init_data()
-        self._init_transformer()
-        self.assertEqual(len(self.transformer(self.data)), 100000-76969)
+#     def test_transform(self):
+#         self._init_data()
+#         self._init_transformer()
+#         self.assertEqual(len(self.transformer(self.data)), 100000-76969)
 
-    def test_get_num_misses(self):
-        self._init_data()
-        self._init_transformer()
-        transformed = self.transformer(self.data)
-        self.assertEqual(self.transformer.get_num_misses(), 76969)
+#     def test_get_num_misses(self):
+#         self._init_data()
+#         self._init_transformer()
+#         transformed = self.transformer(self.data)
+#         self.assertEqual(self.transformer.get_num_misses(), 76969)
 
 class ComposeTestCase(unittest.TestCase):
     def _init_transformer(self):
         self.transformer = Compose([
             StandartScale(),
-            ToPolar()
+            ToCylindrical()
             ]
         )
 

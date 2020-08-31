@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 
 from unittest import TestCase
-from ariadne.metrics import (
+from ariadne.tracknet_v2.metrics import (
     ellipse_area,
     point_in_ellipse,
     calc_metrics

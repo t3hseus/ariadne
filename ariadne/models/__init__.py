@@ -1,1 +1,0 @@
-from .tracknetv2 import TrackNETv2
