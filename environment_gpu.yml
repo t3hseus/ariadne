@@ -19,5 +19,7 @@ dependencies:
   - pytorch=1.6.0
   - pyqt=5.12.*
   - vispy=0.6.4
+  - pytorch-lightning=0.9.0
+  - gin-config=0.3.0
 prefix: C:\Miniconda3\envs\ariadne_gpu
 
