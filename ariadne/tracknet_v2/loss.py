@@ -1,3 +1,4 @@
+import gin
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -52,6 +53,7 @@ class EllipseSquareLoss(nn.Module):
         return torch.mean(preds[:, 2] * preds[:, 3])
 
 
+@gin.configurable
 class TrackNetLoss(nn.Module):
     """ Calculates TrackNETv2 loss:
     point_in_ellipse = sqrt((x - x') / r1)^2 + ((y - y') / r2)^2)

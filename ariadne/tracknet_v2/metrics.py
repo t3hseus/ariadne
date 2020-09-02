@@ -1,10 +1,12 @@
-import torch 
 import math
+import gin
+import torch 
 import numpy as np
 import torch.nn.functional as F
 
 
-def ellipse_area(preds):
+@gin.configurable(whitelist=[])
+def ellipse_area(preds, target):
     """Computes the area of predicted ellipses
 
     # Arguments
@@ -17,6 +19,7 @@ def ellipse_area(preds):
     return torch.mean(areas).item()
 
 
+@gin.configurable(whitelist=[])
 def point_in_ellipse(preds, target):
     """Checks if the next point of track segment 
     is located in the predicted circle
@@ -44,6 +47,7 @@ def point_in_ellipse(preds, target):
     return (left_side <= 1).tolist()
 
 
+@gin.configurable(whitelist=[])
 def calc_metrics(inputs, model, tracklen=None):
     """ Take array of tracks in the format of numpy 3d array
     [[[x1, y1, z1, ...], [x2, y2, z2, ...]], [...]],

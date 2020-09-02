@@ -1,10 +1,11 @@
+import gin
 import torch
-
-from torch import nn
+import torch.nn as nn
 
 
 ALLOWED_RNN_TYPES = ['GRU', 'LSTM']
 
+@gin.configurable
 class TrackNETv2(nn.Module):
     """Builds TrackNETv2 model
 
