@@ -6,8 +6,8 @@ import torch.nn as nn
 
 from absl import flags
 from absl import app
-from ariadne.core.training import TrainModel
-from ariadne.core.utils import fix_random_seed
+from ariadne.lightning import TrainModel
+from ariadne.utils import fix_random_seed
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
