@@ -32,21 +32,31 @@ class TrainModel(pl.LightningModule):
         """
         return self.model(**inputs)
 
-    def _calc_loss_on_batch(self, batch):
+    def _calc_metrics(self, preds, target):
+        metric_vals = {}
+        for metric in self.metrics:
+            metric_vals[metric.__name__] = metric(preds, target)
+        return metric_vals
+
+    def _forward_batch(self, batch):
         x, y = batch
         y_pred = self.model(x)
-        return self.criterion(y_pred, y)
+        loss = self.criterion(y_pred, y)
+        metric_vals = self._calc_metrics(y_pred, y)
+        return {'loss': loss, **metric_vals}
 
     def training_step(self, batch, batch_idx):
-        loss = self._calc_loss_on_batch(batch)
-        result = pl.TrainResult(loss)
-        result.log('train_loss', loss, on_epoch=True)
+        result_dict = self._forward_batch(batch)
+        tqdm_dict = {f'train_{k}': v for k, v in result_dict}
+        result = pl.TrainResult(result_dict['loss'])
+        result.log_dict(result_dict, on_step=True, prog_bar=True)
         return result
         
     def validation_step(self, batch, batch_idx):
-        loss = self._calc_loss_on_batch(batch)
-        result = pl.EvalResult(checkpoint_on=loss)
-        result.log('val_loss', loss)
+        result_dict = self._forward_batch(batch)
+        tqdm_dict = {f'val_{k}': v for k, v in result_dict}
+        result = pl.EvalResult(checkpoint_on=result_dict['loss'])
+        result.log_dict(result_dict)
         return result
 
     def configure_optimizers(self):
