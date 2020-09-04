@@ -2,7 +2,7 @@ import unittest
 import sys
 import pandas as pd
 
-from ariadne.preprocessing import (
+from ariadne.preprocessing_utils import (
     StandartScale,
     MinMaxScale,
     ToCylindrical,
