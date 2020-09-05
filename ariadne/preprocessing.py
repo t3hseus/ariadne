@@ -1,6 +1,6 @@
 import gin
 import pandas as pd
-from typing import List
+from typing import List, Iterable
 from abc import ABCMeta, abstractmethod
 
 
@@ -16,7 +16,6 @@ class ProcessedDataChunk(metaclass=ABCMeta):
     def __init__(self,
                  processed_object: object):
         self.processed_object = processed_object
-        pass
 
 
 class ProcessedData(metaclass=ABCMeta):
@@ -31,20 +30,31 @@ class DataProcessor(metaclass=ABCMeta):
 
     def __init__(self,
                  processor_name: str,
+                 output_dir: str,
                  data_df: pd.DataFrame
                  ):
-        self._data_df = data_df
-        self._processor_name = processor_name
+        self.data_df = data_df
+        self.processor_name = processor_name
+        self.output_dir = output_dir
+
+    @abstractmethod
+    def generate_chunks_iterable(self) -> Iterable[DataChunk]:
+        pass
+
+    @abstractmethod
+    def construct_chunk(self,
+                        chunk_df: pd.DataFrame)->DataChunk:
+        pass
 
     @abstractmethod
     def preprocess_chunk(self,
                          chunk: DataChunk,
-                         idx: int) -> List[ProcessedDataChunk]:
+                         idx: int) -> ProcessedDataChunk:
         pass
 
     @abstractmethod
-    def postprocess_chunk(self,
-                          chunks: List[ProcessedDataChunk]) -> ProcessedData:
+    def postprocess_chunks(self,
+                           chunks: List[ProcessedDataChunk]) -> ProcessedData:
         pass
 
     @abstractmethod

@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
-from copy import copy
+from copy import deepcopy
 
 
 class Compose(object):
@@ -44,32 +44,35 @@ class BaseTransformer(object):
          keep_fakes (boolean, True by default): If True, hits with no track are preserved
     """
 
-    def __init__(self, drop_old=False, keep_fakes=True, columns=None):
-        if columns is None:
-            columns = ['x', 'y', 'z']
+    def __init__(self, drop_old=False, keep_fakes=True, columns=('x', 'y', 'z'), track_col='track', event_col='event', station_col='station'):
         self.drop_old = drop_old
         self.columns = columns
-        self.keep_misses = keep_fakes
-        self.misses = None
+        self.keep_fakes = keep_fakes
+        self.fakes = None
+        self.event_column = event_col
+        self.track_column = track_col
+        self.station_column = station_col
         assert len(columns) == 3, "Columns must be list or tuple of length 3"
 
     def transform_data(self, data, normed):
         for i in range(3):
             if not self.drop_old:
-                data.loc[:, self.columns[i] + '_old'] = data.loc[self.columns[i]]
+                data.loc[:, self.columns[i] + '_old'] = 1
+                data.loc[:, self.columns[i] + '_old'] = deepcopy(data.loc[:, self.columns[i]])
+
             data.loc[:, self.columns[i]] = normed[i]
         return data
 
-    def drop_misses(self, data):
+    def drop_fakes(self, data):
         if self.keep_fakes:
-            self.misses = data.loc[data[self.track_col] == -1, :]
-        return data.loc[data[self.track_col] != -1, :]
+            self.fakes = data.loc[data[self.track_column] == -1, :]
+        return data.loc[data[self.track_column] != -1, :]
 
-    def get_num_misses(self):
-        return len(self.misses)
+    def get_num_fakes(self):
+        return len(self.fakes)
 
-    def add_misses(self, data):
-        return pd.concat([data, self.misses], axis=0).reset_index()
+    def add_fakes(self, data):
+        return pd.concat([data, self.fakes], axis=0).reset_index()
 
 
 class BaseScaler(BaseTransformer):
@@ -81,12 +84,10 @@ class BaseScaler(BaseTransformer):
                                             else preserved in columns with suffix '_old'
     """
 
-    def __init__(self, scaler, drop_old=True, columns=None):
-        if columns is None:
-            columns = ['x', 'y', 'z']
+    def __init__(self, scaler, drop_old=True, columns=('x', 'y', 'z')):
         self.columns = columns
         self.scaler = scaler
-        super().__init__(drop_old, columns)
+        super().__init__(drop_old=drop_old, columns=columns)
 
     def __call__(self, data):
         """
@@ -96,13 +97,11 @@ class BaseScaler(BaseTransformer):
             data (pd.DataFrame): transformed dataframe
         """
         norms = pd.DataFrame(self.scaler.fit_transform(data[[self.columns[0], self.columns[1], self.columns[2]]]))
-        data = super().transform_data(data, norms)
+        data = self.transform_data(data=data, normed=norms)
         return data
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with scaler: {self.scaler} \n' + \
-               '------------------------------------------------------------------------------------------------\n'
+        return '-' * 30 + '\n' + f'{self.__class__.__name__} with scaler: {self.scaler} \n' + '-' * 30 + '\n'
 
 
 class BaseFilter(BaseTransformer):
@@ -121,9 +120,9 @@ class BaseFilter(BaseTransformer):
         self.num_stations = num_stations
         self._broken_tracks = None
         self._num_broken_tracks = None
-        self.keep_misses = keep_fakes
+        self.keep_fakes = keep_fakes
         self.filter_rule = filter_rule
-        super().__init__(station_col=station_col, track_col=track_col, event_col=event_col, keep_fakes=keep_fakes)
+        super().__init__(keep_fakes=keep_fakes, station_col=station_col, track_col=track_col, event_col=event_col)
 
     def __call__(self, data):
         """
@@ -133,7 +132,7 @@ class BaseFilter(BaseTransformer):
             data (pd.DataFrame): transformed dataframe
         """
         # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        data = super().drop_misses(data, save=True)
+        data = super().drop_fakes(data)
         tracks = data.groupby([self.event_column, self.track_column])
         if self.num_stations is None:
             self.num_stations = tracks.size().max()
@@ -141,7 +140,7 @@ class BaseFilter(BaseTransformer):
         broken = list(data.loc[~data.index.isin(good_tracks.index)].index)
         self._broken_tracks = data.loc[broken, [self.event_column, self.track_column, self.station_column]]
         self._num_broken_tracks = len(self._broken_tracks[[self.event_column, self.track_column]].drop_duplicates())
-        good_tracks = super().add_misses(good_tracks)
+        good_tracks = super().add_fakes(good_tracks)
         return good_tracks
 
     def get_broken(self):
@@ -151,9 +150,7 @@ class BaseFilter(BaseTransformer):
         return self._num_broken_tracks
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with filter_rule: {self.filter_rule}\n' + \
-               '------------------------------------------------------------------------------------------------\n'
+        return '-' * 30 + '\n' + f'{self.__class__.__name__} with filter_rule: {self.filter_rule}\n' + '-' * 30 + '\n'
 
 
 class BaseCoordConverter(BaseTransformer):
@@ -167,13 +164,16 @@ class BaseCoordConverter(BaseTransformer):
          to_columns (list or tuple, ['r', 'phi'] by default): list of features to convert to
     """
 
-    def __init__(self, convert_function, drop_old=False, from_columns=['x', 'y', 'z'], to_columns=['r', 'phi']):
+    def __init__(self, convert_function, drop_old=False, from_columns=('x', 'y'),
+                 to_columns=('r', 'phi')):
         self.drop_old = drop_old
         self.cart_columns = from_columns
         self.polar_columns = to_columns
         self.convert_function = convert_function
         self.range_ = {}
-        super().__init__(drop_old=drop_old, columns=to_columns)
+        self.from_columns = from_columns
+        self.to_columns = to_columns
+        super().__init__(drop_old=drop_old, columns=list(to_columns) + ['z'])
 
     def __call__(self, data):
         """
@@ -195,15 +195,16 @@ class BaseCoordConverter(BaseTransformer):
 
     def get_ranges(self, data, columns):
         for col in columns:
-            self.range_[col] = (min(data[self.col]), max(data[self.col]))
+            try:
+                self.range_[col] = (min(data[col]), max(data[col]))
+            except:
+                'This column is not used'
 
     def get_ranges_str(self):
         return '\n'.join([f'{i}: from {j[0]} to {j[1]}' for i, j in self.range_.items()])
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with convert_function: {self.convert_function}\n' + \
-               '------------------------------------------------------------------------------------------------\n'
+        return '-' * 30 + '\n' + f'{self.__class__.__name__} with convert_function: {self.convert_function}\n' + '-' * 30 + '\n'
 
 
 class StandartScale(BaseScaler):
@@ -215,16 +216,16 @@ class StandartScale(BaseScaler):
         columns (list or tuple of length 3): Columns to standartize
     """
 
-    def __init__(self, drop_old=True, with_mean=True, with_std=True, columns=['x', 'y', 'z']):
+    def __init__(self, drop_old=True, with_mean=True, with_std=True, columns=('x', 'y', 'z')):
         self.with_mean = with_mean
         self.with_std = with_std
         self.scaler = StandardScaler(with_mean, with_std)
         super().__init__(self.scaler, drop_old, columns)
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
+        return '-' * 30 + '\n' + \
                f'{self.__class__.__name__} with scaling_parameters: drop_old={self.drop_old}, with_mean={self.with_mean},with_std={self.with_std} \n' + \
-               '------------------------------------------------------------------------------------------------\n' + \
+               '-' * 30 + '\n' + \
                f' Mean: {self.scaler.mean_} \n Var: {self.scaler.var_} \n Scale: {self.scaler.scale_} '
 
 
@@ -236,17 +237,19 @@ class MinMaxScale(BaseScaler):
         columns (list or tuple of length 3): Columns to standartize
     """
 
-    def __init__(self, drop_old=True, feature_range=(0, 1), columns=['x', 'y', 'z']):
+    def __init__(self, drop_old=True, feature_range=(0, 1), columns=('x', 'y', 'z')):
         assert feature_range[0] < feature_range[1], 'minimum is not smaller value then maximum'
         self.feature_range = feature_range
         self.scaler = MinMaxScaler(feature_range=feature_range)
-        super().__init__(self.scaler, drop_old, columns)
+        self.columns = columns
+        self.drop_old = drop_old
+        super().__init__(self.scaler, drop_old, columns=columns)
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
                f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, feature_range={self.feature_range} \n' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f' Data min: {self.scaler.data_min_} \n Data max: {self.scaler.data_max__} \n Scale: {self.scaler.scale_} '
+               f' Data min: {self.scaler.data_min_} \n Data max: {self.scaler.data_max_} \n Scale: {self.scaler.scale_} '
 
 
 class Normalize(BaseScaler):
@@ -261,15 +264,16 @@ class Normalize(BaseScaler):
         columns (list or tuple of length 3): Columns to standartize
     """
 
-    def __init__(self, drop_old=True, norm='l2', columns=['x', 'y', 'z']):
+    def __init__(self, drop_old=True, norm='l2', columns=('x', 'y', 'z')):
         self.norm = norm
         self.scaler = Normalizer(norm=norm)
+        self.columns = columns
+        self.drop_old = drop_old
         super().__init__(self.scaler, drop_old, columns)
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, norm={self.norm} \n' + \
-               '------------------------------------------------------------------------------------------------\n'
+        return '-' * 30 + '\n' + f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, norm={self.norm} \n' + \
+               '-' * 30 + '\n'
 
 
 class ConstraintsNormalize(BaseTransformer):
@@ -289,10 +293,11 @@ class ConstraintsNormalize(BaseTransformer):
     Station keys must be in dataset.
     """
 
-    def __init__(self, drop_old=True, columns=['x', 'y', 'z'], margin=1e-3, use_global_constraints=True,
+    def __init__(self, drop_old=True, columns=('x', 'y', 'z'), margin=1e-3, use_global_constraints=True,
                  constraints=None):
         assert margin > 0, 'Margin is not positive'
         self.columns = columns
+        self.drop_old = drop_old
         self.margin = margin
         self.use_global_constraints = use_global_constraints
         self.constraints = constraints
@@ -309,7 +314,7 @@ class ConstraintsNormalize(BaseTransformer):
                         assert col in constraint.keys(), f'{col} is not in constraint keys for station {key}'
                         assert len(constraint[
                                        col]) == 2, f'Not applicable number of constraints for column {col} and station {key}'
-                        assert constraint[col][0] < constraints[col][
+                        assert constraint[col][0] < constraint[col][
                             1], f'Minimum is not smaller than maximum for column {col} and station {key}'
         super().__init__(drop_old=drop_old, columns=columns)
 
@@ -336,7 +341,15 @@ class ConstraintsNormalize(BaseTransformer):
             for station in self.constraints.keys():
                 group = data.loc[data['station'] == station,]
                 x_norm, y_norm, z_norm = self.normalize(group, self.constraints[station])
-                data.loc[data['station'] == station, :] = super().transform_data(group, [x_norm, y_norm, z_norm])
+                data.loc[data['station'] == station, :] = \
+                    self.transform_data_by_group(data['station'] == station, data,
+                                                    [x_norm, y_norm, z_norm])
+        return data
+
+    def transform_data_by_group(self, grouping, data, normed):
+        for i in range(3):
+            assert self.drop_old, "not supported for now"
+            data.loc[grouping, self.columns[i]] = normed[i]
         return data
 
     def get_stations_constraints(self, df):
@@ -362,10 +375,10 @@ class ConstraintsNormalize(BaseTransformer):
         return x_norm, y_norm, z_norm
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
+        return '-' * 30 + '\n' + \
                f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, use_global_constraints={self.use_global_constraints} \n' + \
                f'                                             margin={self.margin}, columns={self.columns}\n ' + \
-               '------------------------------------------------------------------------------------------------\n' + \
+               '-' * 30 + '\n' + \
                f'constraints are: {self.constraints}'
 
 
@@ -392,7 +405,7 @@ class DropShort(BaseFilter):
                f'{self.__class__.__name__} with parameters: num_stations={self.num_stations}, ' \
                f'keep_fakes={super().keep_fakes}, \n' + \
                f'    track_column={super().track_column}, station_column={super().station_column}, ' \
-               f'event_column={super().event_col}\n' + \
+               f'event_column={super().event_column}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
                f'Number of broken tracks: {super().get_num_broken()} \n'
 
@@ -414,7 +427,7 @@ class DropSpinningTracks(BaseFilter):
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
                f'{self.__class__.__name__} with parameters:' + \
-               f'    track_column={super().track_col}, station_column={super().station_col}, event_column={super().event_col}\n' + \
+               f'    track_column={super().track_column}, station_column={super().station_column}, event_column={super().event_column}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
                f'Number of broken tracks: {super().get_num_broken()} \n'
 
@@ -426,7 +439,7 @@ class DropFakes(BaseTransformer):
     """
 
     def __init__(self, track_col='track'):
-        self._num_misses = None
+        self._num_fakes = None
         self.track_col = track_col
         super().__init__(track_col=track_col, keep_fakes=False)
 
@@ -438,14 +451,14 @@ class DropFakes(BaseTransformer):
             data (pd.DataFrame): transformed dataframe
         """
         # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        data = super().drop_misses(data)
+        data = self.drop_fakes(data)
         return data
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
                f'{self.__class__.__name__} with parameters: track_col={self.track_col}' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f'Number of misses: {super().get_num_misses()} \n'
+               f'Number of misses: {self.get_num_misses()} \n'
 
 
 class ToCylindrical(BaseCoordConverter):
@@ -458,7 +471,7 @@ class ToCylindrical(BaseCoordConverter):
            polar_columns = (list or tuple, ['r','phi'] by default):  columns of r and phi in cylindrical coordiates
     """
 
-    def __init__(self, drop_old=False, cart_columns=['x', 'y'], polar_columns=['r', 'phi']):
+    def __init__(self, drop_old=False, cart_columns=('x', 'y'), polar_columns=('r', 'phi')):
         self.drop_old = drop_old
         self.from_columns = cart_columns
         self.to_columns = polar_columns
@@ -471,8 +484,8 @@ class ToCylindrical(BaseCoordConverter):
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, keep_names={self.keep_names}, ' + \
-               'x_col={self.x_col}, y_col={self.y_col}, z_col={self.z_col}\n' + \
+               f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, ' + \
+               f'from_columns={self.from_columns}, to_columns={self.to_columns}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
                f' Ranges: {super().get_ranges_str()} '
 
@@ -486,14 +499,14 @@ class ToCartesian(BaseCoordConverter):
         polar_columns = (list or tuple, ['r','phi'] by default):  columns of r and phi in cylindrical coordiates
     """
 
-    def __init__(self, drop_old=True, cart_columns=['x', 'y'], polar_columns=['r', 'phi']):
+    def __init__(self, drop_old=True, cart_columns=('x', 'y'), polar_columns=('r', 'phi')):
         self.from_columns = polar_columns
         self.to_columns = cart_columns
         super().__init__(self.convert, drop_old=drop_old, from_columns=self.from_columns, to_columns=self.to_columns)
 
     def convert(self, data):
-        y_new = data[self.r_col] * np.cos(data[self.phi_col])
-        x_new = data[self.r_col] * np.sin(data[self.phi_col])
+        y_new = data[self.from_columns[0]] * np.cos(data[self.from_columns[1]])
+        x_new = data[self.from_columns[0]] * np.sin(data[self.from_columns[1]])
         return (x_new, y_new)
 
     def __repr__(self):
@@ -543,7 +556,7 @@ class ToBuckets(BaseTransformer):
             if flat is True, returns dataframe with specific column, else dict with bucket dataframes
         """
         # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        data = super().drop_misses(df)
+        data = self.drop_fakes(df)
         rs = np.random.RandomState(self.random_state)
         groupby = df.groupby([self.event_col, self.track_col])
         maxlen = groupby.size().max()
@@ -586,13 +599,13 @@ class ToBuckets(BaseTransformer):
             res['bucket'] = 0
             for i, bucket in buckets.items():
                 res.loc[bucket, 'bucket'] = i
-            if self.keep_misses:
-                super().misses.loc[:, 'bucket'] = -1
-                res = super().add_misses(data)
+            if self.keep_fakes:
+                self.fakes.loc[:, 'bucket'] = -1
+                res = super().add_fakes(data)
         else:
             res = {i: df.loc[bucket] for i, bucket in buckets.items()}
             if self.keep_fakes:
-                res[-1] = super().misses
+                res[-1] = self.fakes
         return res
 
     def get_bucket_index(self):

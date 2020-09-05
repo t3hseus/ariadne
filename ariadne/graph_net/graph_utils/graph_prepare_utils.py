@@ -4,6 +4,8 @@ import gin
 import pandas as pd
 import numpy as np
 
+from graph_net.graph_utils.graph import Graph
+
 
 def calc_dphi(phi1, phi2):
     dphi = phi2 - phi1
@@ -12,7 +14,7 @@ def calc_dphi(phi1, phi2):
     return dphi
 
 
-def get_edges_from_supernodes_ex(sn_from, sn_to):
+def get_edges_from_supernodes(sn_from, sn_to):
     prev_edges = sn_from.rename(columns={'to_ind': 'cur_ind'})
     next_edges = sn_to.rename(columns={'from_ind': 'cur_ind'})
     prev_edges['edge_index'] = prev_edges.index
@@ -42,17 +44,18 @@ def get_edges_from_supernodes_ex(sn_from, sn_to):
 
 
 @gin.configurable(blacklist=['one_station_segments', 'station'])
-def get_supernodes_df_ex(one_station_segments,
-                         axes,
-                         suffix_p, suffix_c,
-                         station=-1,
-                         STATION_COUNT=0,
-                         pi_fix=False, ):
+def get_supernodes_df(one_station_segments,
+                      axes,
+                      suffix_p, suffix_c,
+                      station=-1,
+                      STATION_COUNT=0,
+                      pi_fix=False, ):
     ret = pd.DataFrame()
 
     # a bit of overgeneralization, all values are from yaml config
     # usually suffixes are "_p" and "_c" (word "_previousЭ and "_current" shorten)
     # axes are the r, phi and z if there were transformation to the cylindrical coordinates
+
     x0_y0_z0 = one_station_segments[[axes[0] + suffix_p, axes[1] + suffix_p, axes[2] + suffix_p]].values
     x1_y1_z1 = one_station_segments[[axes[0] + suffix_c, axes[1] + suffix_c, axes[2] + suffix_c]].values
     # compute the difference of the hits coordinates information
@@ -95,11 +98,19 @@ def get_supernodes_df_ex(one_station_segments,
     return ret
 
 
-@gin.configurable(blacklist=['segments'])
-def get_pd_line_graph_ex(segments,
-                         restrictions_func,
-                         restrictions_0, restrictions_1,
-                         suffix_p, suffix_c):
+def apply_nodes_restrictions(nodes,
+                             restrictions_0, restrictions_1):
+    return nodes[
+        (nodes.dy > restrictions_0[0]) & (nodes.dy < restrictions_0[1]) &
+        (nodes.dz > restrictions_1[0]) & (nodes.dz < restrictions_1[1])
+        ]
+
+
+@gin.configurable(blacklist=['segments', 'restrictions_func'])
+def get_pd_line_graph(segments,
+                      restrictions_func,
+                      restrictions_0, restrictions_1,
+                      suffix_p, suffix_c):
     nodes = pd.DataFrame()
     edges = pd.DataFrame()
 
@@ -110,8 +121,8 @@ def get_pd_line_graph_ex(segments,
     for i in range(1, len(by_stations)):
         # take segments (which will be nodes as a result) which go
         # from station i-1 to i AND from i to i+1
-        supernodes_from = get_supernodes_df_ex(by_stations[i - 1], i - 1, 3, pi_fix=True)
-        supernodes_to = get_supernodes_df_ex(by_stations[i], i, 3, pi_fix=True)
+        supernodes_from = get_supernodes_df(by_stations[i - 1], station=i - 1, STATION_COUNT=3, pi_fix=True)
+        supernodes_to = get_supernodes_df(by_stations[i], station=i, STATION_COUNT=3, pi_fix=True)
 
         if restrictions_func:
             # if restriction function is defined, apply it to edges (supernodes)
@@ -124,7 +135,7 @@ def get_pd_line_graph_ex(segments,
         # construct superedges (superedge is an edge which in fact
         # represents 2 consecutive edges (and these edges have the one common hit being the ending of the 1-st edge and
         # the beginning of the 2-nd edge), so it also captures information of the 3 consecutive hits)
-        superedges = get_edges_from_supernodes_ex(supernodes_from, supernodes_to)
+        superedges = get_edges_from_supernodes(supernodes_from, supernodes_to)
         edges = edges.append(superedges, ignore_index=True, sort=False)
 
     nodes = nodes.loc[~nodes.index.duplicated(keep='first')]
@@ -152,3 +163,42 @@ def to_pandas_graph_from_df(
         pid2 = cartesian_product["track" + suffixes[1]].values
         cartesian_product['track'] = ((pid1 == pid2) & (pid1 != -1))
     return cartesian_product
+
+
+@gin.configurable(blacklist=['pd_edges_df'])
+def apply_edge_restriction(pd_edges_df: pd.DataFrame,
+                           edge_restriction: float):
+    assert 'weight' in pd_edges_df
+    return pd_edges_df[pd_edges_df.weight < edge_restriction]
+
+
+@gin.configurable(whitelist=['index_label_prev', 'index_label_current'])
+def construct_output_graph(hits,
+                           edges,
+                           feature_names,
+                           feature_scale,
+                           index_label_prev='edge_index_p',
+                           index_label_current='edge_index_c'):
+    # Prepare the graph matrices
+    n_hits = hits.shape[0]
+    n_edges = edges.shape[0]
+    X = (hits[feature_names].values / feature_scale).astype(np.float32)
+    Ri = np.zeros((n_hits, n_edges), dtype=np.float32)
+    Ro = np.zeros((n_hits, n_edges), dtype=np.float32)
+    y = np.zeros(n_edges, dtype=np.float32)
+    # We have the segments' hits given by dataframe label,
+    # so we need to translate into positional indices.
+    # Use a series to map hit label-index onto positional-index.
+    hit_idx = pd.Series(np.arange(n_hits), index=hits.index)
+    seg_start = hit_idx.loc[edges[index_label_prev]].values
+    seg_end = hit_idx.loc[edges[index_label_current]].values
+    # Now we can fill the association matrices.
+    # Note that Ri maps hits onto their incoming edges,
+    # which are actually segment endings.
+    Ri[seg_end, np.arange(n_edges)] = 1
+    Ro[seg_start, np.arange(n_edges)] = 1
+    # Fill the segment labels
+    pid1 = hits.track.loc[edges[index_label_prev]].values
+    pid2 = hits.track.loc[edges[index_label_current]].values
+    y[:] = ((pid1 == pid2) & (pid1 != -1))
+    return Graph(X, Ri, Ro, y)
