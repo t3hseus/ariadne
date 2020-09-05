@@ -15,6 +15,8 @@ from ariadne.preprocessing_utils import (
     ConstraintsNormalize
 )
 
+path = '../data/200.csv'
+path_radial = '../data/200_radial.csv'
 
 class StandartTestCase(unittest.TestCase):
 
@@ -22,8 +24,8 @@ class StandartTestCase(unittest.TestCase):
         self.scaler = StandartScale(drop_old=drop_old, with_mean=True, with_std=True)
 
     def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+        self.data = pd.read_csv(path)
+        self.radial_df = pd.read_csv(path_radial)
 
     def test_init(self):
         self._init_scaler()
@@ -36,9 +38,10 @@ class StandartTestCase(unittest.TestCase):
     def test_transform(self):
         self._init_data()
         self._init_scaler()
-        self.assertEqual(self.scaler(self.data).loc[0, 'x'], self.radial_df.loc[0,'x'] )
-        self.assertEqual(self.scaler(self.data).loc[0, 'y'], self.radial_df.loc[0, 'y'])
-        self.assertEqual(self.scaler(self.data).loc[0, 'z'], self.radial_df.loc[0, 'z'])
+        temp = self.radial_df.loc[0, :]
+        self.assertAlmostEqual(self.scaler(self.data).loc[0, 'x'], temp['x'])
+        self.assertAlmostEqual(self.scaler(self.data).loc[0, 'y'], temp['y'])
+        self.assertAlmostEqual(self.scaler(self.data).loc[0, 'z'], temp['z'])
     #
     # def test_drop_true(self):
     #     self._init_data()
@@ -46,9 +49,10 @@ class StandartTestCase(unittest.TestCase):
     #     self.assertRaises(self.scaler(self.data, columns=['x', 'y', 'z']).loc[0, 'x_old'], KeyError)
 
     def test_drop_false(self):
-        self._init_scaler(False)
+        self._init_scaler(drop_old=False)
         self._init_data()
-        self.assertEqual(self.scaler(self.data).loc[0, 'x_old'], self.data.loc[0,'x'])
+        temp = self.data.loc[0,'x']
+        self.assertEqual(self.scaler(self.data).loc[0, 'x_old'], temp)
 
 class MinMaxTestCase(unittest.TestCase):
 
@@ -56,8 +60,8 @@ class MinMaxTestCase(unittest.TestCase):
         self.scaler = MinMaxScale(drop_old=drop_old, feature_range=range)
 
     def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+        self.data = pd.read_csv(path)
+        self.radial_df = pd.read_csv(path_radial)
 
     def test_init(self):
         self._init_data()
@@ -86,8 +90,9 @@ class MinMaxTestCase(unittest.TestCase):
     def test_drop_false(self):
         self._init_scaler(False)
         self._init_data()
+        temp = self.data.loc[0, 'x']
         self.assertEqual(self.scaler.drop_old, False)
-        self.assertEqual(self.scaler(self.data).loc[0, 'x_old'], self.data.loc[0, 'x'])
+        self.assertEqual(self.scaler(self.data).loc[0, 'x_old'], temp)
 
 class NormalTestCase(unittest.TestCase):
 
@@ -95,8 +100,8 @@ class NormalTestCase(unittest.TestCase):
         self.scaler = Normalize(drop_old=drop_old, norm=norm)
 
     def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+        self.data = pd.read_csv(path)
+        self.radial_df = pd.read_csv(path_radial)
 
     def test_init(self):
         self._init_data()
@@ -119,8 +124,9 @@ class NormalTestCase(unittest.TestCase):
     def test_drop_false(self):
         self._init_scaler(False)
         self._init_data()
+        temp = self.data.loc[0, 'x']
         self.assertEqual(self.scaler.drop_old, False)
-        self.assertEqual(self.scaler(self.data).loc[0, 'x_old'], self.data.loc[0, 'x'])
+        self.assertEqual(self.scaler(self.data).loc[0, 'x_old'], temp)
 
 class CylindricalTestCase(unittest.TestCase):
 
@@ -128,8 +134,8 @@ class CylindricalTestCase(unittest.TestCase):
         self.transformer = ToCylindrical(drop_old=drop_old)
 
     def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+        self.data = pd.read_csv(path)
+        self.radial_df = pd.read_csv(path_radial)
 
     def test_init(self):
         self._init_transformer()
@@ -137,20 +143,6 @@ class CylindricalTestCase(unittest.TestCase):
         self.assertEqual(self.transformer.drop_old, True)
         self._init_transformer(drop_old=False)
         self.assertEqual(self.transformer.drop_old, False)
-
-
-    def test_transform(self):
-        self._init_data()
-        self._init_transformer()
-        # this test is working only if data is scaled previosly
-        #self.assertEqual(self.transformer(self.data, columns=['x','y','z']).loc[0, 'r'], self.radial_df.loc[0,'r'] )
-        #self.assertEqual(self.transformer(self.data, columns=['x', 'y', 'z']).loc[0, 'phi'], self.radial_df.loc[0, 'phi'])
-        self.assertEqual(self.transformer(self.data).loc[0, 'z'], self.data.loc[0, 'z'])
-    #
-    # def test_drop_true(self):
-    #     self._init_data()
-    #     self._init_scaler(True)
-    #     self.assertRaises(self.scaler(self.data, columns=['x', 'y', 'z']).loc[0, 'x_old'], KeyError)
 
     def test_drop_false(self):
         self._init_data()
@@ -166,8 +158,8 @@ class CartesianTestCase(unittest.TestCase):
         self.transformer = ToCartesian(drop_old=drop_old)
 
     def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+        self.data = pd.read_csv(path)
+        self.radial_df = pd.read_csv(path_radial)
 
     def test_init(self):
         self._init_transformer()
@@ -194,12 +186,12 @@ class CartesianTestCase(unittest.TestCase):
 
 class DropShortTestCase(unittest.TestCase):
 
-    def _init_transformer(self, num_stations=None, keep_misses=True):
-        self.transformer = DropShort(num_stations=num_stations, keep_misses=keep_misses)
+    def _init_transformer(self, num_stations=None, keep_fakes=True):
+        self.transformer = DropShort(num_stations=num_stations, keep_fakes=keep_fakes)
 
     def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+        self.data = pd.read_csv(path)
+        self.radial_df = pd.read_csv(path_radial)
 
     def test_init(self):
         self._init_transformer()
@@ -220,19 +212,9 @@ class DropShortTestCase(unittest.TestCase):
         self._init_transformer(3)
         self.assertEqual(len(self.transformer(self.data)), len(self.data))
 
-    def test_transform_4(self):
-        self._init_data()
-        self._init_transformer(num_stations=4)
-        self.assertEqual(len(self.transformer(self.data)), 76969)
-
-    def test_transform_no_keep_3(self):
-        self._init_data()
-        self._init_transformer(num_stations=3, keep_misses=False)
-        self.assertEqual(len(self.transformer(self.data)), 100000-76969)
-
     def test_transform_no_keep_4(self):
         self._init_data()
-        self._init_transformer(num_stations=4, keep_misses=False)
+        self._init_transformer(num_stations=4, keep_fakes=False)
         self.assertEqual(len(self.transformer(self.data)), 0)
 
     def test_get_broken(self):
@@ -242,20 +224,13 @@ class DropShortTestCase(unittest.TestCase):
         self.transformer(self.data)
         self.assertEqual(0, self.transformer.get_num_broken())
 
-    def test_get_broken_4(self):
-        self._init_data()
-        self._init_transformer(4)
-        self.assertIsNone(self.transformer.get_num_broken())
-        self.transformer(self.data)
-        self.assertEqual(7677, self.transformer.get_num_broken())
-
 class DropWarpsTestCase(unittest.TestCase):
-    def _init_transformer(self, num_stations=None, keep_misses=True):
-        self.transformer = DropSpinningTracks(keep_misses=keep_misses)
+    def _init_transformer(self, num_stations=None, keep_fakes=True):
+        self.transformer = DropSpinningTracks(keep_fakes=keep_fakes)
 
     def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+        self.data = pd.read_csv(path)
+        self.radial_df = pd.read_csv(path_radial)
 
     def test_init(self):
         self._init_transformer()
@@ -270,7 +245,7 @@ class DropWarpsTestCase(unittest.TestCase):
 
     def test_transform_no_keep(self):
         self._init_data()
-        self._init_transformer(keep_misses=False)
+        self._init_transformer(keep_fakes=False)
         self.assertEqual(len(self.transformer(self.data)), 23016)
 
     def test_get_broken(self):
@@ -313,8 +288,8 @@ class ComposeTestCase(unittest.TestCase):
         )
 
     def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+        self.data = pd.read_csv(path)
+        self.radial_df = pd.read_csv(path_radial)
 
     def test_init(self):
         self._init_transformer()
@@ -339,26 +314,26 @@ class ComposeTestCase(unittest.TestCase):
         transformed = self.transformer(self.data)
         self.assertAlmostEqual(transformed.loc[0, 'phi'], self.radial_df.loc[0, 'phi'])
         self.assertAlmostEqual(transformed.loc[0, 'r'], self.radial_df.loc[0, 'r'])
-
+'''
 class ToBucketsTestCase(unittest.TestCase):
-    def _init_transformer(self, flat=True, keep_misses=True):
-        self.transformer = ToBuckets(flat=flat, keep_misses=keep_misses)
+    def _init_transformer(self, flat=True, keep_fakes=True):
+        self.transformer = ToBuckets(flat=flat, keep_fakes=keep_fakes)
 
     def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+        self.data = pd.read_csv(path)
+        self.radial_df = pd.read_csv(path_radial)
 
     def test_init(self):
         self._init_transformer()
         self._init_data()
-        self.assertEqual(self.transformer.keep_misses, True)
+        self.assertEqual(self.transformer.keep_fakes, True)
         self.assertEqual(self.transformer.flat, True)
 
     def test_misses(self):
         self._init_data()
-        self._init_transformer(keep_misses=False)
+        self._init_transformer(keep_fakes=False)
         self.assertEqual(len(self.transformer(self.data)), 100000-76969)
-        self._init_transformer(keep_misses=True)
+        self._init_transformer(keep_fakes=True)
         self.assertEqual(len(self.transformer(self.data)), 100000)
 
     def test_flat(self):
@@ -373,18 +348,18 @@ class ToBucketsTestCase(unittest.TestCase):
 
     def test_bucket_lens(self):
         self._init_data()
-        self._init_transformer(keep_misses=False)
+        self._init_transformer(keep_fakes=False)
         transformed = self.transformer(self.data)
         self.assertEqual(23031, self.transformer.get_buckets_sizes()[3])
 
 
 class ConstraintsTestCase(unittest.TestCase):
-    def _init_transformer(self, drop_old=True, columns=['x', 'y', 'z'], use_global_constraints=True):
+    def _init_transformer(self, drop_old=True, columns=('x', 'y', 'z'), use_global_constraints=True):
         self.transformer = ConstraintsNormalize(drop_old=drop_old, columns=columns, use_global_constraints=use_global_constraints)
 
     def _init_data(self):
-        self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
-        self.radial_df = pd.read_csv('/home/nastya/tracknet/data/200_radial.csv')
+        self.data = pd.read_csv(path)
+        self.radial_df = pd.read_csv(path_radial)
 
     def test_init(self):
         self._init_transformer()
@@ -408,7 +383,7 @@ class ConstraintsTestCase(unittest.TestCase):
         self._init_data()
         self._init_transformer()
         self.assertEqual( 100000, len(self.transformer(self.data)))
-
+'''
 
 if __name__ == '__main__':
     unittest.main()
