@@ -5,6 +5,8 @@ import pandas as pd
 from absl import flags
 from absl import app
 
+from ariadne.preprocessing import DataProcessor
+
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
     name='config', default=None,
@@ -18,17 +20,15 @@ flags.DEFINE_enum(
 
 LOGGER = logging.getLogger('ariadne.prepare')
 
+
 @gin.configurable
-def preprocessor(
-        target_model: str,
+def preprocess(
+        target_processor: DataProcessor.__class__,
         output_dir: str
 ):
-    LOGGER.info("GET:", target_model, output_dir)
-
-    # TODO: ugly import hack, remove this import
-    from ariadne.RDGraphNet_v1.processor import RDGraphNet_v1_Processor
-    df_new = pd.DataFrame()
-    a = RDGraphNet_v1_Processor()
+    data_df = pd.DataFrame()
+    a = target_processor(data_df=data_df)
+    LOGGER.info("GET: %r %r" %( a, output_dir ))
     pass
 
 
@@ -38,7 +38,7 @@ def main(argv):
         raise SystemError("Expected valid path to the GIN-config file supplied as 'config=' parameter")
     gin.parse_config(open(FLAGS.config))
     LOGGER.setLevel(FLAGS.log)
-    preprocessor()
+    preprocess()
 
 
 if __name__ == '__main__':
