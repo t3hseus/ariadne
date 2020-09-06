@@ -12,21 +12,6 @@ from copy import deepcopy
 import warnings
 warnings.filterwarnings("ignore")
 
-stations_z = [0, 0.5, 1]
-
-stations_sizes = [[0.499827841387305,
-                   0.4999727262294332,
-                   0.99965568277461,
-                   0.6278962737181447],
-                  [0.50005704848717,
-                    0.5001411506178041,
-                    0.9998859030256596,
-                    0.8142050534164471],
-                  [0.5001180262696687,
-                    0.5000589751012908,
-                    0.9996381603027529,
-                    0.9998796884320015]]
-
 class BESDataset(Dataset):
     """Face Landmarks dataset."""
 
@@ -38,7 +23,8 @@ class BESDataset(Dataset):
                 on a dataframe.
         """
         self.frame = pd.read_csv(csv_file)
-        self.frame = preprocessing(self.frame)
+        if preprocessing:
+            self.frame = preprocessing(self.frame)
         assert all([item in (list(self.frame.columns)) for item in needed_columns]), 'One or more columns are not in dataframe!'
         self.grouped_frame = deepcopy(self.frame)
         self.grouped_frame = self.frame.groupby(by=['event', 'track'], as_index=False)
