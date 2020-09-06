@@ -4,7 +4,7 @@ import gin
 import pandas as pd
 import numpy as np
 
-from graph_net.graph_utils.graph import Graph
+from ariadne.graph_net.graph_utils.graph import Graph
 
 
 def calc_dphi(phi1, phi2):

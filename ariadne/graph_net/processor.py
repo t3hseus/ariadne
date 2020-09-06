@@ -1,8 +1,8 @@
 import logging
 from typing import List, Tuple, Optional, Iterable
 
-from graph_net.graph_utils.graph import Graph, save_graphs_new
-from graph_net.graph_utils.graph_prepare_utils import to_pandas_graph_from_df, get_pd_line_graph, \
+from ariadne.graph_net.graph_utils.graph import Graph, save_graphs_new
+from ariadne.graph_net.graph_utils.graph_prepare_utils import to_pandas_graph_from_df, get_pd_line_graph, \
     apply_edge_restriction, construct_output_graph, apply_nodes_restrictions
 from ariadne.preprocessing import DataProcessor, DataChunk, ProcessedDataChunk, ProcessedData
 
@@ -10,7 +10,7 @@ import gin
 import pandas as pd
 import numpy as np
 
-from transformations import Compose, StandartScale, ToCylindrical, ConstraintsNormalize
+from ariadne.transformations import Compose, StandardScale, ToCylindrical, ConstraintsNormalize
 
 LOGGER = logging.getLogger('ariadne.prepare')
 
@@ -59,7 +59,7 @@ class GraphNet_Processor(DataProcessor):
                 use_global_constraints=False,
                 constraints=stations_constraints
             ),
-            ToCylindrical()
+            ToCylindrical(drop_old=True, cart_columns=('y', 'x'))
         ])
 
     def generate_chunks_iterable(self) -> Iterable[GraphDataChunk]:
@@ -96,8 +96,8 @@ class GraphNet_Processor(DataProcessor):
         return ReversedDiGraphDataChunk(out, output_name)
 
     def postprocess_chunks(self,
-                           chunks: List[ReversedDiGraphDataChunk]) -> ProcessedData:
-        return ProcessedData(chunks)
+                           chunks: List[ReversedDiGraphDataChunk]) -> ProcessedGraphData:
+        return ProcessedGraphData(chunks)
 
     def save_on_disk(self,
                      processed_data: ProcessedGraphData):

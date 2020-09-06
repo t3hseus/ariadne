@@ -10,7 +10,7 @@ class Compose(object):
         transforms (list of ``Transform`` objects): list of transforms to compose.
     # Example:
         >>> Compose([
-        >>>     transforms.StandartScale(),
+        >>>     transforms.StandardScale(),
         >>>     transforms.ToCylindrical(),
         >>> ])
     """
@@ -207,13 +207,13 @@ class BaseCoordConverter(BaseTransformer):
         return '-' * 30 + '\n' + f'{self.__class__.__name__} with convert_function: {self.convert_function}\n' + '-' * 30 + '\n'
 
 
-class StandartScale(BaseScaler):
-    """Standartizes coordinates by removing the mean and scaling to unit variance
+class StandardScale(BaseScaler):
+    """Standardizes coordinates by removing the mean and scaling to unit variance
     # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         with_mean (boolean, True by default): If True, center the data before scaling
         with_std (boolean, True by default): If True, scale the data to unit variance (or equivalently, unit standard deviation).
-        columns (list or tuple of length 3): Columns to standartize
+        columns (list or tuple of length 3): Columns to Standardize
     """
 
     def __init__(self, drop_old=True, with_mean=True, with_std=True, columns=('x', 'y', 'z')):
@@ -234,7 +234,7 @@ class MinMaxScale(BaseScaler):
      # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         feature_range (Tuple (min,max), default (0,1)): Desired range of transformed data.
-        columns (list or tuple of length 3): Columns to standartize
+        columns (list or tuple of length 3): Columns to Standardize
     """
 
     def __init__(self, drop_old=True, feature_range=(0, 1), columns=('x', 'y', 'z')):
@@ -261,7 +261,7 @@ class Normalize(BaseScaler):
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         norm (‘l1’, ‘l2’, or ‘max’ (‘l2’ by default)): The norm to use to normalize each non zero sample.
                               If norm=’max’ is used, values will be rescaled by the maximum of the absolute values.
-        columns (list or tuple of length 3): Columns to standartize
+        columns (list or tuple of length 3): Columns to Standardize
     """
 
     def __init__(self, drop_old=True, norm='l2', columns=('x', 'y', 'z')):

@@ -10,7 +10,7 @@ from absl import flags
 from absl import app
 
 from ariadne.preprocessing import DataProcessor
-from parsing import parse_df
+from ariadne.parsing import parse_df
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(

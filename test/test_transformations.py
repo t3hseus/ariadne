@@ -3,7 +3,7 @@ import sys
 import pandas as pd
 
 from ariadne.transformations import (
-    StandartScale,
+    StandardScale,
     MinMaxScale,
     ToCylindrical,
     Normalize, 
@@ -18,10 +18,10 @@ from ariadne.transformations import (
 path = '../data/200.csv'
 path_radial = '../data/200_radial.csv'
 
-class StandartTestCase(unittest.TestCase):
+class StandardTestCase(unittest.TestCase):
 
     def _init_scaler(self, drop_old=True):
-        self.scaler = StandartScale(drop_old=drop_old, with_mean=True, with_std=True)
+        self.scaler = StandardScale(drop_old=drop_old, with_mean=True, with_std=True)
 
     def _init_data(self):
         self.data = pd.read_csv(path)
@@ -282,7 +282,7 @@ class DropWarpsTestCase(unittest.TestCase):
 class ComposeTestCase(unittest.TestCase):
     def _init_transformer(self):
         self.transformer = Compose([
-            StandartScale(),
+            StandardScale(),
             ToCylindrical()
             ]
         )
