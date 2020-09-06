@@ -6,7 +6,7 @@ import gin
 import pandas as pd
 import numpy as np
 
-from transformations import Compose, StandartScale, ToCylindrical, \
+from ariadne.transformations import Compose, StandardScale, ToCylindrical, \
     ConstraintsNormalize, MinMaxScale, DropSpinningTracks, DropFakes, DropShort
 
 LOGGER = logging.getLogger('ariadne.prepare')
@@ -40,15 +40,12 @@ class TrackNet_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
-                 stations_constraints,
-                 df_suffixes: Tuple[str]
                  ):
         super().__init__(
             processor_name='TrackNet_v2_Processor',
             output_dir=output_dir,
             data_df=data_df)
 
-        self._suffixes_df = df_suffixes
         self.transformer = Compose([
             DropFakes(),
             DropSpinningTracks(),
@@ -65,7 +62,6 @@ class TrackNet_Processor(DataProcessor):
         processed = self.transformer(chunk_df)
         return TracknetDataChunk(processed)
 
-    @gin.configurable(blacklist=['chunk', 'idx'])
     def preprocess_chunk(self,
                          chunk: TracknetDataChunk,
                          idx: int) -> ProcessedDataChunk:
