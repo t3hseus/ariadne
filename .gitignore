@@ -132,3 +132,5 @@ dmypy.json
 
 # vscode files
 .vscode
+data
+output
