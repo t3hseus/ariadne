@@ -51,7 +51,7 @@ class PreprocessingBESDataset(Dataset):
 class TrackNetV2Dataset(Dataset):
     """TrackNET_v2 dataset."""
 
-    def __init__(self, data_file, use_next_z=False):
+    def __init__(self, data_file):
         """
         Args:
             csv_file (string): Path to the csv file with data.
