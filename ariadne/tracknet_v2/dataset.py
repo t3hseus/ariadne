@@ -49,7 +49,7 @@ class PreprocessingBESDataset(Dataset):
 
 
 class TrackNetV2Dataset(Dataset):
-    """Face Landmarks dataset."""
+    """TrackNET_v2 dataset."""
 
     def __init__(self, data_file, use_next_z=False):
         """
