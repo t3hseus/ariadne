@@ -40,6 +40,8 @@ class TrackNet_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
+                 radial_stations_constraints,
+                 name_suffix: str
                  ):
         super().__init__(
             processor_name='TrackNet_v2_Processor',
@@ -51,8 +53,13 @@ class TrackNet_Processor(DataProcessor):
             DropSpinningTracks(),
             DropShort(),
             ToCylindrical(),
-            MinMaxScale(),
+            ConstraintsNormalize(
+                use_global_constraints=False,
+                constraints=radial_stations_constraints,
+                columns=('r', 'phi', 'z')
+            ),
         ])
+        self.output_name = (self.output_dir + '/tracknet_%d' + name_suffix)
 
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
         return self.data_df.groupby('event')
@@ -64,7 +71,7 @@ class TrackNet_Processor(DataProcessor):
 
     def preprocess_chunk(self,
                          chunk: TracknetDataChunk,
-                         idx: int) -> ProcessedDataChunk:
+                         idx: int) -> ProcessedTracknetDataChunk:
         chunk_df = chunk.df_chunk_data
         chunk_id = int(chunk_df.event.values[0])
         output_name = (self.output_dir + '/tracknet_%d' % chunk_id)
@@ -72,14 +79,38 @@ class TrackNet_Processor(DataProcessor):
         return ProcessedTracknetDataChunk(chunk_df, output_name)
 
     def postprocess_chunks(self,
-                           chunks: List[ProcessedTracknetDataChunk]) -> ProcessedData:
-        return ProcessedData(chunks)
+                           chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
+        for chunk in chunks:
+            chunk_data_x = []
+            chunk_data_y = []
+            chunk_data_len = []
+            df = chunk.processed_object
+            grouped_df = df.groupby('track')
+            for i, data in grouped_df:
+                #print(data)
+                chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
+                chunk_data_y.append(data[['r', 'phi', 'z']].values[-1])
+                chunk_data_len.append(2)
+            chunk_data_x = np.stack(chunk_data_x, axis=0)
+            chunk_data_y = np.stack(chunk_data_y, axis=0)
+            chunk_data = {'x': {'inputs': chunk_data_x, 'input_lengths': chunk_data_len}, 'y': chunk_data_y}
+            chunk.processed_object = chunk_data
+        return ProcessedTracknetData(chunks)
+
 
     def save_on_disk(self,
                      processed_data: ProcessedTracknetData):
-        for data_chunk in processed_data:
+        all_data_inputs = []
+        all_data_y = []
+        all_data_len = []
+        for data_chunk in processed_data.processed_data:
             if data_chunk.processed_object is None:
                 continue
-            filename = data_chunk.output_name
-            data = data_chunk.processed_object
-            np.savez(filename, data)
+            all_data_inputs.append(data_chunk.processed_object['x']['inputs'])
+            all_data_len.append(data_chunk.processed_object['x']['input_lengths'])
+            all_data_y.append(data_chunk.processed_object['y'])
+        all_data_inputs = np.concatenate(all_data_inputs)
+        all_data_y = np.concatenate(all_data_y)
+        all_data_len = np.concatenate(all_data_len)
+        all_data = {'x': {'inputs': all_data_inputs, 'input_lengths': all_data_len}, 'y': all_data_y}
+        np.savez(self.output_name, all_data)
