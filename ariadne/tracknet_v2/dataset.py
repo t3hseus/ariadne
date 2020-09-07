@@ -12,22 +12,7 @@ from copy import deepcopy
 import warnings
 warnings.filterwarnings("ignore")
 
-stations_z = [0, 0.5, 1]
-
-stations_sizes = [[0.499827841387305,
-                   0.4999727262294332,
-                   0.99965568277461,
-                   0.6278962737181447],
-                  [0.50005704848717,
-                    0.5001411506178041,
-                    0.9998859030256596,
-                    0.8142050534164471],
-                  [0.5001180262696687,
-                    0.5000589751012908,
-                    0.9996381603027529,
-                    0.9998796884320015]]
-
-class BESDataset(Dataset):
+class PreprocessingBESDataset(Dataset):
     """Face Landmarks dataset."""
 
     def __init__(self, csv_file, preprocessing=None, needed_columns=('r', 'phi', 'z'), use_next_z=False):
@@ -38,7 +23,8 @@ class BESDataset(Dataset):
                 on a dataframe.
         """
         self.frame = pd.read_csv(csv_file)
-        self.frame = preprocessing(self.frame)
+        if preprocessing:
+            self.frame = preprocessing(self.frame)
         assert all([item in (list(self.frame.columns)) for item in needed_columns]), 'One or more columns are not in dataframe!'
         self.grouped_frame = deepcopy(self.frame)
         self.grouped_frame = self.frame.groupby(by=['event', 'track'], as_index=False)
@@ -60,4 +46,29 @@ class BESDataset(Dataset):
             for i in range(2):
                 sample.loc[i, 'z+1'] = sample[i+1]['z']
         return {'x': {'inputs': sample[:2].values, 'input_lengths': 2}, 'y': y}
+
+
+class TrackNetV2Dataset(Dataset):
+    """TrackNET_v2 dataset."""
+
+    def __init__(self, data_file):
+        """
+        Args:
+            csv_file (string): Path to the csv file with data.
+            preprocessing (callable, optional): Optional transform to be applied
+                on a dataframe.
+        """
+        self.data = np.load(data_file)
+
+    def __len__(self):
+        return len(self.data['y'])
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        print(self.data.keys())
+        sample_inputs = self.data['inputs'][idx]
+        sample_len = self.data['input_lengths'][idx]
+        sample_y = self.data['y'][idx]
+        return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len}, 'y': sample_y}
 
