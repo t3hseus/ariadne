@@ -59,7 +59,7 @@ class TrackNet_Processor(DataProcessor):
                 columns=('r', 'phi', 'z')
             ),
         ])
-        self.output_name = (self.output_dir + '/tracknet_%d' + name_suffix)
+        self.output_name = (self.output_dir + '/tracknet_' + name_suffix)
 
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
         return self.data_df.groupby('event')
@@ -110,7 +110,8 @@ class TrackNet_Processor(DataProcessor):
             all_data_len.append(data_chunk.processed_object['x']['input_lengths'])
             all_data_y.append(data_chunk.processed_object['y'])
         all_data_inputs = np.concatenate(all_data_inputs)
+        print(all_data_inputs.shape)
         all_data_y = np.concatenate(all_data_y)
         all_data_len = np.concatenate(all_data_len)
-        all_data = {'x': {'inputs': all_data_inputs, 'input_lengths': all_data_len}, 'y': all_data_y}
-        np.savez(self.output_name, all_data)
+        np.savez(self.output_name, inputs=all_data_inputs, input_lengths=all_data_len, y=all_data_y )
+        print('Saved to: ', self.output_name)

@@ -12,7 +12,7 @@ from copy import deepcopy
 import warnings
 warnings.filterwarnings("ignore")
 
-class BESDataset(Dataset):
+class PreprocessingBESDataset(Dataset):
     """Face Landmarks dataset."""
 
     def __init__(self, csv_file, preprocessing=None, needed_columns=('r', 'phi', 'z'), use_next_z=False):
@@ -46,4 +46,29 @@ class BESDataset(Dataset):
             for i in range(2):
                 sample.loc[i, 'z+1'] = sample[i+1]['z']
         return {'x': {'inputs': sample[:2].values, 'input_lengths': 2}, 'y': y}
+
+
+class TrackNetV2Dataset(Dataset):
+    """Face Landmarks dataset."""
+
+    def __init__(self, data_file, use_next_z=False):
+        """
+        Args:
+            csv_file (string): Path to the csv file with data.
+            preprocessing (callable, optional): Optional transform to be applied
+                on a dataframe.
+        """
+        self.data = np.load(data_file)
+
+    def __len__(self):
+        return len(self.data['y'])
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        print(self.data.keys())
+        sample_inputs = self.data['inputs'][idx]
+        sample_len = self.data['input_lengths'][idx]
+        sample_y = self.data['y'][idx]
+        return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len}, 'y': sample_y}
 
