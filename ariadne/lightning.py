@@ -1,5 +1,5 @@
 import gin
-import torch 
+import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 
@@ -51,7 +51,7 @@ class TrainModel(pl.LightningModule):
         result = pl.TrainResult(result_dict['loss'])
         result.log_dict(result_dict, on_step=True, prog_bar=True)
         return result
-        
+
     def validation_step(self, batch, batch_idx):
         result_dict = self._forward_batch(batch)
         tqdm_dict = {f'val_{k}': v for k, v in result_dict}
