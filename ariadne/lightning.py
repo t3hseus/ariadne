@@ -49,14 +49,14 @@ class TrainModel(pl.LightningModule):
         result_dict = self._forward_batch(batch)
         tqdm_dict = {f'train_{k}': v for k, v in result_dict}
         result = pl.TrainResult(result_dict['loss'])
-        result.log_dict(result_dict, on_step=True, prog_bar=True)
+        result.log_dict(tqdm_dict, on_step=True, prog_bar=True)
         return result
 
     def validation_step(self, batch, batch_idx):
         result_dict = self._forward_batch(batch)
         tqdm_dict = {f'val_{k}': v for k, v in result_dict}
         result = pl.EvalResult(checkpoint_on=result_dict['loss'])
-        result.log_dict(result_dict)
+        result.log_dict(tqdm_dict)
         return result
 
     def configure_optimizers(self):
