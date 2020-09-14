@@ -1,6 +1,6 @@
 import math
 import gin
-import torch 
+import torch
 import numpy as np
 import torch.nn.functional as F
 
@@ -21,7 +21,7 @@ def ellipse_area(preds, target):
 
 @gin.configurable(whitelist=[])
 def point_in_ellipse(preds, target):
-    """Checks if the next point of track segment 
+    """Checks if the next point of track segment
     is located in the predicted circle
     1 - if yes, 0 - otherwise
     """
@@ -52,7 +52,7 @@ def calc_metrics(inputs, model, tracklen=None):
     """ Take array of tracks in the format of numpy 3d array
     [[[x1, y1, z1, ...], [x2, y2, z2, ...]], [...]],
     array has shape (batch_size, n_hits, n_features).
-    Then for each of the tracks apply model to prolong each 
+    Then for each of the tracks apply model to prolong each
     track from the first two hits to the end of the track.
 
     # Arguments
@@ -84,14 +84,14 @@ def calc_metrics(inputs, model, tracklen=None):
     # create tensor and place it to CPU or GPU
     inputs_val = torch.from_numpy(inputs).to(model.device)
     model.eval()
-    
+
     if tracklen is None:
         tracklen = inputs_val.size(1)
-        
+
     # run from the first station to the last
     for i in range(2, tracklen):
         # cut off all track-candidates
-        inputs_part = inputs_val[:, :i]  
+        inputs_part = inputs_val[:, :i]
         # x, y coords of the next hit in a track
         target = inputs_val[:, i, :2]
         # get model's prediction
@@ -100,9 +100,9 @@ def calc_metrics(inputs, model, tracklen=None):
         idx = point_in_ellipse(preds, target)
         # count number of right predictions
         hits_efficiency += np.sum(idx) / len(idx)
-        # exclude 
+        # exclude
         inputs_val = inputs_val[idx]
-        
+
     # count number of track for which we found all points
     efficiency = len(inputs_val) / len(inputs)
     # recompute the hits_efficiency

@@ -13,12 +13,12 @@ class TrackNETv2(nn.Module):
         input_features: number of input features (channels)
         rnn_type: type of the rnn unit, one of [`lstm`, `gru`]
     """
-    def __init__(self, 
-                 input_features=4, 
+    def __init__(self,
+                 input_features=4,
                  conv_features=32,
                  rnn_type='gru',
                  batch_first=True):
-        super().__init__() 
+        super().__init__()
         rnn_type = rnn_type.upper()
         if rnn_type not in ALLOWED_RNN_TYPES:
             raise ValueError(f'RNN type {rnn_type} is not supported. '

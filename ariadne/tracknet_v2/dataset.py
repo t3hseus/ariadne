@@ -71,4 +71,3 @@ class TrackNetV2Dataset(Dataset):
         sample_len = self.data['input_lengths'][idx]
         sample_y = self.data['y'][idx]
         return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len}, 'y': sample_y}
-
