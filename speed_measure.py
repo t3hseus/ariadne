@@ -28,6 +28,7 @@ def timeit(batch_size, model, device_name, n_epochs=1000, n_stations=2):
     device = torch.device(device_name)
     use_cuda = True if device_name=='cuda' else False
     model = TrackNETv2().to(device)
+    model.eval()
     with profile(use_cuda=use_cuda) as prof:
         for _ in tqdm(range(n_epochs)):
             temp = torch.rand(batch_size, n_stations, model.input_features).to(device)
