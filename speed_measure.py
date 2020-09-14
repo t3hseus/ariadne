@@ -23,15 +23,15 @@ flags.DEFINE_enum(
 )
 
 @gin.configurable
-def timeit(batch_size, n_epochs, model, device_name):
-    LOGGER.info("Strting measurement")
+def timeit(batch_size, model, device_name, n_epochs=1000, n_stations=2):
+    LOGGER.info("Starting measurement")
     device = torch.device(device_name)
     use_cuda = True if device_name=='cuda' else False
     model = TrackNETv2().to(device)
     with profile(use_cuda=use_cuda) as prof:
         for _ in tqdm(range(n_epochs)):
-            temp = torch.rand(batch_size, 2, model.input_features).to(device)
-            temp_lengths = (torch.ones(batch_size) * 2).to(device)
+            temp = torch.rand(batch_size, n_stations, model.input_features).to(device)
+            temp_lengths = (torch.ones(batch_size) * n_stations).to(device)
             #print(temp_lengths)
             preds = model(inputs=temp, input_lengths=temp_lengths)
 
