@@ -134,3 +134,6 @@ dmypy.json
 .vscode
 data
 output
+
+# hydra slurm files
+slurm-*.out

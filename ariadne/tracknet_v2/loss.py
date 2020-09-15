@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 
 class PointInEllipseLoss(nn.Module):
-    """Penalizes predictions when a true point 
+    """Penalizes predictions when a true point
     is far from the center of the predicted ellipse
 
     # Arguments
