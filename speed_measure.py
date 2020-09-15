@@ -69,13 +69,13 @@ def timeit_graph(batch_size, model, device_name, n_epochs=1000, n_stations=2, ha
             temp_X = torch.rand(batch_size, N, F)
             temp_Ri = torch.rand(batch_size, N, E)
             temp_Ro = temp_Ri
-            graph = (temp_X, temp_Ri, temp_Ro)
 
             if half_precision:
-                assert False
-                temp = temp.half()
-                temp_lengths = temp_lengths.half()
+                temp_X = temp_X.half()
+                temp_Ri = temp_X.half()
+                temp_Ro = temp_X.half()
             #print(temp_lengths)
+            graph = (temp_X, temp_Ri, temp_Ro)
             preds = model(graph)
 
     table = prof.key_averages().table()
