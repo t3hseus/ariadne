@@ -8,6 +8,8 @@ from tqdm import tqdm
 from absl import flags
 from absl import app
 
+from ariadne.graph_net.graph_utils.graph import Graph
+from ariadne.graph_net.model import GraphNet
 from ariadne.tracknet_v2.model import TrackNETv2
 
 LOGGER = logging.getLogger('ariadne.speed_measure')
@@ -49,11 +51,45 @@ def timeit(batch_size, model, device_name, n_epochs=1000, n_stations=2, half_pre
     LOGGER.info(result)
     print(result)
 
+@gin.configurable
+def timeit_graph(batch_size, model, device_name, n_epochs=1000, n_stations=2, half_precision=False):
+    LOGGER.info("Starting measurement")
+    LOGGER.info(f"No. CUDA devices: {torch.cuda.device_count()}")
+    device = torch.device(device_name)
+    use_cuda = True if device_name=='cuda' else False
+    model = GraphNet().to(device)
+    if half_precision:
+        model = model.half()
+    model.eval()
+    N = 900
+    E = 1300
+    F = 5
+    with profile(use_cuda=use_cuda) as prof:
+        for _ in tqdm(range(n_epochs)):
+            temp_X = torch.rand(batch_size, N, F)
+            temp_Ri = torch.rand(batch_size, N, E)
+            temp_Ro = temp_Ri
+            graph = (temp_X, temp_Ri, temp_Ro)
+
+            if half_precision:
+                assert False
+                temp = temp.half()
+                temp_lengths = temp_lengths.half()
+            #print(temp_lengths)
+            preds = model(graph)
+
+    table = prof.key_averages().table()
+    print(table)
+    result = 'Speed:', round((batch_size * n_epochs) / float(str(table).split('\n')[-2].split(' ')[-1].strip('s')), 3), 'elements/s'
+    LOGGER.info(table)
+    LOGGER.info(result)
+    print(result)
+
 def main(argv):
     del argv
     gin.parse_config(open(FLAGS.config))
     LOGGER.setLevel(FLAGS.log)
-    timeit()
+    timeit_graph()
 
 if __name__ == '__main__':
     app.run(main)
