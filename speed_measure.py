@@ -89,6 +89,7 @@ def main(argv):
     del argv
     gin.parse_config(open(FLAGS.config))
     LOGGER.setLevel(FLAGS.log)
+    LOGGER.info("CONFIG: %s" % gin.config_str())
     timeit_graph()
 
 if __name__ == '__main__':
