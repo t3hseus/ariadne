@@ -6,6 +6,8 @@ import torch.nn as nn
 
 from absl import flags
 from absl import app
+from pytorch_lightning import Trainer
+
 from ariadne.lightning import TrainModel
 from ariadne.utils import fix_random_seed
 
@@ -27,6 +29,7 @@ def experiment(model,
                criterion,
                metrics,
                optimizer,
+               data_loader,
                random_seed=None):
     # for reproducibility
     if random_seed is not None:
@@ -39,9 +42,16 @@ def experiment(model,
         model=model,
         criterion=criterion,
         metrics=metrics,
-        optimizer=optimizer
+        optimizer=optimizer,
+        data_loader=data_loader
     )
+
     LOGGER.info(model)
+
+    trainer = Trainer(max_epochs=100)
+    trainer.fit(model=model)
+
+
 
 
 def main(argv):

@@ -137,3 +137,5 @@ output
 
 # hydra slurm files
 slurm-*.out
+lightning_logs
+.idea

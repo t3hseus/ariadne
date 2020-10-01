@@ -44,7 +44,8 @@ class BaseTransformer(object):
          keep_fakes (boolean, True by default): If True, hits with no track are preserved
     """
 
-    def __init__(self, drop_old=False, keep_fakes=True, columns=('x', 'y', 'z'), track_col='track', event_col='event', station_col='station'):
+    def __init__(self, drop_old=False, keep_fakes=True, columns=('x', 'y', 'z'), track_col='track', event_col='event',
+                 station_col='station'):
         self.drop_old = drop_old
         self.columns = columns
         self.keep_fakes = keep_fakes
@@ -337,13 +338,14 @@ class ConstraintsNormalize(BaseTransformer):
             data = super().transform_data(data, [x_norm, y_norm, z_norm])
         else:
             assert all([station in data['station'].unique() for station in
-                        self.constraints.keys()]), 'Some Station keys in constraints are not presented in data'
+                        self.constraints.keys()]), 'Some Station keys in constraints are not presented in data: keys "%r", data "%r" ' % (
+            data['station'].unique(), self.constraints.keys())
             for station in self.constraints.keys():
                 group = data.loc[data['station'] == station,]
                 x_norm, y_norm, z_norm = self.normalize(group, self.constraints[station])
                 data.loc[data['station'] == station, :] = \
                     self.transform_data_by_group(data['station'] == station, data,
-                                                    [x_norm, y_norm, z_norm])
+                                                 [x_norm, y_norm, z_norm])
         return data
 
     def transform_data_by_group(self, grouping, data, normed):
