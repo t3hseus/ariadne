@@ -337,7 +337,7 @@ class ConstraintsNormalize(BaseTransformer):
             data = super().transform_data(data, [x_norm, y_norm, z_norm])
         else:
             assert all([station in data['station'].unique() for station in
-                        self.constraints.keys()]), 'Some Station keys in constraints are not presented in data'
+                        self.constraints.keys()]), 'Some station keys in constraints are not presented in data'
             for station in self.constraints.keys():
                 group = data.loc[data['station'] == station,]
                 x_norm, y_norm, z_norm = self.normalize(group, self.constraints[station])
@@ -348,14 +348,15 @@ class ConstraintsNormalize(BaseTransformer):
 
     def transform_data_by_group(self, grouping, data, normed):
         for i in range(3):
-            assert self.drop_old, "not supported for now"
+            assert self.drop_old, "Saving old data is not supported for now"
             data.loc[grouping, self.columns[i]] = normed[i]
         return data
 
     def get_stations_constraints(self, df):
-        groupes = df['station'].unique()
+        groups = df['station'].unique()
+
         station_constraints = {}
-        for station_num in groupes:
+        for station_num in groups:
             group = df.loc[df['station'] == station_num,]
             min_x, max_x = min(group[self.columns[0]]) - self.margin, max(group[self.columns[0]]) + self.margin
             min_y, max_y = min(group[self.columns[1]]) - self.margin, max(group[self.columns[1]]) + self.margin
@@ -367,11 +368,20 @@ class ConstraintsNormalize(BaseTransformer):
 
     def normalize(self, df, constraints):
         x_min, x_max = constraints[self.columns[0]]
+        print(x_min, x_max)
         y_min, y_max = constraints[self.columns[1]]
+        print(y_min, y_max)
         z_min, z_max = constraints[self.columns[2]]
+        print(z_min, z_max)
+        assert all(df[self.columns[0]].between(x_min, x_max)), \
+            f'Some values in column {self.columns[0]} are not in {constraints[self.columns[0]]}'
         x_norm = 2 * (df[self.columns[0]] - x_min) / (x_max - x_min) - 1
+        assert all(df[self.columns[1]].between(y_min, y_max)), \
+            f'Some values in column {self.columns[1]} are not in {constraints[self.columns[1]]}'
         y_norm = 2 * (df[self.columns[1]] - y_min) / (y_max - y_min) - 1
-        z_norm = (df[self.columns[2]] - z_min) / (z_max - z_min)
+        assert all(df[self.columns[2]].between(z_min, z_max)), \
+            f'Some values in column {self.columns[2]} are not in {constraints[self.columns[2]]}'
+        z_norm = 2 * (df[self.columns[2]] - z_min) / (z_max - z_min) - 1
         return x_norm, y_norm, z_norm
 
     def __repr__(self):
@@ -458,7 +468,7 @@ class DropFakes(BaseTransformer):
         return '------------------------------------------------------------------------------------------------\n' + \
                f'{self.__class__.__name__} with parameters: track_col={self.track_col}' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f'Number of misses: {self.get_num_misses()} \n'
+               f'Number of misses: {self.get_num_fakes()} \n'
 
 
 class ToCylindrical(BaseCoordConverter):
