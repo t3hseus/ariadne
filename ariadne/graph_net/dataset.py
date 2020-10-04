@@ -25,6 +25,7 @@ class GraphDataset(Dataset):
 
 
 # TODO: rewrite it
+@gin.configurable('graph_collate_fn')
 def collate_fn(graphs):
     batch_size = len(graphs)
 
@@ -38,5 +39,3 @@ def collate_fn(graphs):
 
     assert False
 
-
-gin.external_configurable(collate_fn, name="graph_collate_fn")
