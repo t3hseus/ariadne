@@ -10,7 +10,10 @@ from ariadne.tracknet_v2.loss import (
 
 
 class EllipseSquareLossTest(TestCase):
-    _loss_func = EllipseSquareLoss()
+
+    @classmethod
+    def setUpClass(cls):
+        cls._loss_func = EllipseSquareLoss()
 
     def test_output(self):
         preds = torch.zeros((5, 4)).float()
@@ -33,6 +36,10 @@ class EllipseSquareLossTest(TestCase):
 
 class PointInEllipseLossTest(TestCase):
     _loss_func = PointInEllipseLoss()
+
+    @classmethod
+    def setUpClass(cls):
+        cls._loss_func = PointInEllipseLoss()
 
     def test_incorrect_shape(self):
         target = torch.zeros((2, 2))
@@ -72,6 +79,7 @@ class PointInEllipseLossTest(TestCase):
 
 
 class TrackNetLossTest(TestCase):
+
     def test_invalid_alpha(self):
         with self.assertRaisesRegex(ValueError, 'Weighting factor alpha must be'):
             loss = TrackNetLoss(alpha=-1)
