@@ -51,6 +51,35 @@ class PreprocessingBESDataset(Dataset):
 class TrackNetV2Dataset(Dataset):
     """TrackNET_v2 dataset."""
 
+    def __init__(self, data_file, use_index=False):
+        """
+        Args:
+            csv_file (string): Path to the csv file with data.
+            preprocessing (callable, optional): Optional transform to be applied
+                on a dataframe.
+        """
+        self.data = np.load(data_file)
+        self.use_index = use_index
+
+    def __len__(self):
+        return len(self.data['y'])
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        #print(self.data.keys())
+        sample_inputs = self.data['inputs'][idx]
+        sample_len = self.data['input_lengths'][idx]
+        sample_y = self.data['y'][idx]
+        sample_idx = idx
+        if self.use_index:
+            return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len}, 'y': sample_y, 'index': sample_idx}
+        else:
+            return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len}, 'y': sample_y}
+
+class TrackNetV2ExplicitDataset(Dataset):
+    """TrackNET_v2 dataset."""
+
     def __init__(self, data_file):
         """
         Args:
@@ -61,13 +90,17 @@ class TrackNetV2Dataset(Dataset):
         self.data = np.load(data_file)
 
     def __len__(self):
-        return len(self.data['y'])
+        return len(self.data['is_real'])
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        print(self.data.keys())
+        #print(self.data.keys())
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
         sample_y = self.data['y'][idx]
-        return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len}, 'y': sample_y}
+        sample_moment = self.data['moments'][idx]
+        is_track = self.data['is_real'][idx]
+        sample_idx = idx
+        return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len},
+                'y': sample_y, 'index': sample_idx, 'moment': sample_moment, 'is_real_track': is_track}
