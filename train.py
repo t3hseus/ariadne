@@ -9,7 +9,6 @@ from absl import app
 from pytorch_lightning import Trainer, seed_everything
 
 from ariadne.lightning import TrainModel
-from ariadne.utils import fix_random_seed
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
@@ -30,6 +29,7 @@ def experiment(model,
                metrics,
                optimizer,
                data_loader,
+               epochs,
                random_seed=None):
     # for reproducibility
     if random_seed is not None:
@@ -48,7 +48,10 @@ def experiment(model,
 
     LOGGER.info(model)
 
-    trainer = Trainer(max_epochs=10, deterministic=True)
+    trainer = Trainer(
+        max_epochs=epochs, 
+        deterministic=True
+    )
     trainer.fit(model=model)
 
 
