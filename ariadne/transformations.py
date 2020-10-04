@@ -369,11 +369,11 @@ class ConstraintsNormalize(BaseTransformer):
 
     def normalize(self, df, constraints):
         x_min, x_max = constraints[self.columns[0]]
-        print(x_min, x_max)
+        #print(x_min, x_max)
         y_min, y_max = constraints[self.columns[1]]
-        print(y_min, y_max)
+        #print(y_min, y_max)
         z_min, z_max = constraints[self.columns[2]]
-        print(z_min, z_max)
+        #print(z_min, z_max)
         assert all(df[self.columns[0]].between(x_min, x_max)), \
             f'Some values in column {self.columns[0]} are not in {constraints[self.columns[0]]}'
         x_norm = 2 * (df[self.columns[0]] - x_min) / (x_max - x_min) - 1
