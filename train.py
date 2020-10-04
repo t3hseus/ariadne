@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from absl import flags
 from absl import app
-from pytorch_lightning import Trainer
+from pytorch_lightning import Trainer, seed_everything
 
 from ariadne.lightning import TrainModel
 from ariadne.utils import fix_random_seed
@@ -34,7 +34,7 @@ def experiment(model,
     # for reproducibility
     if random_seed is not None:
         LOGGER.info('Setting random seed to %d', random_seed)
-        fix_random_seed(random_seed)
+        seed_everything(random_seed)
 
     LOGGER.info('Create model for training')
     # create model for trainingimport logging
@@ -48,10 +48,8 @@ def experiment(model,
 
     LOGGER.info(model)
 
-    trainer = Trainer(max_epochs=100)
+    trainer = Trainer(max_epochs=10, deterministic=True)
     trainer.fit(model=model)
-
-
 
 
 def main(argv):
