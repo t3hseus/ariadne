@@ -132,6 +132,7 @@ class StandardTestCase(unittest.TestCase):
         gin.bind_parameter('parse.input_file', '../resources/test_data/cgem_50_events.txt')
 
         gin.bind_parameter('StandardTestCase.get_processor.output_dir', '../output/tests/cgem_graphnet_test')
+        gin.bind_parameter('preprocess.output_dir', '../output/tests/cgem_graphnet_test')
         preprocess()
 
         target_loaded_graphs = self.get_graphs('../output/tests/cgem_graphnet_test')

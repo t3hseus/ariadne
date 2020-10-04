@@ -12,14 +12,19 @@ class EdgeNetwork(nn.Module):
     def __init__(self, input_dim, hidden_dim=8, hidden_activation=nn.Tanh):
         super(EdgeNetwork, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_dim*2, hidden_dim),
+            nn.Linear(input_dim * 2, hidden_dim),
             hidden_activation(),
             nn.Linear(hidden_dim, 1),
             nn.Sigmoid())
 
     def forward(self, X, Ri, Ro):
-        return self.network(torch.cat([torch.bmm(Ro.transpose(1, 2), X),
-                       torch.bmm(Ri.transpose(1, 2), X)], dim=2)).squeeze(-1)
+        # Select the features of the associated nodes
+        bo = torch.bmm(Ro.transpose(1, 2), X)
+        bi = torch.bmm(Ri.transpose(1, 2), X)
+        B = torch.cat([bo, bi], dim=2)
+        # Apply the network to each edge
+        return self.network(B).squeeze(-1)
+
 
 class NodeNetwork(nn.Module):
     """
@@ -32,33 +37,47 @@ class NodeNetwork(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_activation=nn.Tanh):
         super(NodeNetwork, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_dim*3, output_dim),
+            nn.Linear(input_dim * 3, output_dim),
             hidden_activation(),
             nn.Linear(output_dim, output_dim),
             hidden_activation())
+
     def forward(self, X, e, Ri, Ro):
-        return self.network(torch.cat([torch.bmm(Ri * e[:,None], torch.bmm(Ro.transpose(1, 2), X)),
-                       torch.bmm(Ro * e[:,None], torch.bmm(Ri.transpose(1, 2), X)),
-                       X], dim=2))
+        bo = torch.bmm(Ro.transpose(1, 2), X)
+        bi = torch.bmm(Ri.transpose(1, 2), X)
+        Rwo = Ro * e[:, None]
+        Rwi = Ri * e[:, None]
+        mi = torch.bmm(Rwi, bo)
+        mo = torch.bmm(Rwo, bi)
+        M = torch.cat([mi, mo, X], dim=2)
+        return self.network(M)
+
 
 @gin.configurable
-class GraphNet(nn.Module):
+class GraphNet_v1(nn.Module):
+    """Builds TrackNETv2 model
+
+    # Arguments
+        input_features: number of input features (channels)
+        rnn_type: type of the rnn unit, one of [`lstm`, `gru`]
     """
-    Segment classification graph neural network model.
-    Consists of an input network, an edge network, and a node network.
-    """
-    def __init__(self, input_dim=2, hidden_dim=8, n_iters=3, hidden_activation=nn.Tanh):
-        super(GraphNet, self).__init__()
+
+    def __init__(self,
+                 input_dim,
+                 hidden_dim,
+                 n_iters,
+                 hidden_activation=nn.Tanh):
+        super(GraphNet_v1, self).__init__()
         self.n_iters = n_iters
         # Setup the input network
         self.input_network = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             hidden_activation())
         # Setup the edge network
-        self.edge_network = EdgeNetwork(input_dim+hidden_dim, hidden_dim,
+        self.edge_network = EdgeNetwork(input_dim + hidden_dim, hidden_dim,
                                         hidden_activation)
         # Setup the node layers
-        self.node_network = NodeNetwork(input_dim+hidden_dim, hidden_dim,
+        self.node_network = NodeNetwork(input_dim + hidden_dim, hidden_dim,
                                         hidden_activation)
 
     def forward(self, inputs):
@@ -71,9 +90,9 @@ class GraphNet(nn.Module):
         # Loop over iterations of edge and node networks
         for i in range(self.n_iters):
             # Apply edge network
-            #e = self.edge_network(H, Ri, Ro)
+            e = self.edge_network(H, Ri, Ro)
             # Apply node network
-            H = self.node_network(H, self.edge_network(H, Ri, Ro), Ri, Ro)
+            H = self.node_network(H, e, Ri, Ro)
             # Shortcut connect the inputs onto the hidden representation
             H = torch.cat([H, X], dim=-1)
         # Apply final edge network

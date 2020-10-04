@@ -44,7 +44,8 @@ class BaseTransformer(object):
          keep_fakes (boolean, True by default): If True, hits with no track are preserved
     """
 
-    def __init__(self, drop_old=False, keep_fakes=True, columns=('x', 'y', 'z'), track_col='track', event_col='event', station_col='station'):
+    def __init__(self, drop_old=False, keep_fakes=True, columns=('x', 'y', 'z'), track_col='track', event_col='event',
+                 station_col='station'):
         self.drop_old = drop_old
         self.columns = columns
         self.keep_fakes = keep_fakes
@@ -343,7 +344,7 @@ class ConstraintsNormalize(BaseTransformer):
                 x_norm, y_norm, z_norm = self.normalize(group, self.constraints[station])
                 data.loc[data['station'] == station, :] = \
                     self.transform_data_by_group(data['station'] == station, data,
-                                                    [x_norm, y_norm, z_norm])
+                                                 [x_norm, y_norm, z_norm])
         return data
 
     def transform_data_by_group(self, grouping, data, normed):
@@ -605,7 +606,7 @@ class ToBuckets(BaseTransformer):
                     k -= 1
         self.buckets_ = buckets
         if self.flat is True:
-            res = copy(df)
+            res = df.copy()
             res['bucket'] = 0
             for i, bucket in buckets.items():
                 res.loc[bucket, 'bucket'] = i

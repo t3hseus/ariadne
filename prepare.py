@@ -8,6 +8,7 @@ import numpy as np
 
 from absl import flags
 from absl import app
+from tqdm import tqdm
 
 from ariadne.preprocessing import DataProcessor
 from ariadne.parsing import parse_df
@@ -33,13 +34,15 @@ def parse(
         csv_params: Dict[str, object],
         events_quantity
 ):
+    LOGGER.info("[Parse]: started parsing CSV")
     parsed_df = parse_df(input_file,
-                    **csv_params)
+                         **csv_params)
+    LOGGER.info("[Parse]: finished parsing CSV")
 
     def parseSingleArrArg(arrArg):
         if '..' in arrArg:
             args = arrArg.split('..')
-            assert len(args) == 2 , "It should have form '%num%..%num%' ."
+            assert len(args) == 2, "It should have form '%num%..%num%' ."
             return np.arange(int(args[0]), int(args[1])), False
         if ':' in arrArg:
             return -1, True
@@ -53,12 +56,15 @@ def parse(
         res = np.append(res, toAppend)
 
     return parsed_df[parsed_df.event.isin(res)].copy()
-#endof TODO
+
+
+# endof TODO
 
 @gin.configurable
 def preprocess(
         target_processor: DataProcessor.__class__,
-        output_dir: str
+        output_dir: str,
+        ignore_asserts: False
 ):
     os.makedirs(output_dir, exist_ok=True)
 
@@ -70,8 +76,15 @@ def preprocess(
 
     preprocessed_chunks = []
 
-    for (idx, df_chunk) in generator:
-        data_chunk = processor.construct_chunk(df_chunk)
+    for (idx, df_chunk) in tqdm(generator):
+        try:
+            data_chunk = processor.construct_chunk(df_chunk)
+        except AssertionError as ex:
+            if ignore_asserts:
+                LOGGER.warning("GOT ASSERT %s on idx %d" % (ex, idx))
+                continue
+            else:
+                raise ex
         preprocessed_chunks.append(
             processor.preprocess_chunk(chunk=data_chunk, idx=idx)
         )
@@ -83,7 +96,7 @@ def preprocess(
 def main(argv):
     del argv
     if FLAGS.config is None:
-        raise SystemError("Expected valid path to the GIN-config file supplied as 'config=' parameter")
+        raise SystemError("Expected valid path to the GIN-config file supplied as '--config %PATH%' parameter")
     gin.parse_config(open(FLAGS.config))
     LOGGER.setLevel(FLAGS.log)
     preprocess()
@@ -91,4 +104,3 @@ def main(argv):
 
 if __name__ == '__main__':
     app.run(main)
-
