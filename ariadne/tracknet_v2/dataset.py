@@ -90,7 +90,7 @@ class TrackNetV2ExplicitDataset(Dataset):
         self.data = np.load(data_file)
 
     def __len__(self):
-        return len(self.data['y'])
+        return len(self.data['is_real'])
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
@@ -99,8 +99,8 @@ class TrackNetV2ExplicitDataset(Dataset):
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
         sample_y = self.data['y'][idx]
-        sample_moment = self.data['moment'][idx]
-        is_track = self.data['is_track'][idx]
+        sample_moment = self.data['moments'][idx]
+        is_track = self.data['is_real'][idx]
         sample_idx = idx
         return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len},
                 'y': sample_y, 'index': sample_idx, 'moment': sample_moment, 'is_real_track': is_track}

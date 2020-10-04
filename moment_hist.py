@@ -1,6 +1,7 @@
 import torch
 import gin
 import logging
+import numpy as np
 #start = torch.cuda.Event(enable_timing=True)
 #end = torch.cuda.Event(enable_timing=True)
 from torch.autograd.profiler import profile
@@ -13,6 +14,7 @@ from ariadne.graph_net.graph_utils.graph import Graph
 from ariadne.graph_net.model import GraphNet
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2.dataset import TrackNetV2Dataset, TrackNetV2ExplicitDataset
+from ariadne.tracknet_v2.metrics import point_in_ellipse
 LOGGER = logging.getLogger('ariadne.speed_measure')
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
@@ -24,6 +26,13 @@ flags.DEFINE_enum(
     enum_values=['INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL'],
     help='Level of logging'
 )
+
+def find_nearest_hit(hits, ellipse):
+    center_x = ellipse[0]
+    center_y = ellipse[1]
+    dists = (hits['x'] - center_x) **2 + (hits['y'] - center_y) **2
+    minimal = hits.reset_index().iloc[int(np.argmin(dists)),-1]
+    return minimal
 
 @gin.configurable
 def create_hist(batch_size, device_name='cpu', model=None, n_epochs=1000, n_stations=2, half_precision=False, path_to_data=None):
@@ -38,17 +47,24 @@ def create_hist(batch_size, device_name='cpu', model=None, n_epochs=1000, n_stat
         model = model.half()
     model.eval()
     #data = pd.read_table('resources/test_data/data_with_moment.txt', sep='\t', names=['event','x','y','z','station','track','px','py','pz','vx','vy','vz'])
-    data = TrackNetV2ExplicitDataset(data_file='output/cgem_t_plain/tracknet_all.npz')
-    print(data[0])
+    data = TrackNetV2ExplicitDataset(data_file='output/cgem_t_plain_explicit/tracknet_all.npz')
+    last_station_hits = torch.tensor(np.load('output/cgem_t_plain_explicit/tracknet_all_last_station.npz')['hits']).to(device)
+    print(last_station_hits.size())
     test_loader = DataLoader(dataset=data, batch_size=batch_size)
     with profile(use_cuda=use_cuda) as prof:
         for _ in tqdm(range(n_epochs)):
             for i, data in enumerate(test_loader, 0):
-                #print(data)
+                print(data)
                 lengths = data['x']['input_lengths'].to(torch.double).to(device)
                 inputs = data['x']['inputs'].to(torch.double).to(device)
                 reconstruction = model(inputs, lengths)
-                print(reconstruction)
+                #print(reconstruction)
+                filter = data['is_real_track']
+                print(reconstruction.size())
+                real_reconstruction = torch.squeeze(reconstruction[torch.nonzero(filter)], dim=1)
+                print(real_reconstruction.size())
+
+
 
     table = prof.key_averages().table()
     print(table)
