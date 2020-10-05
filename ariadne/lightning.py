@@ -2,27 +2,8 @@ import gin
 import numpy as np
 import torch
 import torch.nn as nn
-
-import pytorch_lightning.metrics.functional
-
 import pytorch_lightning as pl
-
-# external gin configurable
 from ariadne.data_loader import BaseDataLoader
-
-# optimizers
-gin.external_configurable(torch.optim.Adam, blacklist=['params'], name='Adam')
-gin.external_configurable(torch.optim.SGD, blacklist=['params'], name='SGD')
-gin.external_configurable(torch.optim.RMSprop, blacklist=['params'], name='RMSprop')
-gin.external_configurable(torch.optim.Adagrad, blacklist=['params'], name='Adagrad')
-gin.external_configurable(torch.optim.Adadelta, blacklist=['params'], name='Adadelta')
-gin.external_configurable(torch.optim.Adamax, blacklist=['params'], name='Adamax')
-
-# metrics
-gin.external_configurable(pytorch_lightning.metrics.functional.accuracy, whitelist=['reduction'], name='accuracy_score')
-gin.external_configurable(pytorch_lightning.metrics.functional.recall, whitelist=['reduction'], name='recall_score')
-gin.external_configurable(pytorch_lightning.metrics.functional.precision, whitelist=['reduction'], name='precision_score')
-gin.external_configurable(pytorch_lightning.metrics.functional.f1_score, whitelist=['reduction'], name='f1_score')
 
 
 class TrainModel(pl.LightningModule):
@@ -49,9 +30,6 @@ class TrainModel(pl.LightningModule):
 
     def _calc_metrics(self, batch_output, batch_target):
         metric_vals = {}
-        # TODO: PLEASE refactor this!!
-        #arr1 = ((batch_target > 0.5).cpu().numpy() != 0)
-        #arr2 = ((batch_output > 0.5).cpu().numpy() != 0)
         for metric in self.metrics:
             metric_vals[metric.__name__] = metric(batch_output, batch_target)
         return metric_vals
