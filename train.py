@@ -7,7 +7,6 @@ import torch.nn as nn
 from absl import flags
 from absl import app
 from pytorch_lightning import Trainer, seed_everything
-
 from ariadne.lightning import TrainModel
 
 FLAGS = flags.FLAGS
@@ -30,6 +29,7 @@ def experiment(model,
                optimizer,
                data_loader,
                epochs,
+               fp16_training=False,
                random_seed=None):
     # for reproducibility
     if random_seed is not None:
@@ -48,10 +48,25 @@ def experiment(model,
 
     LOGGER.info(model)
 
-    trainer = Trainer(
-        max_epochs=epochs, 
-        deterministic=True
-    )
+    # configure trainer
+    trainer_kwargs = {
+        'max_epochs': epochs,
+        'auto_select_gpus': True,
+        'deterministic': True,
+        'terminate_on_nan': True
+    }
+    if torch.cuda.is_available():
+        trainer_kwargs['gpus'] = torch.cuda.device_count()
+        if trainer_kwargs['gpus'] > 1:
+            # TODO: fix multi-GPU support
+            trainer_kwargs['distributed_backend'] = 'dp'
+
+    if fp16_training:
+        # TODO: use torch.nn.functional.binary_cross_entropy_with_logits which is safe to autocast
+        trainer_kwargs['precision'] = 16
+        trainer_kwargs['amp_level'] = '02'
+
+    trainer = Trainer(**trainer_kwargs)
     trainer.fit(model=model)
 
 
