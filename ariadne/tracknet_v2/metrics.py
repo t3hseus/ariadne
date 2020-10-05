@@ -16,7 +16,7 @@ def ellipse_area(preds, target):
         raise ValueError('Prediction must be 4-dimensional (x, y, r1, r2), '
                          f'but got preds.shape[1] = {preds.size(1)}')
     areas = preds[:, 2] * preds[:, 3] * math.pi
-    return torch.mean(areas).item()
+    return torch.mean(areas)
 
 
 @gin.configurable(whitelist=[])
@@ -44,7 +44,7 @@ def point_in_ellipse(preds, target):
     y_part = y_dist / torch.pow(preds[:, 3], 2)
     # left size of equation x_part + y_part = 1
     left_side = x_part + y_part
-    return (left_side <= 1).tolist()
+    return left_side <= 1
 
 
 @gin.configurable(whitelist=[])

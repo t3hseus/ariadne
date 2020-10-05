@@ -10,6 +10,7 @@ import pytorch_lightning as pl
 # external gin configurable
 from ariadne.data_loader import BaseDataLoader
 
+# optimizers
 gin.external_configurable(torch.optim.Adam, blacklist=['params'], name='Adam')
 gin.external_configurable(torch.optim.SGD, blacklist=['params'], name='SGD')
 gin.external_configurable(torch.optim.RMSprop, blacklist=['params'], name='RMSprop')
@@ -17,13 +18,11 @@ gin.external_configurable(torch.optim.Adagrad, blacklist=['params'], name='Adagr
 gin.external_configurable(torch.optim.Adadelta, blacklist=['params'], name='Adadelta')
 gin.external_configurable(torch.optim.Adamax, blacklist=['params'], name='Adamax')
 
-gin.external_configurable(torch.nn.BCELoss, whitelist=[], name='BCE_LOSS')
-
-
-gin.external_configurable(pytorch_lightning.metrics.functional.accuracy, whitelist=['num_classes'], name='accuracy_score')
-gin.external_configurable(pytorch_lightning.metrics.functional.recall, whitelist=[], name='recall_score')
-gin.external_configurable(pytorch_lightning.metrics.functional.precision, whitelist=[], name='precision_score')
-gin.external_configurable(pytorch_lightning.metrics.functional.f1_score, whitelist=[], name='f1_score')
+# metrics
+gin.external_configurable(pytorch_lightning.metrics.functional.accuracy, whitelist=['reduction'], name='accuracy_score')
+gin.external_configurable(pytorch_lightning.metrics.functional.recall, whitelist=['reduction'], name='recall_score')
+gin.external_configurable(pytorch_lightning.metrics.functional.precision, whitelist=['reduction'], name='precision_score')
+gin.external_configurable(pytorch_lightning.metrics.functional.f1_score, whitelist=['reduction'], name='f1_score')
 
 
 class TrainModel(pl.LightningModule):
