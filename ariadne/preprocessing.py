@@ -49,7 +49,7 @@ class DataProcessor(metaclass=ABCMeta):
     @abstractmethod
     def preprocess_chunk(self,
                          chunk: DataChunk,
-                         idx: int) -> ProcessedDataChunk:
+                         idx: str) -> ProcessedDataChunk:
         pass
 
     @abstractmethod

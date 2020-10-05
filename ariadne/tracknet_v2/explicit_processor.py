@@ -70,10 +70,10 @@ class TrackNet_Explicit_Processor(DataProcessor):
 
     def preprocess_chunk(self,
                          chunk: TracknetDataChunk,
-                         idx: int) -> ProcessedTracknetDataChunk:
+                         idx: str) -> ProcessedTracknetDataChunk:
         chunk_df = chunk.df_chunk_data
         chunk_id = int(chunk_df.event.values[0])
-        output_name = (self.output_dir + '/tracknet_%d' % chunk_id)
+        output_name = (self.output_dir + '/tracknet_%s_%d' % (idx, chunk_id))
 
         return ProcessedTracknetDataChunk(chunk_df, output_name)
 

@@ -73,10 +73,10 @@ class GraphNet_Processor(DataProcessor):
     @gin.configurable(blacklist=['chunk', 'idx'])
     def preprocess_chunk(self,
                          chunk: GraphDataChunk,
-                         idx: int) -> ProcessedDataChunk:
+                         idx: str) -> ProcessedDataChunk:
         chunk_df = chunk.df_chunk_data
         chunk_id = int(chunk_df.event.values[0])
-        output_name = (self.output_dir + '/graph_%d' % chunk_id)
+        output_name = (self.output_dir + '/graph_%s_%d' % (idx, chunk_id))
         pd_graph_df = to_pandas_graph_from_df(single_event_df=chunk_df,
                                               suffixes=self._suffixes_df,
                                               compute_is_true_track=True)

@@ -4,6 +4,8 @@ import os
 import os.path
 from typing import Dict
 
+os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
+
 import gin
 import pandas as pd
 import numpy as np
@@ -59,10 +61,10 @@ def parse(
         LOGGER.info("[Parse]: finished parsing CSV...")
         if not parse_all:
             res = np.array(event_idxs)
-            yield parsed_df[parsed_df.event.isin(res)].copy()
+            yield parsed_df[parsed_df.event.isin(res)].copy(), os.path.basename(elem)
             return
         else:
-            yield parsed_df
+            yield parsed_df, os.path.basename(elem)
     return
 # endof TODO
 
@@ -74,7 +76,7 @@ def preprocess(
 ):
     os.makedirs(output_dir, exist_ok=True)
 
-    for data_df in parse():
+    for data_df, basename in parse():
         LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
         processor: DataProcessor = target_processor(data_df=data_df,
                                                     output_dir=output_dir)
@@ -82,20 +84,21 @@ def preprocess(
         generator = processor.generate_chunks_iterable()
 
         preprocessed_chunks = []
-
-        for (idx, df_chunk) in tqdm(generator):
-            try:
-                data_chunk = processor.construct_chunk(df_chunk)
-            except AssertionError as ex:
-                if ignore_asserts:
-                    LOGGER.warning("GOT ASSERT %r on idx %d" % (ex, idx))
-                    continue
-                else:
-                    raise ex
-            preprocessed_chunks.append(
-                processor.preprocess_chunk(chunk=data_chunk, idx=idx)
-            )
-
+        try:
+            for (idx, df_chunk) in tqdm(generator):
+                try:
+                    data_chunk = processor.construct_chunk(df_chunk)
+                except AssertionError as ex:
+                    if ignore_asserts:
+                        LOGGER.warning("GOT ASSERT %r on idx %d" % (ex, idx))
+                        continue
+                    else:
+                        raise ex
+                preprocessed_chunks.append(
+                    processor.preprocess_chunk(chunk=data_chunk, idx=basename)
+                )
+        except KeyboardInterrupt as ex:
+            LOGGER.warning("BREAKING by interrupt. got %d processed chunks" % len(preprocessed_chunks))
         processed_data = processor.postprocess_chunks(preprocessed_chunks)
         processor.save_on_disk(processed_data)
 
