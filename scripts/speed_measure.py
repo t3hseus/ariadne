@@ -1,15 +1,18 @@
+import logging
+import sys
+import os
+sys.path.append(os.path.abspath('./'))
+
 import torch
 import gin
-import logging
-#start = torch.cuda.Event(enable_timing=True)
-#end = torch.cuda.Event(enable_timing=True)
+
 from torch.autograd.profiler import profile
 from tqdm import tqdm
 from absl import flags
 from absl import app
 
 from ariadne.graph_net.graph_utils.graph import Graph
-from ariadne.graph_net.model import GraphNet
+from ariadne.graph_net.model import GraphNet_v1
 from ariadne.tracknet_v2.model import TrackNETv2
 
 LOGGER = logging.getLogger('ariadne.speed_measure')
@@ -25,7 +28,7 @@ flags.DEFINE_enum(
 )
 
 @gin.configurable
-def timeit(batch_size, model, device_name, n_epochs=1000, n_stations=2, half_precision=False):
+def timeit_tracknet(batch_size, model, device_name, n_epochs=1000, n_stations=2, half_precision=False):
     LOGGER.info("Starting measurement")
     LOGGER.info(f"No. CUDA devices: {torch.cuda.device_count()}")
     device = torch.device(device_name)
@@ -51,13 +54,14 @@ def timeit(batch_size, model, device_name, n_epochs=1000, n_stations=2, half_pre
     LOGGER.info(result)
     print(result)
 
+
 @gin.configurable
 def timeit_graph(batch_size, model, device_name, n_epochs=1000, n_stations=2, half_precision=False):
     LOGGER.info("Starting measurement")
     LOGGER.info(f"No. CUDA devices: {torch.cuda.device_count()}")
     device = torch.device(device_name)
     use_cuda = True if device_name=='cuda' else False
-    model = GraphNet().to(device)
+    model = GraphNet_v1().to(device)
     if half_precision:
         model = model.half()
     model.eval()
@@ -85,12 +89,18 @@ def timeit_graph(batch_size, model, device_name, n_epochs=1000, n_stations=2, ha
     LOGGER.info(result)
     print(result)
 
+
+@gin.configurable
+def experiment(timeit_func):
+    timeit_func()
+
+
 def main(argv):
     del argv
     gin.parse_config(open(FLAGS.config))
     LOGGER.setLevel(FLAGS.log)
     LOGGER.info("CONFIG: %s" % gin.config_str())
-    timeit_graph()
+    experiment()
 
 if __name__ == '__main__':
     app.run(main)

@@ -1,21 +1,27 @@
+import logging
+import sys
+import os
+sys.path.append(os.path.abspath('./'))
+
+import pandas as pd
+import numpy as np
 import torch
 import gin
-import logging
-import numpy as np
-#start = torch.cuda.Event(enable_timing=True)
-#end = torch.cuda.Event(enable_timing=True)
-from torch.autograd.profiler import profile
+
 from tqdm import tqdm
 from absl import flags
 from absl import app
-import pandas as pd
+
 from torch.utils.data import DataLoader
+from torch.autograd.profiler import profile
+
 from ariadne.graph_net.graph_utils.graph import Graph
-from ariadne.graph_net.model import GraphNet
+from ariadne.graph_net.model import GraphNet_v1
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2.dataset import TrackNetV2Dataset, TrackNetV2ExplicitDataset
 from ariadne.tracknet_v2.metrics import point_in_ellipse
-LOGGER = logging.getLogger('ariadne.speed_measure')
+
+LOGGER = logging.getLogger('ariadne.moments_histogram')
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
     name='config', default=None,
@@ -63,8 +69,6 @@ def create_hist(batch_size, device_name='cpu', model=None, n_epochs=1000, n_stat
                 print(reconstruction.size())
                 real_reconstruction = torch.squeeze(reconstruction[torch.nonzero(filter)], dim=1)
                 print(real_reconstruction.size())
-
-
 
     table = prof.key_averages().table()
     print(table)
