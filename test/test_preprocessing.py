@@ -45,7 +45,7 @@ class StandardTestCase(unittest.TestCase):
                       prepare_cfg_path
                       ):
         df = parse()
-        df_test_data = parse(input_file=input_file,
+        df_test_data = parse(input_file_mask=input_file,
                              csv_params=csv_params,
                              events_quantity=events_quantity)
         self.assertTrue(df_test_data.r.values.max() < 1.)

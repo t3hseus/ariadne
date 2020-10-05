@@ -305,7 +305,7 @@ class ConstraintsNormalize(BaseTransformer):
         if constraints is not None:
             if use_global_constraints:
                 for col in columns:
-                    assert col in constraints.keys(), f'{col} is not in constraint keys'
+                    assert col in constraints.keys(), f'{col} is not in constraint keys {constraints.keys()}'
                     assert len(constraints[col]) == 2, f'Not applicable number of constraints for column {col}'
                     assert constraints[col][0] < constraints[col][
                         1], f'Minimum is not smaller than maximum for column {col}'
@@ -338,7 +338,9 @@ class ConstraintsNormalize(BaseTransformer):
             data = super().transform_data(data, [x_norm, y_norm, z_norm])
         else:
             assert all([station in data['station'].unique() for station in
-                        self.constraints.keys()]), 'Some station keys in constraints are not presented in data'
+                        self.constraints.keys()]), 'Some station keys in constraints are not presented in data. Keys: ' \
+                                                   '%r; data keys: %r' % (data['station'].unique(),
+                                                                          self.constraints.keys())
             for station in self.constraints.keys():
                 group = data.loc[data['station'] == station,]
                 x_norm, y_norm, z_norm = self.normalize(group, self.constraints[station])

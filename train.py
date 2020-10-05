@@ -74,6 +74,7 @@ def main(argv):
     del argv
     gin.parse_config(open(FLAGS.config))
     LOGGER.setLevel(FLAGS.log)
+    LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
     experiment()
 
 
