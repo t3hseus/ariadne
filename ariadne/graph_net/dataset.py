@@ -5,7 +5,7 @@ import torch
 import numpy as np
 
 from torch.utils.data import Dataset
-from ariadne.graph_net.graph_utils.graph import load_graph
+from ariadne.graph_net.graph_utils.graph import load_graph, Graph
 
 
 @gin.configurable
@@ -23,6 +23,19 @@ class GraphDataset(Dataset):
 
     def __len__(self):
         return len(self.filenames)
+
+
+@gin.configurable
+class GraphDatasetFromMemory(Dataset):
+    def __init__(self, input_graphs, n_samples=None):
+        self.graphs = (input_graphs[:n_samples] if n_samples is not None else input_graphs)
+
+    def __getitem__(self, index):
+        graph_with_ind = self.graphs[index]
+        return Graph(graph_with_ind.X, graph_with_ind.Ri, graph_with_ind.Ro, graph_with_ind.y)
+
+    def __len__(self):
+        return len(self.graphs)
 
 
 @gin.configurable('graph_collate_fn')
@@ -67,5 +80,3 @@ def collate_fn(graphs):
     batch_inputs = [torch.from_numpy(bm) for bm in [batch_X, batch_Ri, batch_Ro]]
     batch_target = torch.from_numpy(batch_y)
     return batch_inputs, batch_target
-
-
