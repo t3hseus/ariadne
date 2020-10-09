@@ -302,6 +302,7 @@ class ConstraintsNormalize(BaseTransformer):
         self.margin = margin
         self.use_global_constraints = use_global_constraints
         self.constraints = constraints
+        print(self.constraints)
         if constraints is not None:
             if use_global_constraints:
                 for col in columns:
@@ -341,6 +342,7 @@ class ConstraintsNormalize(BaseTransformer):
                         self.constraints.keys()]), 'Some station keys in constraints are not presented in data. Keys: ' \
                                                    '%r; data keys: %r' % (data['station'].unique(),
                                                                           self.constraints.keys())
+
             for station in self.constraints.keys():
                 group = data.loc[data['station'] == station,]
                 x_norm, y_norm, z_norm = self.normalize(group, self.constraints[station])

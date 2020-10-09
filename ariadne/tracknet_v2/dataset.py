@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from copy import deepcopy
-
+import gin
 
 
 # Ignore warnings
@@ -47,19 +47,28 @@ class PreprocessingBESDataset(Dataset):
                 sample.loc[i, 'z+1'] = sample[i+1]['z']
         return {'x': {'inputs': sample[:2].values, 'input_lengths': 2}, 'y': y}
 
-
+@gin.configurable
 class TrackNetV2Dataset(Dataset):
     """TrackNET_v2 dataset."""
 
-    def __init__(self, data_file, use_index=False):
+    def __init__(self, data_file, use_index=False, n_samples=None):
         """
         Args:
             csv_file (string): Path to the csv file with data.
             preprocessing (callable, optional): Optional transform to be applied
                 on a dataframe.
         """
-        self.data = np.load(data_file)
+        self.all_data = np.load(data_file)
         self.use_index = use_index
+        self.data = dict()
+        if n_samples is not None:
+            for key in self.all_data.keys():
+                print(key)
+                self.data[key] = self.all_data[key][:n_samples]
+        else:
+            for key in self.all_data.keys():
+                self.data[key] = self.all_data[key]
+
 
     def __len__(self):
         return len(self.data['y'])
@@ -68,14 +77,14 @@ class TrackNetV2Dataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
         #print(self.data.keys())
-        sample_inputs = self.data['inputs'][idx]
-        sample_len = self.data['input_lengths'][idx]
-        sample_y = self.data['y'][idx]
+        sample_inputs = torch.tensor(self.data['inputs'][idx], dtype=torch.float)
+        sample_len = torch.tensor(self.data['input_lengths'][idx], dtype=torch.double)
+        sample_y = torch.tensor(self.data['y'][idx][:2], dtype=torch.float)
         sample_idx = idx
         if self.use_index:
-            return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len}, 'y': sample_y, 'index': sample_idx}
+            return {'inputs': sample_inputs, 'input_lengths': sample_len}, sample_y, sample_idx
         else:
-            return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len}, 'y': sample_y}
+            return {'inputs': sample_inputs, 'input_lengths': sample_len}, sample_y
 
 class TrackNetV2ExplicitDataset(Dataset):
     """TrackNET_v2 dataset."""
