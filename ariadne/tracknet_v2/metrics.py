@@ -16,7 +16,7 @@ def ellipse_area(preds, target):
         raise ValueError('Prediction must be 4-dimensional (x, y, r1, r2), '
                          f'but got preds.shape[1] = {preds.size(1)}')
     areas = preds[:, 2] * preds[:, 3] * math.pi
-    return torch.mean(areas)
+    return torch.mean(areas.float())
 
 
 @gin.configurable(whitelist=[])
@@ -52,20 +52,8 @@ def efficiency(preds, target):
     is located in the predicted circle
     1 - if yes, 0 - otherwise
     """
-    if preds.size(0) != target.size(0):
-        raise ValueError('Shape mismatch! Number of samples in '
-                        'the prediction and target must be equal. '
-                        f'{preds.size(0) != target.size(0)}')
-
-    if preds.size(1) != 4:
-        raise ValueError('Prediction must be 4-dimensional (x, y, r1, r2), '
-                            f'but got preds.shape[1] = {preds.size(1)}')
-
-    if target.size(1) != 2:
-        raise ValueError('Target must be 2-dimensional (x, y), '
-                             f'but got target.shape[1] = {target.size(1)}')
     idx = point_in_ellipse(preds, target)
-    return torch.sum(idx) / len(idx)
+    return torch.sum(idx.float()) / len(idx)
 
 @gin.configurable(whitelist=[])
 def calc_metrics(inputs, model, tracklen=None):
