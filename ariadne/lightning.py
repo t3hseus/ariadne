@@ -26,6 +26,7 @@ class TrainModel(pl.LightningModule):
         # Arguments
             inputs (dict): kwargs dict with model inputs
         """
+        #print(inputs)
         return self.model(**inputs)
 
     def _calc_metrics(self, batch_output, batch_target):

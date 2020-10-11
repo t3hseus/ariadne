@@ -49,8 +49,9 @@ class TrackNETv2(nn.Module):
             nn.Softplus()
         )
 
-    def forward(self, inputs, input_lengths):
+    def forward(self, all_inputs):
         # BxTxC -> BxCxT
+        inputs, input_lengths = all_inputs
         inputs = inputs.transpose(1, 2)
         x = self.conv(inputs)
         # BxCxT -> BxTxC
@@ -65,4 +66,4 @@ class TrackNETv2(nn.Module):
         # get result using only the output on the last timestep
         xy_coords = self.xy_coords(x[:, -1])
         r1_r2 = self.r1_r2(x[:, -1])
-        return torch.cat([xy_coords, r1_r2], dim=1)
+        return torch.squeeze(torch.cat([xy_coords, r1_r2], dim=1), dim=1)
