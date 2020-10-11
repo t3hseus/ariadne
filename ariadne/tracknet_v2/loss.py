@@ -32,7 +32,7 @@ class PointInEllipseLoss(nn.Module):
         x_coord_loss = (preds[:, 0] - target[:, 0]) / preds[:, 2]
         y_coord_loss = (preds[:, 1] - target[:, 1]) / preds[:, 3]
         squared_loss = torch.pow(x_coord_loss, 2) + torch.pow(y_coord_loss, 2)
-        return torch.mean(torch.sqrt(squared_loss))
+        return torch.sqrt(squared_loss)
 
 
 class EllipseSquareLoss(nn.Module):
@@ -50,7 +50,7 @@ class EllipseSquareLoss(nn.Module):
             raise ValueError('Prediction must be 4-dimensional (x, y, r1, r2), '
                              f'but got preds.shape[1] = {preds.size(1)}')
 
-        return torch.mean(preds[:, 2] * preds[:, 3])
+        return preds[:, 2] * preds[:, 3]
 
 
 @gin.configurable
@@ -78,4 +78,4 @@ class TrackNetLoss(nn.Module):
         points_in_ellipse = self.point_in_ellipse_loss(preds, target)
         ellipses_square = self.ellipse_square_loss(preds)
         loss = self.alpha * points_in_ellipse + (1 - self.alpha) * ellipses_square
-        return torch.mean(loss)
+        return torch.mean(loss).float()
