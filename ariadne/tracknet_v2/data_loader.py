@@ -15,13 +15,13 @@ class TrackNetV2DataLoader(BaseDataLoader):
     def __init__(self,
                  batch_size: int,
                  dataset: TrackNetV2Dataset.__class__,
-                 max_size: int,
-                 n_valid: float,
+                 valid_size: float,
+                 max_size=None,
                  with_random=True):
         super(TrackNetV2DataLoader, self).__init__(batch_size)
         self.dataset = dataset(n_samples=max_size)
         data_size = len(self.dataset)
-        n_valid = int(data_size * n_valid)
+        n_valid = int(data_size * valid_size)
         n_train = data_size - n_valid
         if with_random:
             self.train_data, self.val_data = random_split(self.dataset, [n_train, n_valid])
@@ -32,14 +32,12 @@ class TrackNetV2DataLoader(BaseDataLoader):
     def get_val_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.val_data,
-            batch_size=self.batch_size,
-            collate_fn=collate_fn)
+            batch_size=self.batch_size)
 
     def get_train_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.train_data,
-            batch_size=self.batch_size,
-            collate_fn=collate_fn)
+            batch_size=self.batch_size)
 
 def collate_fn(samples):
     """

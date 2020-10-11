@@ -54,9 +54,10 @@ class TrackNetV2Dataset(Dataset):
     def __init__(self, input_dir, use_index=False, n_samples=None):
         """
         Args:
-            csv_file (string): Path to the csv file with data.
-            preprocessing (callable, optional): Optional transform to be applied
-                on a dataframe.
+            input_dir (string): Path to files with data.
+            n_samples (int): Maximum number of samples, optional
+            use_index (int)
+
         """
         self.input_dir = os.path.expandvars(input_dir)
         filenames = [os.path.join(self.input_dir, f) for f in os.listdir(self.input_dir) if f.endswith('.npz')]
@@ -80,7 +81,7 @@ class TrackNetV2Dataset(Dataset):
         self.data = dict()
         if n_samples is not None:
             for key in self.all_data.keys():
-                print(key)
+                n_samples = min((self.all_data[key].size, n_samples))
                 self.data[key] = self.all_data[key][:n_samples]
         else:
             for key in self.all_data.keys():
@@ -99,9 +100,9 @@ class TrackNetV2Dataset(Dataset):
         sample_y = self.data['y'][idx][:2]
         sample_idx = idx
         if self.use_index:
-            return {'inputs': sample_inputs, 'input_lengths': sample_len, 'y': sample_y}, sample_idx
+            return {'inputs': sample_inputs, 'input_lengths': sample_len}, sample_y, sample_idx
         else:
-            return {'inputs': sample_inputs, 'input_lengths': sample_len, 'y': sample_y}
+            return {'inputs': sample_inputs, 'input_lengths': sample_len}, sample_y
 
 class TrackNetV2ExplicitDataset(Dataset):
     """TrackNET_v2 dataset."""

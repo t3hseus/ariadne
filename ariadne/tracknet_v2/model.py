@@ -49,10 +49,9 @@ class TrackNETv2(nn.Module):
             nn.Softplus()
         )
 
-    def forward(self, all_inputs):
+    def forward(self,inputs, input_lengths):
         # BxTxC -> BxCxT
-        inputs, input_lengths = all_inputs
-        inputs = inputs.transpose(1, 2)
+        inputs = inputs.transpose(1, 2).float()
         x = self.conv(inputs)
         # BxCxT -> BxTxC
         x = x.transpose(1, 2)
