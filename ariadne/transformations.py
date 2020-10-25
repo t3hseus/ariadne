@@ -302,7 +302,7 @@ class ConstraintsNormalize(BaseTransformer):
         self.margin = margin
         self.use_global_constraints = use_global_constraints
         self.constraints = constraints
-        print(self.constraints)
+        #print(self.constraints)
         if constraints is not None:
             if use_global_constraints:
                 for col in columns:
