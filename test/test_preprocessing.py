@@ -26,7 +26,7 @@ class GinconfigSaver(object):
             gin.bind_parameter(key, value)
 
 class StandardTestCase(unittest.TestCase):
-    CONFIG_PATH = 'test/gin/rdgraphnet_prepare_test.cfg'
+    CONFIG_PATH = 'gin/rdgraphnet_prepare_test.cfg'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -45,7 +45,7 @@ class StandardTestCase(unittest.TestCase):
                       prepare_cfg_path
                       ):
         df = parse()
-        df_test_data = parse(input_file_mask=input_file,
+        df_test_data = parse(input_file=input_file,
                              csv_params=csv_params,
                              events_quantity=events_quantity)
         self.assertTrue(df_test_data.r.values.max() < 1.)
@@ -129,13 +129,12 @@ class StandardTestCase(unittest.TestCase):
             "encoding": 'utf-8',
             "names": ['event', 'x', 'y', 'z', 'station', 'track']
         })
-        gin.bind_parameter('parse.input_file', 'resources/test_data/cgem_50_events.txt')
+        gin.bind_parameter('parse.input_file', '../resources/test_data/cgem_50_events.txt')
 
-        gin.bind_parameter('StandardTestCase.get_processor.output_dir', 'output/tests/cgem_graphnet_test')
-        gin.bind_parameter('preprocess.output_dir', 'output/tests/cgem_graphnet_test')
+        gin.bind_parameter('StandardTestCase.get_processor.output_dir', '../output/tests/cgem_graphnet_test')
         preprocess()
 
-        target_loaded_graphs = self.get_graphs('output/tests/cgem_graphnet_test')
+        target_loaded_graphs = self.get_graphs('../output/tests/cgem_graphnet_test')
         self.assertTrue(len(target_loaded_graphs) == 50)
 
         for graph_name, graph_object in source_loaded_graphs.items():

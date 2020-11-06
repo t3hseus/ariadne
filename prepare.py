@@ -52,7 +52,7 @@ def parse(
     assert isinstance(events_quantity, str), 'events_quantity should be a str. see comments in config to set it ' \
                                                'correctly. Got: %r with type %r ' % (events_quantity, type(events_quantity))
     event_idxs, parse_all = parse_single_arr_arg(events_quantity)
-
+    print(event_idxs)
     LOGGER.info("[Parse]: matched following files:")
     LOGGER.info("[Parse]: %r" % files_list)
     for idx, elem in enumerate(files_list):
