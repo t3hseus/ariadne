@@ -94,7 +94,6 @@ class TrackNet_Explicit_Processor(DataProcessor):
             chunk_data_real = []
             chunk_data_moment = []
             df = chunk.processed_object
-            print(df.shape)
             grouped_df = df[df['track'] != -1].groupby('track')
             for i, data in grouped_df:
                 chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
@@ -154,5 +153,5 @@ class TrackNet_Explicit_Processor(DataProcessor):
         np.savez(self.output_name, inputs=all_data_inputs, input_lengths=all_data_len, y=all_data_y,
                  moments=all_data_moment, is_real=all_data_real)
         print('Saved last station hits to: ', self.output_name + '.npz')
-        np.savez(self.output_name+'_last_station', hits=np.unique(all_data_y, axis=0))
+        np.savez(self.output_name+'_all_last_station', hits=np.unique(all_data_y, axis=0))
         print('Saved last station hits to: ', self.output_name+'_last_station.npz')

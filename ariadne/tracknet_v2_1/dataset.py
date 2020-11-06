@@ -6,7 +6,8 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from copy import deepcopy
 import gin
-
+from ariadne.tracknet_v2.model import TrackNETv2
+from ariadne.tracknet_v2.metrics import point_in_ellipse
 
 # Ignore warnings
 import warnings
@@ -94,8 +95,19 @@ class TrackNetV2Dataset(Dataset):
             return {'inputs': sample_inputs, 'input_lengths': sample_len}, sample_y
 
 @gin.configurable    
-class TrackNetV2ExplicitDataset(TrackNetV2Dataset):
+class TrackNetV2_1Dataset(TrackNetV2Dataset):
     """TrackNET_v2 dataset."""
+
+    def __init__(self, input_dir, path_to_checkpoint, input_file, last_station_file,
+                 use_index=False, n_samples=None, model_input_features=4):
+        super().__init__(input_dir, input_file=input_file, use_index=use_index, n_samples=n_samples)
+        if path_to_checkpoint is not None:
+            self.model = self.weights_update(model=TrackNETv2(input_features=model_input_features),
+                                   checkpoint=torch.load(path_to_checkpoint))
+        filename = os.path.join(self.input_dir, last_station_file)
+        all_last_station_coordinates = np.load(filename)
+        last_station_hits = all_last_station_coordinates['hits'][:, 1:]
+        self.last_station_hits = torch.from_numpy(last_station_hits)
 
     def __len__(self):
         return len(self.data['is_real'])
@@ -110,5 +122,47 @@ class TrackNetV2ExplicitDataset(TrackNetV2Dataset):
         sample_moment = self.data['moments'][idx]
         is_track = self.data['is_real'][idx]
         sample_idx = idx
-        return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len},
-                'y': sample_y, 'index': sample_idx, 'moment': sample_moment, 'is_real_track': is_track}
+        sample_prediction = self.model(torch.tensor(sample_inputs).unsqueeze(0),
+                                       torch.tensor([sample_len], dtype=torch.int64))
+        sample_gru = self.model.last_gru_output
+        nearest_hit, in_ellipse = self.find_nearest_hit(sample_prediction)
+
+        found_hit = nearest_hit if in_ellipse == True else torch.tensor([[-2., -2.]], dtype=torch.float64)
+        if found_hit is not None:
+            if found_hit == sample_y:
+                print('this is right')
+                is_prediction_right = 0.0
+            else:
+                is_prediction_right = 1.0
+        else:
+            is_prediction_right = 2.0
+
+        is_prediction_right = torch.tensor(is_prediction_right)
+        return [{'gru_x': sample_gru.detach(),
+                'coord_x': found_hit.detach()},
+                is_prediction_right]
+
+    def weights_update(self, model, checkpoint):
+        model_dict = model.state_dict()
+        pretrained_dict = checkpoint['state_dict']
+        real_dict = {}
+        for (k, v) in model_dict.items():
+            needed_key = None
+            for pretr_key in pretrained_dict:
+                if k in pretr_key:
+                    needed_key = pretr_key
+                    break
+            assert needed_key is not None, "key %s not in pretrained_dict %r!" % (k, pretrained_dict.keys())
+            real_dict[k] = pretrained_dict[needed_key]
+
+        model.load_state_dict(real_dict)
+        model.eval()
+        return model
+    
+    def find_nearest_hit(self, ellipses):
+        centers = ellipses[:,:2]
+        dists = torch.cdist(self.last_station_hits.float(), centers.float())
+        min_argument = torch.argmin(dists, dim=0)
+        minimal = self.last_station_hits[torch.argmin(dists, dim=0)]
+        is_in_ellipse = point_in_ellipse(ellipses, minimal)
+        return minimal, is_in_ellipse
