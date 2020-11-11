@@ -39,20 +39,23 @@ class ProcessedGraphData(ProcessedData):
         self.processed_data = processed_data
 
 
-@gin.configurable(blacklist=['data_df'])
+@gin.configurable(blacklist=['data_df', 'amount_total'])
 class GraphNet_Processor(DataProcessor):
 
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
                  stations_constraints,
-                 df_suffixes: Tuple[str]
+                 df_suffixes: Tuple[str],
+                 max_amount: int,
+                 amount_total={}
                  ):
         super().__init__(
             processor_name='RDGraphNet_v1_Processor',
             output_dir=output_dir,
             data_df=data_df)
-
+        self.max_amount = max_amount
+        self.amounts_total = amount_total
         self._suffixes_df = df_suffixes
         self.transformer = Compose([
             ConstraintsNormalize(
@@ -75,6 +78,13 @@ class GraphNet_Processor(DataProcessor):
                          chunk: GraphDataChunk,
                          idx: str) -> ProcessedDataChunk:
         chunk_df = chunk.df_chunk_data
+        unique_tracks = int(chunk_df[chunk_df.track != -1].track.nunique())
+        cur = self.amounts_total[unique_tracks] if unique_tracks in self.amounts_total else 0
+        if cur < self.max_amount:
+            self.amounts_total[unique_tracks] = cur + 1
+        else:
+            return ReversedDiGraphDataChunk(None, "empty")
+
         chunk_id = int(chunk_df.event.values[0])
         output_name = (self.output_dir + '/graph_%s_%d' % (idx, chunk_id))
         pd_graph_df = to_pandas_graph_from_df(single_event_df=chunk_df,
@@ -92,7 +102,7 @@ class GraphNet_Processor(DataProcessor):
         # construct the output graph suitable for the neural network
         out = construct_output_graph(nodes_t, edges_filtered, ['y_p', 'y_c', 'z_p', 'z_c', 'z'],
                                      [np.pi, np.pi, 1., 1., 1.], 'edge_index_p', 'edge_index_c')
-
+        
         return ReversedDiGraphDataChunk(out, output_name)
 
     def postprocess_chunks(self,
@@ -102,3 +112,4 @@ class GraphNet_Processor(DataProcessor):
     def save_on_disk(self,
                      processed_data: ProcessedGraphData):
         save_graphs_new(processed_data.processed_data)
+        LOGGER.info("Collected total amounts: \n===========\n%r\n===========\n" % self.amounts_total)

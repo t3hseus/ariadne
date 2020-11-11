@@ -56,10 +56,10 @@ def experiment(model,
         'terminate_on_nan': True
     }
     if torch.cuda.is_available():
-        trainer_kwargs['gpus'] = torch.cuda.device_count()
-        if trainer_kwargs['gpus'] > 1:
-            # TODO: fix multi-GPU support
-            trainer_kwargs['distributed_backend'] = 'ddp'
+        trainer_kwargs['gpus'] = 1#torch.cuda.device_count()
+        #if trainer_kwargs['gpus'] > 1:
+        #    # TODO: fix multi-GPU support
+        #    trainer_kwargs['distributed_backend'] = 'ddp'
 
     if fp16_training:
         # TODO: use torch.nn.functional.binary_cross_entropy_with_logits which is safe to autocast

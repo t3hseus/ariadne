@@ -75,11 +75,12 @@ def preprocess(
         ignore_asserts: False
 ):
     os.makedirs(output_dir, exist_ok=True)
-
+    amounts = {}
     for data_df, basename in parse():
         LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
         processor: DataProcessor = target_processor(data_df=data_df,
-                                                    output_dir=output_dir)
+                                                    output_dir=output_dir,
+                                                    amount_total=amounts)
 
         generator = processor.generate_chunks_iterable()
 
@@ -101,6 +102,7 @@ def preprocess(
             LOGGER.warning("BREAKING by interrupt. got %d processed chunks" % len(preprocessed_chunks))
         processed_data = processor.postprocess_chunks(preprocessed_chunks)
         processor.save_on_disk(processed_data)
+        amounts=processor.amounts_total
 
 
 def main(argv):
