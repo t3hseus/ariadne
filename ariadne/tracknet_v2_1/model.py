@@ -16,16 +16,16 @@ class Classifier(nn.Module):
     """
     def __init__(self, gru_size=32, coord_size=2, num_classes=2):
         super().__init__()
-        self.features1 = nn.Sequential(nn.Linear(gru_size, 30),
+        self.features1 = nn.Sequential(nn.Linear(gru_size*2, 30),
                                        nn.ReLU(),
-                                       nn.BatchNorm1d(2)
+                                       nn.BatchNorm1d(30)
                                        )
         self.features2 = nn.Sequential(
             nn.Linear(coord_size, 30),
             nn.ReLU(),
             nn.BatchNorm1d(30)
         )
-        self.classifier = nn.Sequential(nn.Linear(90, 40),
+        self.classifier = nn.Sequential(nn.Linear(60, 40),
                                         nn.ReLU(),
                                         nn.BatchNorm1d(40),
                                         nn.Linear(40, num_classes))
@@ -37,10 +37,11 @@ class Classifier(nn.Module):
         coord_x: coordinates of predicted point (found as last hit) 
         """
         # BxTxC -> BxCxT
-        x1 = self.features1(gru_x.squeeze().float())
-        x2 = self.features2(coord_x.squeeze().float())
-        x1 = x1.view(x1.size(0), -1)
-        x2 = x2.view(x2.size(0), -1)
+        gru_x = gru_x.view(gru_x.size()[0], -1)
+        x1 = self.features1(gru_x.float())
+        x2 = self.features2(coord_x.float())
+        #x1 = x1.view(x1.size(0), -1)
+        #x2 = x2.view(x2.size(0), -1)
         x = torch.cat((x1, x2), dim=1)
         x = self.classifier(x)
         return x
@@ -69,8 +70,6 @@ class TrackNETv2_1(nn.Module):
         self.classifier = Classifier(gru_size=16, coord_size=coord_size)
 
     def forward(self, inputs, input_lengths):
-        # BxTxC -> BxCxT
-        inputs = inputs.transpose(1, 2)
         class_dict = self.base_model.get_tracknet_v2_1_inputs(inputs, input_lengths)
         gru_x = class_dict['last_layer']
         tracknet_x = class_dict['model_outputs']

@@ -26,7 +26,10 @@ def recall(preds, target):
 @gin.configurable('tracknet_v2_1.f1_score', whitelist=[])
 def f1_score(preds, target):
     softmax = Softmax()
+    print(preds)
     changed_preds = torch.argmax(softmax(preds.float()), dim=1)
+    print(target)
+    print(changed_preds)
     return metrics.f1_score(
         preds, target, reduction='none', num_classes=2)[1]
 

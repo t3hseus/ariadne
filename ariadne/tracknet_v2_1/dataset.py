@@ -81,9 +81,6 @@ class TrackNetV2_1Dataset(TrackNetV2Dataset):
         self.last_station_hits = torch.from_numpy(self.data['y'][:, 1:])
         self.last_station_events = torch.from_numpy(self.data['events'])
 
-
-
-
     def __len__(self):
         return len(self.data['is_real'])
 
@@ -93,23 +90,37 @@ class TrackNetV2_1Dataset(TrackNetV2Dataset):
         #print(self.data.keys())
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
+        #print(self.data['y'][idx])
         sample_y = self.data['y'][idx][1:]
+        #print('y', sample_y)
         #print(sample_y.shape)
         sample_moment = self.data['moments'][idx]
         is_track = self.data['is_real'][idx]
+        print(is_track)
         sample_idx = idx
         sample_event = self.data['events'][idx]
         sample_prediction = self.model(torch.tensor(sample_inputs).unsqueeze(0),
                                        torch.tensor([sample_len], dtype=torch.int64))
         sample_gru = self.model.last_gru_output
-        nearest_hit, in_ellipse = self.find_nearest_hit(sample_prediction, sample_event)
-        found_hit = nearest_hit if in_ellipse == True else torch.tensor([[-2., -2.]], dtype=torch.float64)
+        nearest_hit, in_ellipse = self.find_nearest_hit(sample_prediction, sample_event, sample_y)
+        found_hit = nearest_hit if in_ellipse == True else None
+        print('found', found_hit)
+        if is_track:
+            print(sample_prediction)
+            print(nearest_hit)
+            print(sample_y)
+            print(self.last_station_hits[self.last_station_events == sample_event.item()])
         if found_hit is not None:
             if is_track:
-                if found_hit == sample_y:
+
+                is_close = torch.isclose(found_hit.to(torch.float32), torch.tensor(sample_y, dtype=torch.float32))
+                print(is_close)
+                is_close = is_close.sum(dim=1) / 2.
+                if is_close:
                     print('this is a real track')
                     found_real_track_ending = 0.0
                 else:
+                    print('found wrong hit')
                     found_real_track_ending = 1.0
             else:
                 found_real_track_ending = 1.0
@@ -118,8 +129,10 @@ class TrackNetV2_1Dataset(TrackNetV2Dataset):
             found_real_track_ending = 1.0
 
         found_real_track_ending = torch.tensor(found_real_track_ending)
-        return [{'gru_x': sample_gru.detach(),
-                'coord_x': found_hit.detach()},
+        if found_hit is None:
+            found_hit = torch.tensor([-2., -2.], dtype=torch.double)
+        return [{'gru_x': sample_gru.detach().squeeze(),
+                'coord_x': found_hit.detach().squeeze()},
                 found_real_track_ending]
 
     def load_data(self, input_file, n_samples):
@@ -155,11 +168,95 @@ class TrackNetV2_1Dataset(TrackNetV2Dataset):
         model.load_state_dict(real_dict)
         model.eval()
         return model
-    
-    def find_nearest_hit(self, ellipses, event_id):
+
+    def find_nearest_hit(self, ellipses, event_id, y):
         centers = ellipses[:, :2]
+        print(centers)
         last_station_hits = self.last_station_hits[self.last_station_events == event_id.item()]
+        print(last_station_hits.size())
+        #print('center', centers)
+        #print(torch.isclose(torch.tensor(y, dtype=torch.double), last_station_hits))
+        #print(self.last_station_hits[0:10])
         dists = torch.cdist(last_station_hits.float(), centers.float())
+        print(dists.size())
         minimal = self.last_station_hits[torch.argmin(dists, dim=0)]
+        print(minimal)
+        is_in_ellipse = point_in_ellipse(ellipses, minimal)
+        return minimal, is_in_ellipse
+
+@gin.configurable
+class TrackNetV2_1_No_Model_Dataset(TrackNetV2Dataset):
+    """TrackNET_v2 dataset."""
+
+    def __init__(self, input_dir, input_file,use_index=False, n_samples=None):
+        super().__init__(input_dir, input_file=input_file, use_index=use_index, n_samples=n_samples)
+        self.input_dir = os.path.expandvars(input_dir)
+        self.use_index = use_index
+        self.data = self.load_data(input_file, n_samples)
+
+    def __len__(self):
+        return len(self.data['is_real'])
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        #print(self.data.keys())
+        sample_gru = self.data['gru'][idx]
+        sample_y = self.data['y'][idx]
+        found_hit = self.data['preds'][idx]
+        sample_moment = self.data['moments'][idx]
+        is_track = self.data['is_real'][idx]
+        sample_idx = idx
+        sample_event = self.data['events'][idx]
+        return [{'gru_x': torch.tensor(sample_gru).squeeze(),
+                'coord_x': torch.tensor(found_hit).squeeze()},
+                sample_y.astype(int)]
+
+    def load_data(self, input_file, n_samples):
+        filename = os.path.join(self.input_dir, input_file)
+        all_data = {}
+        with np.load(filename) as data:
+            for k in data.files:
+                all_data[k] = data[k]
+
+        data = dict()
+        if n_samples is not None:
+            for key in all_data.keys():
+                n_samples = min((all_data[key].size, n_samples))
+                data[key] = all_data[key][:n_samples]
+        else:
+            for key in all_data.keys():
+                data[key] = all_data[key]
+        return data
+
+    def weights_update(self, model, checkpoint):
+        model_dict = model.state_dict()
+        pretrained_dict = checkpoint['state_dict']
+        real_dict = {}
+        for (k, v) in model_dict.items():
+            needed_key = None
+            for pretr_key in pretrained_dict:
+                if k in pretr_key:
+                    needed_key = pretr_key
+                    break
+            assert needed_key is not None, "key %s not in pretrained_dict %r!" % (k, pretrained_dict.keys())
+            real_dict[k] = pretrained_dict[needed_key]
+
+        model.load_state_dict(real_dict)
+        model.eval()
+        return model
+
+    def find_nearest_hit(self, ellipses, event_id, y):
+        centers = ellipses[:, :2]
+        print(centers)
+        last_station_hits = self.last_station_hits[self.last_station_events == event_id.item()]
+        print(last_station_hits.size())
+        #print('center', centers)
+        #print(torch.isclose(torch.tensor(y, dtype=torch.double), last_station_hits))
+        #print(self.last_station_hits[0:10])
+        dists = torch.cdist(last_station_hits.float(), centers.float())
+        print(dists.size())
+        minimal = self.last_station_hits[torch.argmin(dists, dim=0)]
+        print(minimal)
         is_in_ellipse = point_in_ellipse(ellipses, minimal)
         return minimal, is_in_ellipse
