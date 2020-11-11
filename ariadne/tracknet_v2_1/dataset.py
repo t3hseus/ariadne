@@ -13,41 +13,6 @@ from ariadne.tracknet_v2.metrics import point_in_ellipse
 import warnings
 warnings.filterwarnings("ignore")
 
-class PreprocessingBESDataset(Dataset):
-    """Face Landmarks dataset."""
-
-    def __init__(self, csv_file, preprocessing=None, needed_columns=('r', 'phi', 'z'), use_next_z=False):
-        """
-        Args:
-            csv_file (string): Path to the csv file with data.
-            preprocessing (callable, optional): Optional transform to be applied
-                on a dataframe.
-        """
-        self.frame = pd.read_csv(csv_file)
-        if preprocessing:
-            self.frame = preprocessing(self.frame)
-        assert all([item in (list(self.frame.columns)) for item in needed_columns]), 'One or more columns are not in dataframe!'
-        self.grouped_frame = deepcopy(self.frame)
-        self.grouped_frame = self.frame.groupby(by=['event', 'track'], as_index=False)
-        self.group_keys = list(self.grouped_frame.groups.keys())
-        self.needed_columns = needed_columns
-        self.use_next_z = use_next_z
-
-    def __len__(self):
-        return self.grouped_frame.n_groups
-
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-        sample = self.grouped_frame.get_group(self.group_keys[idx])
-        sample.reset_index()
-        sample = sample.loc[:, self.needed_columns]
-        y = deepcopy(sample.iloc[2, :].values)
-        if self.use_next_z:
-            for i in range(2):
-                sample.loc[i, 'z+1'] = sample[i+1]['z']
-        return {'x': {'inputs': sample[:2].values, 'input_lengths': 2}, 'y': y}
-
 @gin.configurable
 class TrackNetV2Dataset(Dataset):
     """TrackNET_v2 dataset."""
@@ -104,10 +69,17 @@ class TrackNetV2_1Dataset(TrackNetV2Dataset):
         if path_to_checkpoint is not None:
             self.model = self.weights_update(model=TrackNETv2(input_features=model_input_features),
                                    checkpoint=torch.load(path_to_checkpoint))
+        self.input_dir = os.path.expandvars(input_dir)
+        self.use_index = use_index
+        self.data = self.load_data(input_file, n_samples)
         filename = os.path.join(self.input_dir, last_station_file)
         all_last_station_coordinates = np.load(filename)
         last_station_hits = all_last_station_coordinates['hits'][:, 1:]
         self.last_station_hits = torch.from_numpy(last_station_hits)
+        self.last_station_events = torch.from_numpy(all_last_station_coordinates['event'])
+
+
+
 
     def __len__(self):
         return len(self.data['is_real'])
@@ -122,25 +94,46 @@ class TrackNetV2_1Dataset(TrackNetV2Dataset):
         sample_moment = self.data['moments'][idx]
         is_track = self.data['is_real'][idx]
         sample_idx = idx
+        sample_event = self.data['event'][idx]
         sample_prediction = self.model(torch.tensor(sample_inputs).unsqueeze(0),
                                        torch.tensor([sample_len], dtype=torch.int64))
         sample_gru = self.model.last_gru_output
-        nearest_hit, in_ellipse = self.find_nearest_hit(sample_prediction)
-
+        nearest_hit, in_ellipse = self.find_nearest_hit(sample_prediction, sample_event)
         found_hit = nearest_hit if in_ellipse == True else torch.tensor([[-2., -2.]], dtype=torch.float64)
         if found_hit is not None:
-            if found_hit == sample_y:
-                print('this is right')
-                is_prediction_right = 0.0
+            if is_track:
+                if found_hit == sample_y:
+                    print('this is a real track')
+                    found_real_track_ending = 0.0
+                else:
+                    found_real_track_ending = 1.0
             else:
-                is_prediction_right = 1.0
+                found_real_track_ending = 1.0
         else:
-            is_prediction_right = 2.0
+            print('found_nothing')
+            found_real_track_ending = 1.0
 
-        is_prediction_right = torch.tensor(is_prediction_right)
+        found_real_track_ending = torch.tensor(found_real_track_ending)
         return [{'gru_x': sample_gru.detach(),
                 'coord_x': found_hit.detach()},
-                is_prediction_right]
+                found_real_track_ending]
+
+    def load_data(self, input_file, n_samples):
+        filename = os.path.join(self.input_dir, input_file)
+        all_data = {}
+        with np.load(filename) as data:
+            for k in data.files:
+                all_data[k] = data[k]
+
+        data = dict()
+        if n_samples is not None:
+            for key in all_data.keys():
+                n_samples = min((all_data[key].size, n_samples))
+                data[key] = all_data[key][:n_samples]
+        else:
+            for key in all_data.keys():
+                data[key] = all_data[key]
+        return data
 
     def weights_update(self, model, checkpoint):
         model_dict = model.state_dict()
@@ -159,8 +152,9 @@ class TrackNetV2_1Dataset(TrackNetV2Dataset):
         model.eval()
         return model
     
-    def find_nearest_hit(self, ellipses):
+    def find_nearest_hit(self, ellipses, event_id):
         centers = ellipses[:,:2]
+        last_station_hits = torch.unique(self.last_station_hits[self.last_station_events == event_id.item()], dim=1)
         dists = torch.cdist(self.last_station_hits.float(), centers.float())
         min_argument = torch.argmin(dists, dim=0)
         minimal = self.last_station_hits[torch.argmin(dists, dim=0)]

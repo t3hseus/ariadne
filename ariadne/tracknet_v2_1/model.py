@@ -14,7 +14,7 @@ class Classifier(nn.Module):
         gru_size: number of features in gru output of base model
         coord_size: number of predicted point coords
     """
-    def __init__(self, gru_size=32, coord_size=2):
+    def __init__(self, gru_size=32, coord_size=2, num_classes=2):
         super().__init__()
         self.features1 = nn.Sequential(nn.Linear(gru_size, 30),
                                        nn.ReLU(),
@@ -28,7 +28,7 @@ class Classifier(nn.Module):
         self.classifier = nn.Sequential(nn.Linear(90, 40),
                                         nn.ReLU(),
                                         nn.BatchNorm1d(40),
-                                        nn.Linear(40, 3))
+                                        nn.Linear(40, num_classes))
 
     def forward(self, gru_x, coord_x):
         """

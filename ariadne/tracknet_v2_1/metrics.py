@@ -12,26 +12,26 @@ from pytorch_lightning.metrics import functional as metrics
 @gin.configurable('tracknet_v2_1.precision', whitelist=[])
 def precision(preds, target):
     softmax = Softmax()
-    changed_preds = torch.argmax(softmax(preds.float()), dim=1)
+    preds = torch.argmax(softmax(preds.float()), dim=1)
     return metrics.precision(
-        preds > 0.5, target, reduction='none', num_classes=3)[1]
+        preds, target, reduction='none', num_classes=2)[1]
 
 @gin.configurable('tracknet_v2_1.recall', whitelist=[])
 def recall(preds, target):
     softmax = Softmax()
-    changed_preds = torch.argmax(softmax(preds.float()), dim=1)
+    preds = torch.argmax(softmax(preds.float()), dim=1)
     return metrics.recall(
-        preds > 0.5, target, reduction='none', num_classes=3)[1]
+        preds, target, reduction='none', num_classes=2)[1]
 
 @gin.configurable('tracknet_v2_1.f1_score', whitelist=[])
 def f1_score(preds, target):
     softmax = Softmax()
     changed_preds = torch.argmax(softmax(preds.float()), dim=1)
     return metrics.f1_score(
-        preds > 0.5, target, reduction='none', num_classes=3)[1]
+        preds, target, reduction='none', num_classes=2)[1]
 
 @gin.configurable('tracknet_v2_1.accuracy', whitelist=[])
 def accuracy(preds, target):
     softmax = Softmax()
     changed_preds = torch.argmax(softmax(preds.float()), dim=1)
-    return metrics.accuracy(changed_preds, target, num_classes=3)
+    return metrics.accuracy(changed_preds, target, num_classes=2)

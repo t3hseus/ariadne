@@ -41,7 +41,10 @@ class TrainModel(pl.LightningModule):
         #print('in batch: ', y)
         y_pred = self.model(**x)
         #print('preds: ', y_pred)
-        loss = self.criterion(y_pred, y.long())
+        try:
+            loss = self.criterion(y_pred, y)
+        except:
+            loss = self.criterion(y_pred, y.long()) #for classifier!
         metric_vals = self._calc_metrics(y_pred, y)
         return {'loss': loss, **metric_vals}
 

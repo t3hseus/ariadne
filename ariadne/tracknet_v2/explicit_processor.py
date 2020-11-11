@@ -28,10 +28,12 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
 
     def __init__(self,
                  processed_object: Optional,
-                 output_name: str):
+                 output_name: str,
+                 event: int):
         super().__init__(processed_object)
         self.processed_object = processed_object
         self.output_name = output_name
+        self.id = event
 
 
 @gin.configurable(blacklist=['data_df'])
@@ -75,7 +77,7 @@ class TrackNet_Explicit_Processor(DataProcessor):
         chunk_id = int(chunk_df.event.values[0])
         output_name = (self.output_dir + '/tracknet_%s_%d' % (idx, chunk_id))
 
-        return ProcessedTracknetDataChunk(chunk_df, output_name)
+        return ProcessedTracknetDataChunk(chunk_df, output_name, chunk_id)
 
     def cartesian(self, df1, df2):
         rows = itertools.product(df1.iterrows(), df2.iterrows())
@@ -93,22 +95,22 @@ class TrackNet_Explicit_Processor(DataProcessor):
             chunk_data_len = []
             chunk_data_real = []
             chunk_data_moment = []
+            chunk_data_event = []
             df = chunk.processed_object
             grouped_df = df[df['track'] != -1].groupby('track')
             for i, data in grouped_df:
                 chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
                 chunk_data_y.append(data[['r', 'phi', 'z']].values[-1])
                 chunk_data_len.append(2)
-                chunk_data_moment.append(data[['px','py','pz']].values[-1])
+                chunk_data_moment.append(data[['px', 'py', 'pz']].values[0])
                 chunk_data_real.append(1)
+                chunk_data_event.append(chunk.id)
 
             first_station = df[df['station'] == 0][['r', 'phi', 'z', 'track']]
             first_station.columns = ['r_left', 'phi_left', 'z_left', 'track_left']
             second_station = df[df['station'] == 1][['r', 'phi', 'z', 'track']]
             second_station.columns = ['r_right', 'phi_right', 'z_right', 'track_right']
             fake_tracks = self.cartesian(first_station, second_station)
-            print(fake_tracks)
-            print(chunk_data_x[-1].shape)
             for i, row in tqdm(fake_tracks.iterrows()):
                 temp_data = np.zeros((2, 3))
                 temp_data[0, :] = row[['r_left', 'phi_left', 'z_left']].values
@@ -119,12 +121,14 @@ class TrackNet_Explicit_Processor(DataProcessor):
                 chunk_data_moment.append(chunk_data_moment[0])
                 chunk_data_real.append(0)
                 chunk_data_len.append(2)
+                chunk_data_event.append(chunk.id)
             chunk_data_x = np.stack(chunk_data_x, axis=0)
             chunk_data_y = np.stack(chunk_data_y, axis=0)
             chunk_data_moment = np.stack(chunk_data_moment, axis=0)
             chunk_data_real = np.stack(chunk_data_real, axis=0)
+            chunk_data_event = np.stack(chunk_data_event, axis=0)
             chunk_data = {'x': {'inputs': chunk_data_x, 'input_lengths': chunk_data_len},
-                          'y': chunk_data_y, 'moment': chunk_data_moment, 'is_real': chunk_data_real}
+                          'y': chunk_data_y, 'moment': chunk_data_moment, 'is_real': chunk_data_real, 'event': chunk_data_event}
             chunk.processed_object = chunk_data
         return ProcessedTracknetData(chunks)
 
@@ -136,6 +140,7 @@ class TrackNet_Explicit_Processor(DataProcessor):
         all_data_len = []
         all_data_real = []
         all_data_moment = []
+        all_data_event = []
         for data_chunk in processed_data.processed_data:
             if data_chunk.processed_object is None:
                 continue
@@ -144,14 +149,16 @@ class TrackNet_Explicit_Processor(DataProcessor):
             all_data_y.append(data_chunk.processed_object['y'])
             all_data_real.append(data_chunk.processed_object['is_real'])
             all_data_moment.append(data_chunk.processed_object['moment'])
+            all_data_event.append(data_chunk.processed_object['event'])
         all_data_inputs = np.concatenate(all_data_inputs)
         all_data_y = np.concatenate(all_data_y)
         all_data_len = np.concatenate(all_data_len)
-        print(all_data_len.shape)
+        #print(all_data_len.shape)
         all_data_real = np.concatenate(all_data_real)
+        all_data_event = np.concatenate(all_data_event)
         all_data_moment = np.concatenate(all_data_moment)
         np.savez(self.output_name, inputs=all_data_inputs, input_lengths=all_data_len, y=all_data_y,
-                 moments=all_data_moment, is_real=all_data_real)
-        print('Saved last station hits to: ', self.output_name + '.npz')
-        np.savez(self.output_name+'_all_last_station', hits=np.unique(all_data_y, axis=0))
-        print('Saved last station hits to: ', self.output_name+'_last_station.npz')
+                 moments=all_data_moment, is_real=all_data_real, events=all_data_event)
+        print('Saved data to: ', self.output_name + '.npz')
+        np.savez(self.output_name+'_all_last_station', hits=all_data_y, event=all_data_event)
+        print('Saved only last station hits to: ', self.output_name+'_last_station.npz')

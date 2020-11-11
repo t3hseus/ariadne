@@ -85,7 +85,7 @@ class TrackNet_Processor(DataProcessor):
             chunk_data_y = []
             chunk_data_len = []
             df = chunk.processed_object
-            grouped_df = df.groupby('track')
+            grouped_df = df[df['track'] != -1].groupby('track')
             for i, data in grouped_df:
                 #print(data)
                 chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
@@ -113,4 +113,4 @@ class TrackNet_Processor(DataProcessor):
         all_data_y = np.concatenate(all_data_y).astype('float32')
         all_data_len = np.concatenate(all_data_len)
         np.savez(self.output_name, inputs=all_data_inputs, input_lengths=all_data_len, y=all_data_y )
-        print('Saved to: ', self.output_name)
+        print('Saved to: ', self.output_name+'.npz')
