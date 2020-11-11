@@ -69,14 +69,17 @@ class TrackNetV2_1Dataset(TrackNetV2Dataset):
         if path_to_checkpoint is not None:
             self.model = self.weights_update(model=TrackNETv2(input_features=model_input_features),
                                    checkpoint=torch.load(path_to_checkpoint))
+            self.model.eval()
         self.input_dir = os.path.expandvars(input_dir)
         self.use_index = use_index
         self.data = self.load_data(input_file, n_samples)
         filename = os.path.join(self.input_dir, last_station_file)
         all_last_station_coordinates = np.load(filename)
         last_station_hits = all_last_station_coordinates['hits'][:, 1:]
-        self.last_station_hits = torch.from_numpy(last_station_hits)
-        self.last_station_events = torch.from_numpy(all_last_station_coordinates['event'])
+        #print(self.data['y'].shape)
+        #print(self.data['events'].shape)
+        self.last_station_hits = torch.from_numpy(self.data['y'][:, 1:])
+        self.last_station_events = torch.from_numpy(self.data['events'])
 
 
 
@@ -91,10 +94,11 @@ class TrackNetV2_1Dataset(TrackNetV2Dataset):
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
         sample_y = self.data['y'][idx][1:]
+        #print(sample_y.shape)
         sample_moment = self.data['moments'][idx]
         is_track = self.data['is_real'][idx]
         sample_idx = idx
-        sample_event = self.data['event'][idx]
+        sample_event = self.data['events'][idx]
         sample_prediction = self.model(torch.tensor(sample_inputs).unsqueeze(0),
                                        torch.tensor([sample_len], dtype=torch.int64))
         sample_gru = self.model.last_gru_output
@@ -153,10 +157,9 @@ class TrackNetV2_1Dataset(TrackNetV2Dataset):
         return model
     
     def find_nearest_hit(self, ellipses, event_id):
-        centers = ellipses[:,:2]
-        last_station_hits = torch.unique(self.last_station_hits[self.last_station_events == event_id.item()], dim=1)
-        dists = torch.cdist(self.last_station_hits.float(), centers.float())
-        min_argument = torch.argmin(dists, dim=0)
+        centers = ellipses[:, :2]
+        last_station_hits = self.last_station_hits[self.last_station_events == event_id.item()]
+        dists = torch.cdist(last_station_hits.float(), centers.float())
         minimal = self.last_station_hits[torch.argmin(dists, dim=0)]
         is_in_ellipse = point_in_ellipse(ellipses, minimal)
         return minimal, is_in_ellipse
