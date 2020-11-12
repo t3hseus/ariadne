@@ -18,12 +18,30 @@ class GraphDataset(Dataset):
 
     def __getitem__(self, index):
         # uncomment to find bad events in the dataset:
-        # print(index, self.filenames[index])
+        #print(index, self.filenames[index])
         return load_graph(self.filenames[index])
 
     def __len__(self):
         return len(self.filenames)
 
+@gin.configurable
+class GraphDatasetMem(Dataset):
+
+    def __init__(self, input_dir, n_samples=None):
+        self.input_dir = os.path.expandvars(input_dir)
+        filenames = [os.path.join(self.input_dir, f) for f in os.listdir(self.input_dir) if f.endswith('.npz')]
+        self.filenames = (filenames[:n_samples] if n_samples is not None else filenames)
+        self.cache = {}
+
+    def __getitem__(self, index):
+        # uncomment to find bad events in the dataset:
+        #print(index, self.filenames[index])
+        if self.filenames[index] not in self.cache:
+            self.cache[self.filenames[index]] = load_graph(self.filenames[index])
+        return self.cache[self.filenames[index]]
+
+    def __len__(self):
+        return len(self.filenames)
 
 @gin.configurable
 class GraphDatasetFromMemory(Dataset):
@@ -55,7 +73,7 @@ def collate_fn(graphs):
         # Prepend singleton batch dimension, convert inputs and target to torch
         batch_inputs = [torch.from_numpy(m[None]).float() for m in [g.X, g.Ri, g.Ro]]
         batch_target = torch.from_numpy(g.y[None]).float()
-        return batch_inputs, batch_target
+        return {"inputs":batch_inputs}, batch_target
 
     # Get the matrix sizes in this batch
     n_features = graphs[0].X.shape[1]
@@ -79,4 +97,4 @@ def collate_fn(graphs):
 
     batch_inputs = [torch.from_numpy(bm) for bm in [batch_X, batch_Ri, batch_Ro]]
     batch_target = torch.from_numpy(batch_y)
-    return batch_inputs, batch_target
+    return {"inputs":batch_inputs}, batch_target
