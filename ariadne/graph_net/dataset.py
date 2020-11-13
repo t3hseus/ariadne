@@ -1,11 +1,12 @@
 import os
+from typing import Iterable, List
 
 import gin
 import torch
 import numpy as np
 
 from torch.utils.data import Dataset
-from ariadne.graph_net.graph_utils.graph import load_graph, Graph
+from ariadne.graph_net.graph_utils.graph import load_graph, Graph, Graph_V2, load_graph_v2
 
 
 @gin.configurable
@@ -55,7 +56,7 @@ def collate_fn(graphs):
         # Prepend singleton batch dimension, convert inputs and target to torch
         batch_inputs = [torch.from_numpy(m[None]).float() for m in [g.X, g.Ri, g.Ro]]
         batch_target = torch.from_numpy(g.y[None]).float()
-        return batch_inputs, batch_target
+        return {"inputs" : batch_inputs}, batch_target
 
     # Get the matrix sizes in this batch
     n_features = graphs[0].X.shape[1]
@@ -79,4 +80,29 @@ def collate_fn(graphs):
 
     batch_inputs = [torch.from_numpy(bm) for bm in [batch_X, batch_Ri, batch_Ro]]
     batch_target = torch.from_numpy(batch_y)
-    return batch_inputs, batch_target
+    return {"inputs" : batch_inputs}, batch_target
+
+@gin.configurable
+class Graph_V2_Dataset(GraphDataset):
+    def __init__(self, input_dir, n_samples=None):
+        super(Graph_V2_Dataset, self).__init__(input_dir=input_dir,
+                                               n_samples=n_samples)
+
+    def __getitem__(self, index):
+        # uncomment to find bad events in the dataset:
+        # print(index, self.filenames[index])
+        return load_graph_v2(self.filenames[index])
+
+
+@gin.configurable('graph_v2_collate_fn')
+def collate_fn_v2(graphs: List[Graph_V2]):
+    batch_size = len(graphs)
+
+    # Special handling of batch size 1
+    if batch_size == 1:
+        g = graphs[0]
+        # Prepend singleton batch dimension, convert inputs and target to torch
+        batch_inputs = [torch.tensor(g.X.astype(np.float32)), torch.tensor(g.edge_index)]
+        batch_target = torch.tensor(g.y.astype(np.float32))
+        return {"inputs" : batch_inputs}, batch_target
+    assert False, "not supported"

@@ -172,6 +172,14 @@ def apply_edge_restriction(pd_edges_df: pd.DataFrame,
     return pd_edges_df[pd_edges_df.weight < edge_restriction]
 
 
+def edge_list_from_ind(ind0, ind1):
+    return np.concatenate(
+        np.dstack(
+            np.meshgrid(ind0, ind1, indexing='ij')
+        ).transpose((0, 2, 1)),
+        -1)
+
+
 @gin.configurable(whitelist=['index_label_prev', 'index_label_current'])
 def construct_output_graph(hits,
                            edges,

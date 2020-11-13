@@ -46,7 +46,7 @@ def parse(
         input_file_mask,
         csv_params: Dict[str, object],
         events_quantity,
-        filter_mask=None
+        filter_func=None
 ):
     files_list = glob.glob(input_file_mask)
     assert len(files_list) > 0, f"no files found matching mask {input_file_mask}"
@@ -59,8 +59,8 @@ def parse(
     for idx, elem in enumerate(files_list):
         LOGGER.info("[Parse]: started parsing CSV #%d (%s):" % (idx, elem))
         parsed_df = parse_df(elem,**csv_params)
-        if filter_mask:
-            parsed_df = filter_mask(parsed_df)
+        if filter_func:
+            parsed_df = filter_func(parsed_df)
         LOGGER.info("[Parse]: finished parsing CSV...")
         if not parse_all:
             res = np.array(event_idxs)
@@ -78,7 +78,7 @@ def preprocess(
         ignore_asserts: False
 ):
     os.makedirs(output_dir, exist_ok=True)
-    for data_df, basename in parse():
+    for data_df, basename in parse(filter_func=lambda df: df[df.track >= -1]):
         LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
         processor: DataProcessor = target_processor(data_df=data_df,
                                                     output_dir=output_dir)

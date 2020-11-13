@@ -11,6 +11,8 @@ import numpy as np
 
 # A Graph is a namedtuple of matrices (X, Ri, Ro, y)
 Graph = namedtuple('Graph', ['X', 'Ri', 'Ro', 'y'])
+Graph_V2 = namedtuple('Graph', ['X', 'edge_index', 'y'])
+
 
 def graph_to_sparse(graph):
     Ri_rows, Ri_cols = graph.Ri.nonzero()
@@ -19,6 +21,11 @@ def graph_to_sparse(graph):
                 Ri_rows=Ri_rows, Ri_cols=Ri_cols,
                 Ro_rows=Ro_rows, Ro_cols=Ro_cols)
 
+def save_graph_v2(graph:Graph_V2, filename):
+    assert isinstance(graph, Graph_V2)
+    return np.savez(filename, **dict(X=graph.X,
+                                   edge_index=graph.edge_index,
+                                   y=graph.y))
 
 def sparse_to_graph(X, Ri_rows, Ri_cols, Ro_rows, Ro_cols, y, dtype=np.uint8):
     n_nodes, n_edges = X.shape[0], Ri_rows.shape[0]
@@ -52,3 +59,7 @@ def load_graph(filename):
     """Reade a single graph NPZ"""
     with np.load(filename) as f:
         return sparse_to_graph(**dict(f.items()))
+
+def load_graph_v2(filename) -> Graph_V2:
+    with np.load(filename, allow_pickle=True) as f:
+        return Graph_V2(**dict(f.items()))

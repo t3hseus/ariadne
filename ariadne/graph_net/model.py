@@ -1,6 +1,8 @@
 import gin
 import torch
 import torch.nn as nn
+from torch_geometric.nn import GCNConv
+import torch.nn.functional as F
 
 class EdgeNetwork(nn.Module):
     """
@@ -97,3 +99,20 @@ class GraphNet_v1(nn.Module):
             H = torch.cat([H, X], dim=-1)
         # Apply final edge network
         return self.edge_network(H, Ri, Ro)
+
+@gin.configurable
+class GraphNet_v2(torch.nn.Module):
+    def __init__(self, n_features):
+        super(GraphNet_v2, self).__init__()
+        self.conv1 = GCNConv(n_features, 256)
+        self.conv2 = GCNConv(256, 1)
+
+    def forward(self, inputs):
+        x, edge_index = inputs
+
+        x = self.conv1(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv2(x, edge_index)
+
+        return F.sigmoid(x).squeeze(-1)
