@@ -6,6 +6,9 @@ import torch
 import numpy as np
 
 from torch.utils.data import Dataset
+from torch_geometric.data import Data as GData
+from torch_geometric.data import Dataset as GDataset
+
 from ariadne.graph_net.graph_utils.graph import load_graph, Graph, Graph_V2, load_graph_v2
 
 
@@ -82,16 +85,40 @@ def collate_fn(graphs):
     batch_target = torch.from_numpy(batch_y)
     return {"inputs" : batch_inputs}, batch_target
 
+@gin.configurable(blacklist=['root', 'transform', 'pre_transform'])
+class Graph_V2_Dataset(GDataset):
+    def __init__(self, root=None, transform=None, pre_transform=None, input_dir=None, n_samples=None):
+        super(Graph_V2_Dataset, self).__init__(root, transform, pre_transform)
+        self.input_dir = os.path.expandvars(input_dir)
+        filenames = [os.path.join(self.input_dir, f) for f in os.listdir(self.input_dir) if f.endswith('.npz')]
+        self.filenames = (filenames[:n_samples] if n_samples is not None else filenames)
+
+    @property
+    def processed_file_names(self):
+        return self.filenames
+
+    def len(self):
+        return len(self.filenames)
+
+    def get(self, idx):
+        g = load_graph_v2(self.filenames[idx])
+        return GData(x=torch.tensor(g.X.astype(np.float32)),
+                     edge_index=torch.tensor(g.edge_index),
+                     y=torch.tensor(g.y.astype(np.float32)))
+
 @gin.configurable
-class Graph_V2_Dataset(GraphDataset):
+class Graph_V2_DatasetBatched(GraphDataset):
     def __init__(self, input_dir, n_samples=None):
-        super(Graph_V2_Dataset, self).__init__(input_dir=input_dir,
+        super(Graph_V2_DatasetBatched, self).__init__(input_dir=input_dir,
                                                n_samples=n_samples)
 
     def __getitem__(self, index):
         # uncomment to find bad events in the dataset:
         # print(index, self.filenames[index])
-        return load_graph_v2(self.filenames[index])
+        g = load_graph_v2(self.filenames[index])
+        return GData(x=torch.tensor(g.X.astype(np.float32)),
+                     edge_index=torch.tensor(g.edge_index),
+                     y=torch.tensor(g.y.astype(np.float32)))
 
 
 @gin.configurable('graph_v2_collate_fn')

@@ -36,8 +36,8 @@ class TrainModel(pl.LightningModule):
         return metric_vals
 
     def _forward_batch(self, batch, val=False):
-        x, y = batch
-        y_pred = self.model(**x)
+        y = batch.y
+        y_pred = self.model(batch)
         loss = self.criterion(y_pred, y)
         metric_vals = self._calc_metrics(y_pred, y)
         return {'loss': loss, **metric_vals}

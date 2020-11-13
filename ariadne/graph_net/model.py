@@ -108,7 +108,7 @@ class GraphNet_v2(torch.nn.Module):
         self.conv2 = GCNConv(256, 1)
 
     def forward(self, inputs):
-        x, edge_index = inputs
+        x, edge_index = inputs.x, inputs.edge_index
 
         x = self.conv1(x, edge_index)
         x = F.relu(x)
