@@ -14,16 +14,20 @@ dependencies:
   - nose=1.3.7
   - networkx=2.5
   - jupyter=1.0.0
+  - seaborn
   - notebook=6.1.3
   - torchvision=0.7.0
   - cudatoolkit=10.1
   - pytorch=1.6.0
-  - pyqt=5.12.*
   - vispy=0.6.4
   - pytorch-lightning=0.9.0
   - gin-config=0.3.0
   - absl-py=0.9.0
   - pylint=2.6.0
   - pytest
+  - pip
+  - pip:
+    - pyqt5==5.15.2
+    - pyqt5-sip==12.8.1
 
 
