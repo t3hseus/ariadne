@@ -45,7 +45,8 @@ def parse_single_arr_arg(arr_arg):
 def parse(
         input_file_mask,
         csv_params: Dict[str, object],
-        events_quantity
+        events_quantity,
+        filter_func=None
 ):
     files_list = glob.glob(input_file_mask)
     assert len(files_list) > 0, f"no files found matching mask {input_file_mask}"
@@ -58,6 +59,8 @@ def parse(
     for idx, elem in enumerate(files_list):
         LOGGER.info("[Parse]: started parsing CSV #%d (%s):" % (idx, elem))
         parsed_df = parse_df(elem,**csv_params)
+        if filter_func:
+            parsed_df = filter_func(parsed_df)
         LOGGER.info("[Parse]: finished parsing CSV...")
         if not parse_all:
             res = np.array(event_idxs)

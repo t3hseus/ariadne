@@ -5,3 +5,4 @@ from . import preprocessing
 from . import parsing
 from . import tracknet_v2
 from . import graph_net
+from . import point_net

@@ -2,6 +2,7 @@ import gin
 import torch
 import torch.nn as nn
 
+
 class EdgeNetwork(nn.Module):
     """
     A module which computes weights for edges of the graph.
@@ -9,6 +10,7 @@ class EdgeNetwork(nn.Module):
     and applies some fully-connected network layers with a final
     sigmoid activation.
     """
+
     def __init__(self, input_dim, hidden_dim=8, hidden_activation=nn.Tanh):
         super(EdgeNetwork, self).__init__()
         self.network = nn.Sequential(
@@ -34,6 +36,7 @@ class NodeNetwork(nn.Module):
     them with the node's previous features in a fully-connected
     network to compute the new features.
     """
+
     def __init__(self, input_dim, output_dim, hidden_activation=nn.Tanh):
         super(NodeNetwork, self).__init__()
         self.network = nn.Sequential(
