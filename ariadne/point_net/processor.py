@@ -41,24 +41,23 @@ class PointNet_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
-                 stations_constraints,
-                 df_suffixes: Tuple[str]
+                 stations_constraints
                  ):
         super().__init__(
             processor_name='PointNet_Processor',
             output_dir=output_dir,
             data_df=data_df)
+        self.stations_constraints = stations_constraints
+        self.transformer = None
 
-        self._suffixes_df = df_suffixes
+    def generate_chunks_iterable(self) -> Iterable[PointsDataChunk]:
         self.transformer = Compose([
             ConstraintsNormalize(
                 use_global_constraints=False,
-                constraints=stations_constraints
+                constraints=self.stations_constraints
             ),
             ToCylindrical(drop_old=True, cart_columns=('y', 'x'))
         ])
-
-    def generate_chunks_iterable(self) -> Iterable[PointsDataChunk]:
         return self.data_df.groupby('event')
 
     def construct_chunk(self,
@@ -66,7 +65,6 @@ class PointNet_Processor(DataProcessor):
         processed = self.transformer(chunk_df)
         return PointsDataChunk(processed)
 
-    @gin.configurable(blacklist=['chunk', 'idx'])
     def preprocess_chunk(self,
                          chunk: PointsDataChunk,
                          idx: str) -> ProcessedDataChunk:
@@ -74,7 +72,7 @@ class PointNet_Processor(DataProcessor):
         chunk_id = int(chunk_df.event.values[0])
         output_name = (self.output_dir + '/points_%s_%d' % (idx, chunk_id))
         out = (chunk_df[['r', 'phi', 'z']].values / [1., np.pi, 1.]).T
-        #if not chunk_df[(chunk_df.track != -1) & (chunk_df.track < 0) ].empty:
+        # if not chunk_df[(chunk_df.track != -1) & (chunk_df.track < 0) ].empty:
         #    logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
         #    return TransformedPointsDataChunk(None, "")
         out = Points(
@@ -90,3 +88,58 @@ class PointNet_Processor(DataProcessor):
     def save_on_disk(self,
                      processed_data: ProcessedPointsData):
         save_points_new(processed_data.processed_data)
+
+
+@gin.configurable(blacklist=['data_df'])
+class PointNet_ProcessorBMN7(PointNet_Processor):
+    def __init__(self,
+                 output_dir: str,
+                 data_df: pd.DataFrame,
+                 stations_constraints
+                 ):
+        super().__init__(
+            output_dir=output_dir,
+            data_df=data_df, stations_constraints=stations_constraints)
+        self.maxis = {'x':-1e7, 'y':-1e7, 'z':-1e7}
+        self.minis = {'x': 1e7, 'y': 1e7, 'z': 1e7}
+        self.mean_hits = []
+
+    def generate_chunks_iterable(self) -> Iterable[PointsDataChunk]:
+        self.transformer = Compose([
+            ConstraintsNormalize(
+                use_global_constraints=True,
+                constraints=self.stations_constraints
+            )
+        ])
+        return self.data_df.groupby('event')
+
+    def preprocess_chunk(self,
+                         chunk: PointsDataChunk,
+                         idx: str) -> ProcessedDataChunk:
+        chunk_df = chunk.df_chunk_data
+        chunk_id = int(chunk_df.event.values[0])
+        output_name = (self.output_dir + '/points_%s_%d' % (idx, chunk_id))
+        for col in ['x', 'y', 'z']:
+            self.maxis[col] = max(chunk_df[col].max(), self.maxis[col])
+            self.minis[col] = min(chunk_df[col].min(), self.maxis[col])
+
+        out = chunk_df[['x', 'y', 'z']].values.T
+        # if not chunk_df[(chunk_df.track != -1) & (chunk_df.track < 0) ].empty:
+        #    logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
+        #    return TransformedPointsDataChunk(None, "")
+        out = Points(
+            X=out.astype(np.float32),
+            track=(chunk_df[['track']] >= 0).values.squeeze(-1).astype(np.float32)
+        )
+        self.mean_hits.append(len(chunk_df))
+        return TransformedPointsDataChunk(out, output_name)
+
+    def save_on_disk(self,
+                     processed_data: ProcessedPointsData):
+        print("\n\n=================\nSome stats:")
+        for col in ['x', 'y', 'z']:
+            print("MAXIS %s: %f" % (col, self.maxis[col]))
+            print("MINIS %s: %f" % (col, self.minis[col]))
+        print("Mean hits per event: %f" % (np.mean(self.mean_hits)))
+        print("End\n===============\n")
+        super(PointNet_ProcessorBMN7, self).save_on_disk(processed_data)

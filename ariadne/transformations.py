@@ -302,7 +302,7 @@ class ConstraintsNormalize(BaseTransformer):
         self.margin = margin
         self.use_global_constraints = use_global_constraints
         self.constraints = constraints
-        #print(self.constraints)
+        # print(self.constraints)
         if constraints is not None:
             if use_global_constraints:
                 for col in columns:
@@ -332,8 +332,9 @@ class ConstraintsNormalize(BaseTransformer):
         if self.use_global_constraints:
             global_constrains = {}
             for col in self.columns:
-                global_min = min([x[col][0] for x in self.constraints.values()])
-                global_max = max([x[col][1] for x in self.constraints.values()])
+                global_min = self.constraints[col][0]
+                global_max = self.constraints[col][1]
+                assert global_min < global_max, "global_min should be < global_max %f < %f" % (global_min, global_max)
                 global_constrains[col] = (global_min, global_max)
             x_norm, y_norm, z_norm = self.normalize(data, global_constrains)
             data = super().transform_data(data, [x_norm, y_norm, z_norm])

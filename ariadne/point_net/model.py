@@ -87,7 +87,7 @@ class STNkd(nn.Module):
 
 
 class PointNetfeat(nn.Module):
-    def __init__(self, global_feat=True, feature_transform=False, n_feat=3):
+    def __init__(self, feature_transform=False, n_feat=3):
         super(PointNetfeat, self).__init__()
         self.stn = STN3d(n_feat)
         self.conv1 = torch.nn.Conv1d(n_feat, 64, 1)
@@ -96,7 +96,6 @@ class PointNetfeat(nn.Module):
         self.bn1 = nn.BatchNorm1d(64)
         self.bn2 = nn.BatchNorm1d(128)
         self.bn3 = nn.BatchNorm1d(1024)
-        self.global_feat = global_feat
         self.feature_transform = feature_transform
         if self.feature_transform:
             self.fstn = STNkd(k=64)
@@ -114,19 +113,15 @@ class PointNetfeat(nn.Module):
             x = x.transpose(2, 1)
             x = torch.bmm(x, trans_feat)
             x = x.transpose(2, 1)
-        else:
-            trans_feat = None
 
         pointfeat = x
         x = F.relu(self.bn2(self.conv2(x)))
         x = self.bn3(self.conv3(x))
         x = torch.max(x, 2, keepdim=True)[0]
         x = x.view(-1, 1024)
-        if self.global_feat:
-            return x, trans, trans_feat
-        else:
-            x = x.view(-1, 1024, 1).repeat(1, 1, n_pts)
-            return torch.cat([x, pointfeat], 1), trans, trans_feat
+
+        x = x.view(-1, 1024, 1).repeat(1, 1, n_pts)
+        return torch.cat([x, pointfeat], 1)
 
 
 @gin.configurable
@@ -134,7 +129,7 @@ class PointNetSeg_v1(nn.Module):
     def __init__(self, feature_transform=False, n_feat=3):
         super(PointNetSeg_v1, self).__init__()
         self.feature_transform = feature_transform
-        self.feat = PointNetfeat(global_feat=False, feature_transform=feature_transform, n_feat=n_feat)
+        self.feat = PointNetfeat(feature_transform=feature_transform, n_feat=n_feat)
         self.conv1 = torch.nn.Conv1d(1088, 512, 1)
         self.conv2 = torch.nn.Conv1d(512, 256, 1)
         self.conv3 = torch.nn.Conv1d(256, 128, 1)
@@ -144,7 +139,7 @@ class PointNetSeg_v1(nn.Module):
         self.bn3 = nn.BatchNorm1d(128)
 
     def forward(self, x):
-        x, trans, trans_feat = self.feat(x)
+        x = self.feat(x)
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.bn3(self.conv3(x)))
