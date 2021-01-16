@@ -143,3 +143,50 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
         print("Mean hits per event: %f" % (np.mean(self.mean_hits)))
         print("End\n===============\n")
         super(PointNet_ProcessorBMN7, self).save_on_disk(processed_data)
+
+@gin.configurable(blacklist=['data_df'])
+class PointNet_ProcessorBMN7_dist(PointNet_ProcessorBMN7):
+    def __init__(self,
+                 output_dir: str,
+                 data_df: pd.DataFrame,
+                 stations_constraints
+                 ):
+        super().__init__(
+            output_dir=output_dir,
+            data_df=data_df, stations_constraints=stations_constraints)
+
+
+    def preprocess_chunk(self,
+                         chunk: PointsDataChunk,
+                         idx: str) -> ProcessedDataChunk:
+        chunk_df = chunk.df_chunk_data
+        chunk_id = int(chunk_df.event.values[0])
+        output_name = (self.output_dir + '/points_%s_%d' % (idx, chunk_id))
+        for col in ['x', 'y', 'z']:
+            self.maxis[col] = max(chunk_df[col].max(), self.maxis[col])
+            self.minis[col] = min(chunk_df[col].min(), self.maxis[col])
+
+        track_pnts = chunk_df[chunk_df.track >= 0]
+        xs = track_pnts[['x']].values
+        ys = track_pnts[['y']].values
+        zs = track_pnts[['z']].values
+
+        #for row, pnt in chunk_df.iterrows():
+        #    print(pnt)
+
+        chunk_df['dist'] = chunk_df.apply(lambda pnt: np.min(
+            np.linalg.norm(
+                np.hstack((
+                    (xs - pnt.x, ys - pnt.y, zs - pnt.z)
+                )), axis=-1)),axis=1)
+
+        out = chunk_df[['x', 'y', 'z']].values.T
+        # if not chunk_df[(chunk_df.track != -1) & (chunk_df.track < 0) ].empty:
+        #    logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
+        #    return TransformedPointsDataChunk(None, "")
+        out = Points(
+            X=out.astype(np.float32),
+            track=chunk_df[['dist']].values.squeeze(-1).astype(np.float32)
+        )
+        self.mean_hits.append(len(chunk_df))
+        return TransformedPointsDataChunk(out, output_name)
