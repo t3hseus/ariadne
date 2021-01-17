@@ -11,14 +11,13 @@ from ariadne.point_net.dataset import PointsDatasetMemory, BatchBucketSampler, S
 class PointsDataLoader(BaseDataLoader):
 
     def __init__(self,
-                 batch_size: int,
                  dataset: PointsDatasetMemory.__class__,
                  collate_fn: Callable,
                  n_train: int,
                  n_valid: int,
                  drop_last: bool = True,
                  with_random=True):
-        super(PointsDataLoader, self).__init__(batch_size)
+        super(PointsDataLoader, self).__init__(-1)
         self.dataset = dataset(n_samples=n_valid + n_train)
         if with_random:
             self.train_data, self.val_data = random_split(self.dataset, [n_train, n_valid])

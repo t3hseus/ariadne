@@ -62,13 +62,13 @@ class SubsetWithItemLen(Subset, ItemLengthGetter):
     def get_item_length(self, item_index):
         return len(self.dataset[self.indices[item_index]].track)
 
-# @gin.configurable(blacklist=['data_source'])
+@gin.configurable(blacklist=['data_source'])
 class BatchBucketSampler(Sampler):
     def __init__(self, data_source: SubsetWithItemLen,
-                 zero_pad_available=True,
-                 batch_size=4,
-                 drop_last=True,
-                 shuffle=False):
+                 zero_pad_available,
+                 batch_size,
+                 drop_last,
+                 shuffle):
         super(BatchBucketSampler, self).__init__(data_source)
         self.data_source = data_source
         self.zero_pad_available = zero_pad_available
@@ -132,10 +132,11 @@ class BatchBucketSampler(Sampler):
 
         if not self.drop_last:
             raise NotImplementedError
+        raise RuntimeError
 
     def __len__(self):
         if self.drop_last:
-            return len(self.indices) // self.batch_size
+            return len(self.indices)
         else:
             raise NotImplementedError
 
