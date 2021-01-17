@@ -128,6 +128,7 @@ class PointNetfeat(nn.Module):
 class PointNetSeg_v1(nn.Module):
     def __init__(self, feature_transform=False, n_feat=3):
         super(PointNetSeg_v1, self).__init__()
+        MIN_EPS_HOLDER()
         self.feature_transform = feature_transform
         self.feat = PointNetfeat(feature_transform=feature_transform, n_feat=n_feat)
         self.conv1 = torch.nn.Conv1d(1088, 512, 1)
@@ -145,4 +146,10 @@ class PointNetSeg_v1(nn.Module):
         x = F.relu(self.bn3(self.conv3(x)))
         x = self.conv4(x)
         x = x.transpose(2, 1).contiguous()
-        return F.sigmoid(x).squeeze(-1)
+        return F.softplus(x).squeeze(-1)
+
+
+@gin.configurable('point_net_dist.MIN_EPS_HOLDER')
+def MIN_EPS_HOLDER(MIN_EPS):
+    return MIN_EPS_HOLDER.__setattr__('MIN_EPS', MIN_EPS)
+

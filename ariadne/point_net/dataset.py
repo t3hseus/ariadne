@@ -1,32 +1,142 @@
-from typing import Collection
+import logging
+from collections import OrderedDict
+from typing import Collection, Dict
 
 import gin
 
 import os
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, BatchSampler, Sampler, RandomSampler, Subset
 
 from ariadne.point_net.point.points import load_points, Points
 
 
+class MemoryDataset(Dataset):
+
+    def __init__(self, input_dir):
+        super(MemoryDataset, self).__init__()
+        self.input_dir = input_dir
+
+    def load_data(self):
+        raise NotImplementedError
+
+
+class ItemLengthGetter(object):
+    def __init__(self):
+        pass
+
+    def get_item_length(self, item_index):
+        raise NotImplementedError
+
+
 @gin.configurable
-class PointsDatasetMemory(Dataset):
+class PointsDatasetMemory(MemoryDataset, ItemLengthGetter):
 
     def __init__(self, input_dir, n_samples=None):
-        self.input_dir = os.path.expandvars(input_dir)
+        super().__init__(os.path.expandvars(input_dir))
+        self.n_samples = n_samples
+        self.filenames = []
+        self.points = {}
+
         filenames = [os.path.join(self.input_dir, f) for f in os.listdir(self.input_dir) if f.endswith('.npz')]
-        self.filenames = (filenames[:n_samples] if n_samples is not None else filenames)
-        self.points = {index: load_points(self.filenames[index])
-                       for index in range(len(self.filenames))}
+        self.filenames = (filenames[:self.n_samples] if self.n_samples is not None else filenames)
+
+    def get_item_length(self, item_index):
+        return len(load_points(self.filenames[item_index]).track)
 
     def __getitem__(self, index):
         # uncomment to find bad events in the dataset:
         # print(index, self.filenames[index])
-        return self.points[index]
+        return load_points(self.filenames[index])
 
     def __len__(self):
         return len(self.filenames)
+
+
+class SubsetWithItemLen(Subset, ItemLengthGetter):
+    def __init__(self, dataset, indices):
+        super(SubsetWithItemLen, self).__init__(dataset, indices)
+
+    def get_item_length(self, item_index):
+        return len(self.dataset[self.indices[item_index]].track)
+
+# @gin.configurable(blacklist=['data_source'])
+class BatchBucketSampler(Sampler):
+    def __init__(self, data_source: SubsetWithItemLen,
+                 zero_pad_available=True,
+                 batch_size=4,
+                 drop_last=True,
+                 shuffle=False):
+        super(BatchBucketSampler, self).__init__(data_source)
+        self.data_source = data_source
+        self.zero_pad_available = zero_pad_available
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+        self.shuffle = shuffle
+        self.sampler = None
+
+        self.buckets = OrderedDict()
+
+        self.indices = []
+        self._build_buckets()
+
+    def _build_buckets(self):
+        logging.info("_build buckets")
+        for key in range(len(self.data_source)):
+            len_ = self.data_source.get_item_length(key)
+            if len_ not in self.buckets:
+                self.buckets[len_] = [key]
+            else:
+                self.buckets[len_].append(key)
+
+        if not self.zero_pad_available:
+            raise NotImplementedError
+
+            for len_, objs in self.buckets.items():
+                if len(objs) < self.batch_size:
+                    self.buckets[len_] = []
+
+            self.buckets = {len_: objs[:len(objs) - (len(objs) % self.batch_size)]
+                            for len_, objs in self.buckets.items() if len(objs) >= self.batch_size}
+            self.indices = [[item for item in objs] for len_, objs in self.buckets.items()]
+        else:
+            self.indices = [[]]
+            _last_inserted = 0
+            values_iter = iter(self.buckets.values())
+            while True:
+                try:
+                    cur_array = next(values_iter)
+                    for item in cur_array:
+                        self.indices[_last_inserted].append(item)
+                        if len(self.indices[_last_inserted]) == self.batch_size:
+                            self.indices.append([])
+                            _last_inserted += 1
+                except StopIteration:
+                    if len(self.indices[_last_inserted]) < self.batch_size:
+                        self.indices = self.indices[:-1]
+                    break
+
+        logging.info("_build buckets end")
+
+    def __iter__(self):
+        perm = list(range(len(self.indices)))
+        if self.shuffle:
+            perm = iter(torch.randperm(len(self.indices), generator=None).tolist())
+
+        for bucket_idx in perm:
+            bucket = self.indices[bucket_idx]
+            assert len(bucket) == self.batch_size
+            yield bucket
+
+        if not self.drop_last:
+            raise NotImplementedError
+
+    def __len__(self):
+        if self.drop_last:
+            return len(self.indices) // self.batch_size
+        else:
+            raise NotImplementedError
 
 
 @gin.configurable('points_collate_fn')
@@ -39,6 +149,25 @@ def collate_fn(points: Collection[Points]):
     max_dim = n_dim.max()
     batch_inputs = np.zeros((batch_size, n_feat, max_dim), dtype=np.float32)
     batch_targets = np.zeros((batch_size, max_dim), dtype=np.float32)
+
+    for i, p in enumerate(points):
+        batch_inputs[i, :, :n_dim[i]] = p.X
+
+        batch_targets[i, :n_dim[i]] = p.track
+
+    return {"x": torch.from_numpy(batch_inputs)}, torch.from_numpy(batch_targets)
+
+
+@gin.configurable('points_dist_collate_fn')
+def collate_fn_dist(points: Collection[Points]):
+    batch_size = len(points)
+    n_feat = 3
+
+    n_dim = np.array([(p.X.shape[1]) for p in points])
+    # print(n_dim)
+    max_dim = n_dim.max()
+    batch_inputs = np.zeros((batch_size, n_feat, max_dim), dtype=np.float32)
+    batch_targets = np.full((batch_size, max_dim), 0.5, dtype=np.float32)
 
     for i, p in enumerate(points):
         batch_inputs[i, :, :n_dim[i]] = p.X
