@@ -8,6 +8,7 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset, BatchSampler, Sampler, RandomSampler, Subset
+from tqdm import tqdm
 
 from ariadne.point_net.point.points import load_points, Points
 
@@ -82,8 +83,8 @@ class BatchBucketSampler(Sampler):
         self._build_buckets()
 
     def _build_buckets(self):
-        logging.info("_build buckets")
-        for key in range(len(self.data_source)):
+        logging.info("_build buckets:")
+        for key in tqdm(range(len(self.data_source))):
             len_ = self.data_source.get_item_length(key)
             if len_ not in self.buckets:
                 self.buckets[len_] = [key]
