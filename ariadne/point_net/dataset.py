@@ -34,21 +34,32 @@ class ItemLengthGetter(object):
 @gin.configurable
 class PointsDatasetMemory(MemoryDataset, ItemLengthGetter):
 
-    def __init__(self, input_dir, n_samples=None):
+    def __init__(self, input_dir, n_samples=None, pin_mem=False):
         super().__init__(os.path.expandvars(input_dir))
         self.n_samples = n_samples
         self.filenames = []
         self.points = {}
+        self.pin_mem = pin_mem
 
         filenames = [os.path.join(self.input_dir, f) for f in os.listdir(self.input_dir) if f.endswith('.npz')]
         self.filenames = (filenames[:self.n_samples] if self.n_samples is not None else filenames)
 
     def get_item_length(self, item_index):
-        return len(load_points(self.filenames[item_index]).track)
+        item = None
+        if self.pin_mem:
+            if item_index in self.points:
+                item = self.points[item_index]
+            else:
+                item = self.points[item_index] = load_points(self.filenames[item_index])
+        else:
+            item = load_points(self.filenames[item_index])
+        return len(item.track)
 
     def __getitem__(self, index):
         # uncomment to find bad events in the dataset:
         # print(index, self.filenames[index])
+        if self.pin_mem:
+            return self.points[index]
         return load_points(self.filenames[index])
 
     def __len__(self):
