@@ -62,6 +62,7 @@ class SubsetWithItemLen(Subset, ItemLengthGetter):
     def get_item_length(self, item_index):
         return len(self.dataset[self.indices[item_index]].track)
 
+
 @gin.configurable(blacklist=['data_source'])
 class BatchBucketSampler(Sampler):
     def __init__(self, data_source: SubsetWithItemLen,
@@ -101,38 +102,68 @@ class BatchBucketSampler(Sampler):
             self.buckets = {len_: objs[:len(objs) - (len(objs) % self.batch_size)]
                             for len_, objs in self.buckets.items() if len(objs) >= self.batch_size}
             self.indices = [[item for item in objs] for len_, objs in self.buckets.items()]
-        else:
-            self.indices = [[]]
-            _last_inserted = 0
-            values_iter = iter(self.buckets.values())
-            while True:
-                try:
-                    cur_array = next(values_iter)
-                    for item in cur_array:
-                        self.indices[_last_inserted].append(item)
-                        if len(self.indices[_last_inserted]) == self.batch_size:
-                            self.indices.append([])
-                            _last_inserted += 1
-                except StopIteration:
-                    if len(self.indices[_last_inserted]) < self.batch_size:
-                        self.indices = self.indices[:-1]
-                    break
 
         logging.info("_build buckets end")
+        self._store_indices()
+
+    def _store_indices(self):
+        self.indices = [[]]
+        _last_inserted = 0
+        values_iter = iter(self.buckets.values())
+        while True:
+            try:
+                cur_array = next(values_iter)
+                for item in cur_array:
+                    self.indices[_last_inserted].append(item)
+                    if len(self.indices[_last_inserted]) == self.batch_size:
+                        self.indices.append([])
+                        _last_inserted += 1
+            except StopIteration:
+                if len(self.indices[_last_inserted]) < self.batch_size:
+                    self.indices = self.indices[:-1]
+                break
+
+        if self.shuffle:
+            _new_indices = [[]]
+            _idx = 0
+            NEAREST = 5
+            _last_inserted = 0
+            while _idx < len(self.indices) // NEAREST:
+                arr = []
+                idx = _idx * NEAREST
+                arr.extend(self.indices[idx])
+                arr.extend(self.indices[idx + 1])
+                arr.extend(self.indices[idx + 2])
+                arr.extend(self.indices[idx + 3])
+                arr.extend(self.indices[idx + 4])
+                perm = iter(torch.randperm(len(arr), generator=None).tolist())
+                for arr_idx in perm:
+                    _new_indices[_last_inserted].append(arr[arr_idx])
+
+                    if len(_new_indices[_last_inserted]) == self.batch_size:
+                        _new_indices.append([])
+                        _last_inserted += 1
+                _idx += 1
+            self.indices = _new_indices
+            if len(self.indices[_last_inserted]) < self.batch_size:
+                self.indices = self.indices[:-1]
+            for batch in self.indices:
+                assert len(batch) == self.batch_size
+        logging.info("\nreshuffle indices\n")
 
     def __iter__(self):
+        self._store_indices()
         perm = list(range(len(self.indices)))
         if self.shuffle:
             perm = iter(torch.randperm(len(self.indices), generator=None).tolist())
 
         for bucket_idx in perm:
             bucket = self.indices[bucket_idx]
-            assert len(bucket) == self.batch_size
             yield bucket
 
         if not self.drop_last:
             raise NotImplementedError
-        raise RuntimeError
+
 
     def __len__(self):
         if self.drop_last:
