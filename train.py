@@ -53,7 +53,8 @@ def experiment(model,
         'max_epochs': epochs,
         'auto_select_gpus': True,
         'deterministic': True,
-        'terminate_on_nan': True
+        'terminate_on_nan': True,
+        #'accumulate_grad_batches' : 5
     }
     if torch.cuda.is_available():
         trainer_kwargs['gpus'] = torch.cuda.device_count()

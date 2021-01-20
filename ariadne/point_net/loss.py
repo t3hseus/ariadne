@@ -29,15 +29,11 @@ class PointNetWeightedDistloss(nn.Module):
         super().__init__()
         self.lambda1 = lambda1
         self.lambda2 = lambda2
-        self.MIN_EPS = MIN_EPS_HOLDER.MIN_EPS
+        self.MIN_EPS = 0.01
 
     def forward(self, preds, target):
 
-        batch_tgt_inv = 1 - target + self.MIN_EPS
-        # we leave only very close points
-        batch_tgt_inv = 1. / batch_tgt_inv
-
-        batch_pred_inv = torch.clamp(1 - preds, 1e-5, 1) + self.MIN_EPS
-        batch_pred_inv = 1. / batch_pred_inv
-
-        return self.lambda1 * torch.norm(batch_pred_inv - batch_tgt_inv) + self.lambda2 * torch.norm(preds - target)
+        return torch.norm(preds - target)
+        #return torch.abs(1 - torch.cosine_similarity(preds, target).sum()) * torch.norm(preds - target)
+        #return (1/mul) * torch.norm(preds - target) + big + less
+        #return torch.nn.functional.mse_loss(preds, target)#torch.pairwise_distance(preds, target).sum()

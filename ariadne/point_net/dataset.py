@@ -59,7 +59,11 @@ class PointsDatasetMemory(MemoryDataset, ItemLengthGetter):
         # uncomment to find bad events in the dataset:
         # print(index, self.filenames[index])
         if self.pin_mem:
-            return self.points[index]
+            if index in self.points:
+                item = self.points[index]
+            else:
+                item = self.points[index] = load_points(self.filenames[index])
+            return item
         return load_points(self.filenames[index])
 
     def __len__(self):
@@ -134,7 +138,7 @@ class BatchBucketSampler(Sampler):
                     self.indices = self.indices[:-1]
                 break
 
-        if self.shuffle:
+        if self.shuffle and (len(self.indices) // 5) > 0:
             _new_indices = [[]]
             _idx = 0
             NEAREST = 5

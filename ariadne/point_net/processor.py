@@ -123,6 +123,10 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
             self.maxis[col] = max(chunk_df[col].max(), self.maxis[col])
             self.minis[col] = min(chunk_df[col].min(), self.maxis[col])
 
+        #chunk_df = chunk_df[chunk_df.det == 0]
+        if chunk_df.empty:
+            LOGGER.warning("SKIPPED broken %d event" % chunk_id)
+            return TransformedPointsDataChunk(None, output_name)
         out = chunk_df[['x', 'y', 'z']].values.T
         # if not chunk_df[(chunk_df.track != -1) & (chunk_df.track < 0) ].empty:
         #    logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
@@ -166,19 +170,23 @@ class PointNet_ProcessorBMN7_dist(PointNet_ProcessorBMN7):
             self.maxis[col] = max(chunk_df[col].max(), self.maxis[col])
             self.minis[col] = min(chunk_df[col].min(), self.maxis[col])
 
+        chunk_df = chunk_df[chunk_df.det == 1]
+        if chunk_df.empty:
+            LOGGER.warning("SKIPPED broken %d event" % chunk_id)
+            return TransformedPointsDataChunk(None, output_name)
+
         track_pnts = chunk_df[chunk_df.track >= 0]
         xs = track_pnts[['x']].values
         ys = track_pnts[['y']].values
         zs = track_pnts[['z']].values
 
-        #for row, pnt in chunk_df.iterrows():
-        #    print(pnt)
-
-        chunk_df['dist'] = chunk_df.apply(lambda pnt: np.min(
+        a = chunk_df.apply(lambda pnt: np.min(
             np.linalg.norm(
                 np.hstack((
                     (xs - pnt.x, ys - pnt.y, zs - pnt.z)
                 )), axis=-1)),axis=1)
+
+        chunk_df['dist'] = a
 
         out = chunk_df[['x', 'y', 'z']].values.T
         # if not chunk_df[(chunk_df.track != -1) & (chunk_df.track < 0) ].empty:
