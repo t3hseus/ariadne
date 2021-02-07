@@ -164,7 +164,7 @@ class BatchBucketSampler(Sampler):
                 self.indices = self.indices[:-1]
             for batch in self.indices:
                 assert len(batch) == self.batch_size
-        logging.info("\nreshuffle indices\n")
+            logging.info("\nreshuffle indices\n")
 
     def __iter__(self):
         self._store_indices()
@@ -221,5 +221,25 @@ def collate_fn_dist(points: Collection[Points]):
         batch_inputs[i, :, :n_dim[i]] = p.X
 
         batch_targets[i, :n_dim[i]] = p.track
+
+    return {"x": torch.from_numpy(batch_inputs)}, torch.from_numpy(batch_targets)
+
+@gin.configurable('collate_fn_impulse')
+def collate_fn_impulse(points: Collection[Points]):
+    batch_size = len(points)
+    n_feat = 4
+    n_out = 4
+
+
+    n_dim = np.array([(p.X.shape[1]) for p in points])
+    # print(n_dim)
+    max_dim = n_dim.max()
+    batch_inputs = np.zeros((batch_size, n_feat, max_dim), dtype=np.float32)
+    batch_targets = np.zeros((batch_size, max_dim, n_out), dtype=np.float32)
+
+    for i, p in enumerate(points):
+        batch_inputs[i, :, :n_dim[i]] = p.X
+
+        batch_targets[i, :n_dim[i], :] = p.track
 
     return {"x": torch.from_numpy(batch_inputs)}, torch.from_numpy(batch_targets)

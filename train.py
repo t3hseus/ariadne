@@ -30,7 +30,8 @@ def experiment(model,
                data_loader,
                epochs,
                fp16_training=False,
-               random_seed=None):
+               random_seed=None,
+               accumulate_grad_batches=None):
     # for reproducibility
     if random_seed is not None:
         LOGGER.info('Setting random seed to %d', random_seed)
@@ -54,6 +55,7 @@ def experiment(model,
         'auto_select_gpus': True,
         'deterministic': True,
         'terminate_on_nan': True,
+        'accumulate_grad_batches': accumulate_grad_batches if accumulate_grad_batches else 1
         #'accumulate_grad_batches' : 5
     }
     if torch.cuda.is_available():
