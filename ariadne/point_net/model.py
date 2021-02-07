@@ -12,13 +12,19 @@ class PointNetfeat(nn.Module):
     def __init__(self, scale_factor, n_feat=3):
         super(PointNetfeat, self).__init__()
         self.scale_factor = 8 * scale_factor
+
+
+        # if scale_factor = 2           3           16
         self.conv1 = torch.nn.Conv1d(n_feat, self.scale_factor, 1)
+        #                                   16                  32
         self.conv4 = torch.nn.Conv1d(self.scale_factor, self.scale_factor * 2, 1)
-
+        #                                   32                      64
         self.conv2 = torch.nn.Conv1d(self.scale_factor * 2, self.scale_factor * 4, 1)
+        #                                   64                  128
         self.conv3 = torch.nn.Conv1d(self.scale_factor * 4, self.scale_factor * 8, 1)
-
+        #                                   128                 64
         self.fc1 = torch.nn.Linear(self.scale_factor * 8, self.scale_factor * 4)
+        #                                   64                  32
         self.fc2 = torch.nn.Linear(self.scale_factor * 4, self.scale_factor * 2)
         # self.dropout1 = nn.Dropout2d(0.25)
         # self.dropout2 = nn.Dropout2d(0.5)
@@ -62,8 +68,11 @@ class PointNetSeg_v1(nn.Module):
         MIN_EPS_HOLDER()
         self.feat = PointNetfeat(scale_factor, n_feat=n_feat)
         self.scale_factor = 32 * scale_factor
+        # if scale_factor = 2:          64                  32
         self.conv1 = torch.nn.Conv1d(self.scale_factor, self.scale_factor // 2, 1)
+        #                               32                      16
         self.conv2 = torch.nn.Conv1d(self.scale_factor // 2, self.scale_factor // 4, 1)
+        #                               16                   1
         self.conv3 = torch.nn.Conv1d(self.scale_factor // 4, 1, 1)
 
         self.bn1 = nn.BatchNorm1d(self.scale_factor // 2)
