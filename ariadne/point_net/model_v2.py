@@ -24,7 +24,7 @@ def _build_global_pooling_layer(pooling):
         nn.Flatten()
     )
 
-
+@gin.configurable
 class TNet(nn.Module):
     def __init__(self,
                 k=3,
@@ -182,9 +182,7 @@ class PointNet(nn.Module):
                  classes=2,
                  softmax_for_binary=False):
         super().__init__()
-        if isinstance(transform, type):
-            transform = transform()
-        assert transform is None or isinstance(transform, Transform) or transform is Transform.__class__
+        assert transform is None or isinstance(transform, Transform)
         assert len(top_layers) >= 1
         assert classes >= 2
         self.transform = transform

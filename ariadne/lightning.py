@@ -1,3 +1,5 @@
+from typing import Union, List, Any
+
 import gin
 import numpy as np
 import torch
@@ -48,6 +50,10 @@ class TrainModel(pl.LightningModule):
         result = pl.TrainResult(result_dict['loss'])
         result.log_dict(tqdm_dict, on_step=False, prog_bar=True)
         return result
+
+#    @property
+#    def example_input_array(self) -> Any:
+#        return [self.data_loader.get_one_sample()]
 
     def validation_step(self, batch, batch_idx):
         result_dict = self._forward_batch(batch, val=True)
