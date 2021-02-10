@@ -43,7 +43,7 @@ def get_edges_from_supernodes(sn_from, sn_to):
     return line_graph_edges[indexation]
 
 
-@gin.configurable(blacklist=['one_station_segments', 'station'])
+@gin.configurable(denylist=['one_station_segments', 'station'])
 def get_supernodes_df(one_station_segments,
                       axes,
                       suffix_p, suffix_c,
@@ -106,7 +106,7 @@ def apply_nodes_restrictions(nodes,
         ]
 
 
-@gin.configurable(blacklist=['segments', 'restrictions_func'])
+@gin.configurable(denylist=['segments', 'restrictions_func'])
 def get_pd_line_graph(segments,
                       restrictions_func,
                       restrictions_0, restrictions_1,
@@ -165,14 +165,14 @@ def to_pandas_graph_from_df(
     return cartesian_product
 
 
-@gin.configurable(blacklist=['pd_edges_df'])
+@gin.configurable(denylist=['pd_edges_df'])
 def apply_edge_restriction(pd_edges_df: pd.DataFrame,
                            edge_restriction: float):
     assert 'weight' in pd_edges_df
     return pd_edges_df[pd_edges_df.weight < edge_restriction]
 
 
-@gin.configurable(whitelist=['index_label_prev', 'index_label_current'])
+@gin.configurable(allowlist=['index_label_prev', 'index_label_current'])
 def construct_output_graph(hits,
                            edges,
                            feature_names,

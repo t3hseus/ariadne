@@ -28,6 +28,29 @@ flags.DEFINE_enum(
     help='Level of logging'
 )
 
+
+def setup_logger(logger_dir, preprocessor_name):
+
+    # create logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    # create console handler and set level to debug
+    logger_dir = os.path.join(logger_dir, "logs_"+preprocessor_name)
+    os.makedirs(logger_dir, exist_ok=True)
+    fh = logging.FileHandler('%s/prepare_%s.log' % (logger_dir, preprocessor_name))
+    fh.setLevel(logging.DEBUG)
+
+    # create formatter
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+
+    # add formatter to ch
+    fh.setFormatter(formatter)
+
+    # add ch to logger
+    logger.addHandler(fh)
+
+
 LOGGER = logging.getLogger('ariadne.prepare')
 
 
@@ -40,25 +63,24 @@ def parse_single_arr_arg(arr_arg):
         return -1, True
     return [int(arr_arg)], False
 
+
 # todo: made universal parse
 @gin.configurable
-def parse(
-        input_file_mask,
-        csv_params: Dict[str, object],
-        events_quantity,
-        filter_func=None
-):
+def parse(input_file_mask,
+          csv_params: Dict[str, object],
+          events_quantity,
+          filter_func=None):
     files_list = glob.glob(input_file_mask)
     assert len(files_list) > 0, f"no files found matching mask {input_file_mask}"
     assert isinstance(events_quantity, str), 'events_quantity should be a str. see comments in config to set it ' \
-                                               'correctly. Got: %r with type %r ' % (events_quantity, type(events_quantity))
+                                             'correctly. Got: %r with type %r ' % (
+                                             events_quantity, type(events_quantity))
     event_idxs, parse_all = parse_single_arr_arg(events_quantity)
-
     LOGGER.info("[Parse]: matched following files:")
     LOGGER.info("[Parse]: %r" % files_list)
     for idx, elem in enumerate(files_list):
         LOGGER.info("[Parse]: started parsing CSV #%d (%s):" % (idx, elem))
-        parsed_df = parse_df(elem,**csv_params)
+        parsed_df = parse_df(elem, **csv_params)
         if filter_func:
             parsed_df = filter_func(parsed_df)
         LOGGER.info("[Parse]: finished parsing CSV...")
@@ -69,15 +91,20 @@ def parse(
         else:
             yield parsed_df, os.path.basename(elem)
     return
+
+
 # endof TODO
 
 @gin.configurable
 def preprocess(
         target_processor: DataProcessor.__class__,
         output_dir: str,
-        ignore_asserts: False
+        ignore_asserts: bool
 ):
     os.makedirs(output_dir, exist_ok=True)
+    setup_logger(output_dir, target_processor.__name__)
+
+    LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
 
     for data_df, basename in parse():
         LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
@@ -112,9 +139,8 @@ def main(argv):
         raise SystemError("Expected valid path to the GIN-config file supplied as '--config %PATH%' parameter")
     gin.parse_config(open(FLAGS.config))
     LOGGER.setLevel(FLAGS.log)
-    LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
     preprocess()
-
+    LOGGER.info("end processing")
 
 if __name__ == '__main__':
     app.run(main)

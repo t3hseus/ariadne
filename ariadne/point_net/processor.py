@@ -12,7 +12,7 @@ from ariadne.transformations import Compose, ConstraintsNormalize, ToCylindrical
 LOGGER = logging.getLogger('ariadne.prepare')
 
 
-@gin.configurable(blacklist=['df_chunk_data'])
+@gin.configurable(denylist=['df_chunk_data'])
 class PointsDataChunk(DataChunk):
 
     def __init__(self, df_chunk_data: pd.DataFrame):
@@ -36,7 +36,7 @@ class ProcessedPointsData(ProcessedData):
         self.processed_data = processed_data
 
 
-@gin.configurable(blacklist=['data_df'])
+@gin.configurable(denylist=['data_df'])
 class PointNet_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
@@ -97,7 +97,7 @@ class PointNet_Processor(DataProcessor):
         save_points_new(processed_data.processed_data)
 
 
-@gin.configurable(blacklist=['data_df'])
+@gin.configurable(denylist=['data_df'])
 class PointNet_ProcessorBMN7(PointNet_Processor):
     def __init__(self,
                  output_dir: str,
@@ -128,6 +128,25 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
         chunk_df = chunk.df_chunk_data
         chunk_id = int(chunk_df.event.values[0])
         output_name = (self.output_dir + '/points_%s_%d' % (idx, chunk_id))
+        chunk_df = chunk_df[chunk_df.det == 1]
+
+        if not chunk_df[chunk_df.track < -1].empty:
+            logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
+            return TransformedPointsDataChunk(None, "")
+
+        if chunk_df[chunk_df.track == -1].empty:
+            logging.info("\nPointNet_Processor got event with no fakes!\n for event %d" % chunk_id)
+            return TransformedPointsDataChunk(None, "")
+
+        if chunk_df[chunk_df.track != -1].empty:
+            logging.info("\nPointNet_Processor got event with no real hits!\n for event %d" % chunk_id)
+            return TransformedPointsDataChunk(None, "")
+
+        if chunk_df.empty:
+            LOGGER.warning("SKIPPED empty %d event" % chunk_id)
+            return TransformedPointsDataChunk(None, output_name)
+
+
         for col in self.stats_cols:
             self.maxis[col] = max(chunk_df[col].max(), self.maxis[col])
             self.minis[col] = min(chunk_df[col].min(), self.minis[col])
@@ -158,7 +177,7 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
         super(PointNet_ProcessorBMN7, self).save_on_disk(processed_data)
 
 
-@gin.configurable(blacklist=['data_df'])
+@gin.configurable(denylist=['data_df'])
 class PointNet_ProcessorBMN7_dist(PointNet_ProcessorBMN7):
     def __init__(self,
                  output_dir: str,
@@ -210,7 +229,7 @@ class PointNet_ProcessorBMN7_dist(PointNet_ProcessorBMN7):
         return TransformedPointsDataChunk(out, output_name)
 
 
-@gin.configurable(blacklist=['data_df'])
+@gin.configurable(denylist=['data_df'])
 class PointNet_ProcessorBMN7_impulse(PointNet_ProcessorBMN7):
     def __init__(self,
                  output_dir: str,

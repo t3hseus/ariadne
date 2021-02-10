@@ -55,7 +55,7 @@ def collate_fn(graphs):
         # Prepend singleton batch dimension, convert inputs and target to torch
         batch_inputs = [torch.from_numpy(m[None]).float() for m in [g.X, g.Ri, g.Ro]]
         batch_target = torch.from_numpy(g.y[None]).float()
-        return batch_inputs, batch_target
+        return {'inputs': batch_inputs}, batch_target
 
     # Get the matrix sizes in this batch
     n_features = graphs[0].X.shape[1]
@@ -79,4 +79,4 @@ def collate_fn(graphs):
 
     batch_inputs = [torch.from_numpy(bm) for bm in [batch_X, batch_Ri, batch_Ro]]
     batch_target = torch.from_numpy(batch_y)
-    return batch_inputs, batch_target
+    return {'inputs': batch_inputs}, batch_target
