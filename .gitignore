@@ -137,5 +137,6 @@ output
 
 # hydra slurm files
 slurm-*.out
-lightning_logs_1
+/resources/test_data/data_with_moment.txt
+lightning_logs
 .idea

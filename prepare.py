@@ -45,22 +45,19 @@ def parse_single_arr_arg(arr_arg):
 def parse(
         input_file_mask,
         csv_params: Dict[str, object],
-        events_quantity,
-        filter_func=None
+        events_quantity
 ):
     files_list = glob.glob(input_file_mask)
     assert len(files_list) > 0, f"no files found matching mask {input_file_mask}"
     assert isinstance(events_quantity, str), 'events_quantity should be a str. see comments in config to set it ' \
                                                'correctly. Got: %r with type %r ' % (events_quantity, type(events_quantity))
     event_idxs, parse_all = parse_single_arr_arg(events_quantity)
-
+    print(event_idxs)
     LOGGER.info("[Parse]: matched following files:")
     LOGGER.info("[Parse]: %r" % files_list)
     for idx, elem in enumerate(files_list):
         LOGGER.info("[Parse]: started parsing CSV #%d (%s):" % (idx, elem))
         parsed_df = parse_df(elem,**csv_params)
-        if filter_func:
-            parsed_df = filter_func(parsed_df)
         LOGGER.info("[Parse]: finished parsing CSV...")
         if not parse_all:
             res = np.array(event_idxs)
