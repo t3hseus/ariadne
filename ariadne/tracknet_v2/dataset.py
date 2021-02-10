@@ -51,7 +51,7 @@ class PreprocessingBESDataset(Dataset):
 class TrackNetV2Dataset(Dataset):
     """TrackNET_v2 dataset."""
 
-    def __init__(self, input_dir, use_index=False, n_samples=None):
+    def __init__(self, input_dir, input_file='', use_index=False, n_samples=None):
         """
         Args:
             input_dir (string): Path to files with data.
@@ -60,23 +60,12 @@ class TrackNetV2Dataset(Dataset):
 
         """
         self.input_dir = os.path.expandvars(input_dir)
-        filenames = [os.path.join(self.input_dir, f) for f in os.listdir(self.input_dir) if f.endswith('.npz')]
-        self.filenames = (filenames[:n_samples] if n_samples is not None else filenames)
-        d = {}
+        filename = os.path.join(self.input_dir, input_file)
+        
         self.all_data = {}
-        for i, s in enumerate(self.filenames):
-            with np.load(s) as data:
-                if i == 0:
-                    for k in data.files:
-                        d[k] = []
-                # Loop over all the keys
-                for k in data.files:
-                    d[k].append(data[k])
-            # Merge arrays via np.vstack()
-        for k, v in d.items():
-            vv = np.concatenate(v, axis=0)
-            self.all_data[k] = vv
-
+        with np.load(filename) as data:
+            for k in data.files:
+                self.all_data[k] = data[k]
         self.use_index = use_index
         self.data = dict()
         if n_samples is not None:
@@ -97,24 +86,16 @@ class TrackNetV2Dataset(Dataset):
         #print(self.data.keys())
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
-        sample_y = self.data['y'][idx][:2]
+        sample_y = self.data['y'][idx][1:]
         sample_idx = idx
         if self.use_index:
             return {'inputs': sample_inputs, 'input_lengths': sample_len}, sample_y, sample_idx
         else:
             return {'inputs': sample_inputs, 'input_lengths': sample_len}, sample_y
 
-class TrackNetV2ExplicitDataset(Dataset):
+@gin.configurable    
+class TrackNetV2ExplicitDataset(TrackNetV2Dataset):
     """TrackNET_v2 dataset."""
-
-    def __init__(self, data_file):
-        """
-        Args:
-            csv_file (string): Path to the csv file with data.
-            preprocessing (callable, optional): Optional transform to be applied
-                on a dataframe.
-        """
-        self.data = np.load(data_file)
 
     def __len__(self):
         return len(self.data['is_real'])
@@ -125,7 +106,7 @@ class TrackNetV2ExplicitDataset(Dataset):
         #print(self.data.keys())
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
-        sample_y = self.data['y'][idx]
+        sample_y = self.data['y'][idx][1:]
         sample_moment = self.data['moments'][idx]
         is_track = self.data['is_real'][idx]
         sample_idx = idx

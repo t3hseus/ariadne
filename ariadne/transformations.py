@@ -17,7 +17,6 @@ class Compose(object):
 
     def __init__(self, transforms):
         self.transforms = transforms
-
     def __call__(self, data):
         for t in self.transforms:
             data = t(data)
@@ -33,6 +32,31 @@ class Compose(object):
             format_string += '{0} \n'.format(t)
         format_string += '\n)'
         return format_string
+
+class PreserveOriginal(object):
+    """Preserves original state of given columns.
+    # Args:
+         columns (list or tuple, ['x', 'y', 'z'] by default): Columns to keep
+    """
+
+    def __init__(self, columns=('x', 'y', 'z')):
+        self.columns = columns
+
+    def __call__(self, data):
+        """
+        # Args:
+            data (pd.DataFrame):  to clean up.
+        # Returns:
+            data (pd.DataFrame): transformed dataframe
+        """
+        for col in self.columns:
+            data.loc[:, col + '_original'] = data.loc[:, col]
+        return data
+
+    def __repr__(self):
+        return '-' * 30 + '\n' + \
+               f'{self.__class__.__name__} ceeping original state of columns: {self.columns} \n' + \
+               '-' * 30 + '\n'
 
 
 class BaseTransformer(object):
@@ -166,7 +190,7 @@ class BaseCoordConverter(BaseTransformer):
     """
 
     def __init__(self, convert_function, drop_old=False, from_columns=('x', 'y'),
-                 to_columns=('r', 'phi')):
+                 to_columns=('r', 'phi'), postfix='general_convert'):
         self.drop_old = drop_old
         self.cart_columns = from_columns
         self.polar_columns = to_columns
@@ -174,6 +198,7 @@ class BaseCoordConverter(BaseTransformer):
         self.range_ = {}
         self.from_columns = from_columns
         self.to_columns = to_columns
+        self.postfix = postfix
         super().__init__(drop_old=drop_old, columns=list(to_columns) + ['z'])
 
     def __call__(self, data):
@@ -186,10 +211,13 @@ class BaseCoordConverter(BaseTransformer):
         # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
         self.get_ranges(data, self.from_columns)
         converted = self.convert_function(data)
+        if not self.drop_old:
+            for col in self.from_columns:
+                data[col + '_' + self.postfix] = data[col]
         for i in range(len(self.to_columns)):
             data.loc[:, self.to_columns[i]] = converted[i]
         self.get_ranges(data, self.to_columns)
-        if self.drop_old is True:
+        if self.drop_old:
             for col in self.from_columns:
                 del data[col]
         return data
@@ -302,7 +330,6 @@ class ConstraintsNormalize(BaseTransformer):
         self.margin = margin
         self.use_global_constraints = use_global_constraints
         self.constraints = constraints
-        # print(self.constraints)
         if constraints is not None:
             if use_global_constraints:
                 for col in columns:
@@ -327,16 +354,20 @@ class ConstraintsNormalize(BaseTransformer):
         # Returns:
             data (pd.DataFrame): transformed dataframe
         """
+        temp_data = deepcopy(data)
         if self.constraints is None:
             self.constraints = self.get_stations_constraints(data)
         if self.use_global_constraints:
             global_constrains = {}
             for col in self.columns:
-                global_min = self.constraints[col][0]
-                global_max = self.constraints[col][1]
-                assert global_min < global_max, "global_min should be < global_max %f < %f" % (global_min, global_max)
+                global_min = min([x[col][0] for x in self.constraints.values()])
+                global_max = max([x[col][1] for x in self.constraints.values()])
                 global_constrains[col] = (global_min, global_max)
             x_norm, y_norm, z_norm = self.normalize(data, global_constrains)
+            if not self.drop_old:
+                temp_data = deepcopy(data)
+                for col in self.columns:
+                    temp_data.loc[:, col+'_before_normalize'] = data.loc[:, col]
             data = super().transform_data(data, [x_norm, y_norm, z_norm])
         else:
             assert all([station in data['station'].unique() for station in
@@ -350,6 +381,9 @@ class ConstraintsNormalize(BaseTransformer):
                 data.loc[data['station'] == station, :] = \
                     self.transform_data_by_group(data['station'] == station, data,
                                                  [x_norm, y_norm, z_norm])
+            if not self.drop_old:
+                for col in self.columns:
+                    data.loc[:, col + '_before_normalize'] = temp_data.loc[:, col]
         return data
 
     def transform_data_by_group(self, grouping, data, normed):
@@ -484,11 +518,11 @@ class ToCylindrical(BaseCoordConverter):
            polar_columns = (list or tuple, ['r','phi'] by default):  columns of r and phi in cylindrical coordiates
     """
 
-    def __init__(self, drop_old=False, cart_columns=('x', 'y'), polar_columns=('r', 'phi')):
+    def __init__(self, drop_old=False, cart_columns=('x', 'y'), polar_columns=('r', 'phi'), postfix='before_cyl'):
         self.drop_old = drop_old
         self.from_columns = cart_columns
         self.to_columns = polar_columns
-        super().__init__(self.convert, drop_old=drop_old, from_columns=cart_columns, to_columns=polar_columns)
+        super().__init__(self.convert, drop_old=drop_old, from_columns=cart_columns, to_columns=polar_columns, postfix=postfix)
 
     def convert(self, data):
         r = np.sqrt(data[self.from_columns[0]] ** 2 + data[self.from_columns[1]] ** 2)

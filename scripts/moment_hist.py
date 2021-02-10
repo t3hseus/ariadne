@@ -56,7 +56,7 @@ def create_hist(batch_size, device_name='cpu', model=None, n_epochs=1000, n_stat
     data = TrackNetV2ExplicitDataset(data_file='output/cgem_t_plain_explicit/tracknet_all.npz')
     last_station_hits = torch.tensor(np.load('output/cgem_t_plain_explicit/tracknet_all_last_station.npz')['hits']).to(device)
     print(last_station_hits.size())
-    test_loader = DataLoader(dataset=data, batch_size=batch_size)
+    test_loader = TrackNetV2ExplicitDataLoader(dataset=data, batch_size=batch_size)
     with profile(use_cuda=use_cuda) as prof:
         for _ in tqdm(range(n_epochs)):
             for i, data in enumerate(test_loader, 0):

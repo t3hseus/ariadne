@@ -11,9 +11,12 @@ from absl import flags
 from absl import app
 
 from pytorch_lightning import Trainer, seed_everything
+from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
 from ariadne.lightning import TrainModel
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
+
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
@@ -58,7 +61,15 @@ def experiment(model,
                log_dir='lightning_logs',
                fp16_training=False,
                random_seed=None,
-               accumulate_grad_batches=None):
+               accumulate_grad_batches=1):
+
+    os.makedirs(log_dir, exist_ok=True)
+    tb_logger = TensorBoardLogger(log_dir, name=model.__name__)
+    setup_logger(tb_logger.log_dir)
+
+
+    LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
+
 
     os.makedirs(log_dir , exist_ok=True)
     tb_logger = TensorBoardLogger(log_dir, name=model.__name__)
@@ -90,13 +101,16 @@ def experiment(model,
         'auto_select_gpus': True,
         'deterministic': True,
         'terminate_on_nan': True,
-        'accumulate_grad_batches': accumulate_grad_batches if accumulate_grad_batches else 1,
-        'logger':tb_logger
-        #'accumulate_grad_batches' : 5
+        'accumulate_grad_batches': accumulate_grad_batches,
+        'logger': tb_logger,
+        #'progress_bar_refresh_rate': 100,
+        #'log_every_n_steps': 50,
     }
-    trainer_kwargs['checkpoint_callback'] = ModelCheckpoint(filepath='%s/_{epoch}-{step}'%(trainer_kwargs['logger'].log_dir))
+    trainer_kwargs['checkpoint_callback'] = ModelCheckpoint(
+        # TODO: check epoch and step
+        filepath=f"{trainer_kwargs['logger'].log_dir}/_{{epoch}}-{{step}}")
     if torch.cuda.is_available():
-        trainer_kwargs['gpus'] = torch.cuda.device_count()
+        trainer_kwargs['gpus'] = 1 #torch.cuda.device_count()
         if trainer_kwargs['gpus'] > 1:
             # TODO: fix multi-GPU support
             trainer_kwargs['distributed_backend'] = 'ddp'
