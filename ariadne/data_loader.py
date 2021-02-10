@@ -15,3 +15,8 @@ class BaseDataLoader(metaclass=ABCMeta):
     @abstractmethod
     def get_val_dataloader(self) -> DataLoader:
         pass
+
+#     #needed for graph in tensorboard
+#     @abstractmethod
+#     def get_one_sample(self) -> dict:
+#         pass

@@ -15,7 +15,7 @@ class EllipseAreaTest(TestCase):
     def test_incorrect_shape(self):
         preds = torch.zeros((2, 3))
         with self.assertRaisesRegex(ValueError, '4-dimensional'):
-            ellipse_area(preds, None)
+            ellipse_area(preds)
 
     def test_output(self):
         preds = torch.tensor([
@@ -30,10 +30,10 @@ class EllipseAreaTest(TestCase):
         ])
 
         for i in range(preds.size(0)):
-            output = ellipse_area(preds[i:i+1], None)
+            output = ellipse_area(preds[i:i+1])
             torch.testing.assert_allclose(output, expected_output[i])
         
-        output = ellipse_area(preds, None)
+        output = ellipse_area(preds)
         torch.testing.assert_allclose(output, expected_output.mean())
 
 

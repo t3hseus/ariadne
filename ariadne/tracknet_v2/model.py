@@ -49,7 +49,7 @@ class TrackNETv2(nn.Module):
             nn.Softplus()
         )
 
-    def forward(self,inputs, input_lengths):
+    def forward(self, inputs, input_lengths, *args):
         # BxTxC -> BxCxT
         inputs = inputs.transpose(1, 2).float()
         x = self.conv(inputs)
@@ -57,11 +57,12 @@ class TrackNETv2(nn.Module):
         x = x.transpose(1, 2)
         # Pack padded batch of sequences for RNN module
         packed = torch.nn.utils.rnn.pack_padded_sequence(
-            x, input_lengths, enforce_sorted=True, batch_first=True)
+        x, input_lengths, enforce_sorted=True, batch_first=True)
         # forward pass trough rnn
         x, _ = self.rnn(packed)
         # unpack padding
         x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
+        self.last_gru_output = x
         # get result using only the output on the last timestep
         xy_coords = self.xy_coords(x[:, -1])
         r1_r2 = self.r1_r2(x[:, -1])

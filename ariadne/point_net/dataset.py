@@ -78,7 +78,7 @@ class SubsetWithItemLen(Subset, ItemLengthGetter):
         return len(self.dataset[self.indices[item_index]].track)
 
 
-@gin.configurable(blacklist=['data_source'])
+@gin.configurable(denylist=['data_source'])
 class BatchBucketSampler(Sampler):
     def __init__(self, data_source: SubsetWithItemLen,
                  zero_pad_available,

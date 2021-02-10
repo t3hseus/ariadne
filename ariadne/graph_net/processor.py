@@ -15,7 +15,7 @@ from ariadne.transformations import Compose, StandardScale, ToCylindrical, Const
 LOGGER = logging.getLogger('ariadne.prepare')
 
 
-@gin.configurable(blacklist=['df_chunk_data'])
+@gin.configurable(denylist=['df_chunk_data'])
 class GraphDataChunk(DataChunk):
 
     def __init__(self, df_chunk_data: pd.DataFrame):
@@ -39,7 +39,7 @@ class ProcessedGraphData(ProcessedData):
         self.processed_data = processed_data
 
 
-@gin.configurable(blacklist=['data_df'])
+@gin.configurable(denylist=['data_df'])
 class GraphNet_Processor(DataProcessor):
 
     def __init__(self,
@@ -70,7 +70,7 @@ class GraphNet_Processor(DataProcessor):
         processed = self.transformer(chunk_df)
         return GraphDataChunk(processed)
 
-    @gin.configurable(blacklist=['chunk', 'idx'])
+    @gin.configurable(denylist=['chunk', 'idx'])
     def preprocess_chunk(self,
                          chunk: GraphDataChunk,
                          idx: str) -> ProcessedDataChunk:

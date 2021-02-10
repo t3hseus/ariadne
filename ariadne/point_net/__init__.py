@@ -4,3 +4,4 @@ from . import data_loader
 from . import metrics
 from . import dataset
 from . import loss
+from . import model_v2

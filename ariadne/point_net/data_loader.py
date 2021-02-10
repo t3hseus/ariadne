@@ -1,6 +1,7 @@
 from collections import Callable
 
 import gin
+import torch
 from torch.utils.data import random_split, Subset, DataLoader
 
 from ariadne.data_loader import BaseDataLoader
@@ -47,3 +48,8 @@ class PointsDataLoader(BaseDataLoader):
             batch_size=1,
             collate_fn=self.collate_fn,
             batch_sampler= self.train_sampler)
+
+    def get_one_sample(self) -> dict:
+        return {'x' :torch.rand(1,3,100) }
+
+
