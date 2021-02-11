@@ -28,6 +28,41 @@ def accuracy(preds, target):
     return metrics.accuracy(preds > 0.5, target, num_classes=2)
 
 
+
+
+
+#v2=========
+
+@gin.configurable('point_net_v2.precision', whitelist=[])
+def precision_v2(all_preds, target):
+    preds, _, _ = all_preds
+    return metrics.precision(
+        preds > 0.5, target, reduction='none', num_classes=2)[1]
+
+
+@gin.configurable('point_net_v2.recall', whitelist=[])
+def recall_v2(all_preds, target):
+    preds, _, _ = all_preds
+    return metrics.recall(
+        preds > 0.5, target, reduction='none', num_classes=2)[1]
+
+
+@gin.configurable('point_net_v2.f1_score', whitelist=[])
+def f1_score_v2(all_preds, target):
+    preds, _, _ = all_preds
+    return metrics.f1_score(
+        preds > 0.5, target, reduction='none', num_classes=2)[1]
+
+
+@gin.configurable('point_net_v2.accuracy', whitelist=[])
+def accuracy_v2(all_preds, target):
+    preds, _, _ = all_preds
+    return metrics.accuracy(preds > 0.5, target, num_classes=2)
+
+#v2=========
+
+
+
 @gin.configurable('point_net_impulse.precision', whitelist=[])
 def precision(preds, target):
     return metrics.precision(

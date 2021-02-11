@@ -26,6 +26,7 @@ from ariadne.tracknet_v2.data_loader import TrackNetV2DataLoader
 
 import faiss
 
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def find_nearest_hit_base(ellipses, y):
     centers = ellipses[:, :2]
@@ -76,21 +77,21 @@ def weights_update(model, checkpoint):
     model.eval()
     return model
 
-model = weights_update(model=TrackNETv2(), checkpoint=torch.load('../lightning_logs/version_112/checkpoints/epoch=161.ckpt'))
-model.cuda()
-class_model = weights_update(model=Classifier(), checkpoint=torch.load('../lightning_logs/class_epoch=1.ckpt'))
-class_model.cuda()
+model = weights_update(model=TrackNETv2(), checkpoint=torch.load('lightning_logs/TrackNETv2/version_0/_epoch=29-step=0.ckpt'))
+model.to(DEVICE)
+class_model = Classifier()#weights_update(model=Classifier())
+class_model.to(DEVICE)
 use_classifier = False
 
-gin.bind_parameter('TrackNetV2ExplicitDataset.input_dir', '../output/cgem_t_plain_explicit_test')
-gin.bind_parameter('TrackNetV2ExplicitDataset.input_file', 'tracknet_test_all_explicit.npz')
-data_loader = TrackNetV2DataLoader(
-    batch_size=500,
-    dataset=TrackNetV2ExplicitDataset,
-    valid_size=1.0
-).get_val_dataloader()
+# gin.bind_parameter('TrackNetV2ExplicitDataset.input_dir', '../output/cgem_t_tracknet_valid')
+# gin.bind_parameter('TrackNetV2ExplicitDataset.input_file', 'tracknet_test_all_explicit.npz')
+# data_loader = TrackNetV2DataLoader(
+#     batch_size=500,
+#     dataset=TrackNetV2ExplicitDataset,
+#     valid_size=1.0
+# ).get_val_dataloader()
 
-all_last_station_coordinates = np.load('../output/cgem_t_tracknet_valid/test_data_events_last_station.npz')
+all_last_station_coordinates = np.load('output/cgem_t_tracknet_valid/test_data_events_last_station.npz')
 last_station_hits = all_last_station_coordinates['hits']
 last_station_hits_events = all_last_station_coordinates['events']
 
@@ -134,10 +135,10 @@ def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, ba
         if all_last_y.ndim < 2:
             all_last_y = np.expand_dims(all_last_y, axis=0)
             #print('last_y \n', all_last_y)
-        all_last_y = torch.from_numpy(all_last_y).cuda()
-        batch_target = torch.from_numpy(batch_target).cuda()
-        test_pred = model(inputs=torch.from_numpy(batch_input).cuda(), input_lengths=torch.from_numpy(batch_len).cuda())
-        batch_real_flag = torch.from_numpy(batch_real_flag).cuda()
+        all_last_y = torch.from_numpy(all_last_y).to(DEVICE)
+        batch_target = torch.from_numpy(batch_target).to(DEVICE)
+        test_pred = model(inputs=torch.from_numpy(batch_input).to(DEVICE), input_lengths=torch.from_numpy(batch_len).to(DEVICE))
+        batch_real_flag = torch.from_numpy(batch_real_flag).to(DEVICE)
         num_real_tracks = batch_real_flag.sum()
         t1 = time.time()
         nearest_points, is_point_in_ellipse = find_nearest_hit(test_pred, all_last_y)
@@ -149,7 +150,7 @@ def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, ba
             pred_classes = torch.argmax(softmax(pred_classes), dim=1)
         # print(pred_classes)
         is_prediction_true = (batch_target == nearest_points)
-        is_prediction_true = is_prediction_true.to(torch.int).sum(dim = 1) / 2
+        is_prediction_true = is_prediction_true.to(torch.int).sum(dim = 1) / 2.0
         if use_classifier:
             found_points = is_point_in_ellipse & (batch_real_flag == 1) & (pred_classes == 0)
         else:
@@ -182,7 +183,7 @@ def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_fl
         if all_last_y.ndim < 2:
             all_last_y = np.expand_dims(all_last_y, axis=0)
             #print('last_y \n', all_last_y)
-        test_pred = model(inputs=torch.from_numpy(batch_input).cuda(), input_lengths=torch.from_numpy(batch_len).cuda())
+        test_pred = model(inputs=torch.from_numpy(batch_input).to(DEVICE), input_lengths=torch.from_numpy(batch_len).to(DEVICE))
         num_real_tracks = batch_real_flag.sum()
         t1 = time.time()
         nearest_points_index, is_point_in_ellipse = find_nearest_hit_faiss(test_pred, index)
@@ -222,7 +223,7 @@ search_time_no_faiss = 0
 search_time_faiss = 0
 num_batches = 0
 
-events = np.load('../output/cgem_t_tracknet_valid/test_data_events.npz')
+events = np.load('output/cgem_t_tracknet_valid/test_data_events.npz')
 for batch_event in tqdm(np.unique(events['events'])):
     batch_x = events['x'][events['events'] == batch_event]
     batch_len = events['len'][events['events'] == batch_event]

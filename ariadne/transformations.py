@@ -330,6 +330,7 @@ class ConstraintsNormalize(BaseTransformer):
         self.margin = margin
         self.use_global_constraints = use_global_constraints
         self.constraints = constraints
+        # print(self.constraints)
         if constraints is not None:
             if use_global_constraints:
                 for col in columns:
@@ -354,26 +355,21 @@ class ConstraintsNormalize(BaseTransformer):
         # Returns:
             data (pd.DataFrame): transformed dataframe
         """
-        temp_data = deepcopy(data)
         if self.constraints is None:
             self.constraints = self.get_stations_constraints(data)
         if self.use_global_constraints:
             global_constrains = {}
             for col in self.columns:
-                global_min = min([x[col][0] for x in self.constraints.values()])
-                global_max = max([x[col][1] for x in self.constraints.values()])
+                global_min = self.constraints[col][0]
+                global_max = self.constraints[col][1]
+                assert global_min < global_max, f"global_min should be < global_max {global_min} < {global_max}"
                 global_constrains[col] = (global_min, global_max)
             x_norm, y_norm, z_norm = self.normalize(data, global_constrains)
-            if not self.drop_old:
-                temp_data = deepcopy(data)
-                for col in self.columns:
-                    temp_data.loc[:, col+'_before_normalize'] = data.loc[:, col]
             data = super().transform_data(data, [x_norm, y_norm, z_norm])
         else:
             assert all([station in data['station'].unique() for station in
-                        self.constraints.keys()]), 'Some station keys in constraints are not presented in data. Keys: ' \
-                                                   '%r; data keys: %r' % (data['station'].unique(),
-                                                                          self.constraints.keys())
+                        self.constraints.keys()]), "Some station keys in constraints are not presented in data. Keys: " \
+                                                   f"{data['station'].unique()}; data keys: {self.constraints.keys()}"
 
             for station in self.constraints.keys():
                 group = data.loc[data['station'] == station,]
@@ -381,9 +377,6 @@ class ConstraintsNormalize(BaseTransformer):
                 data.loc[data['station'] == station, :] = \
                     self.transform_data_by_group(data['station'] == station, data,
                                                  [x_norm, y_norm, z_norm])
-            if not self.drop_old:
-                for col in self.columns:
-                    data.loc[:, col + '_before_normalize'] = temp_data.loc[:, col]
         return data
 
     def transform_data_by_group(self, grouping, data, normed):
@@ -422,11 +415,12 @@ class ConstraintsNormalize(BaseTransformer):
         return x_norm, y_norm, z_norm
 
     def __repr__(self):
-        return '-' * 30 + '\n' + \
-               f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, use_global_constraints={self.use_global_constraints} \n' + \
-               f'                                             margin={self.margin}, columns={self.columns}\n ' + \
-               '-' * 30 + '\n' + \
-               f'constraints are: {self.constraints}'
+        return (f"{'-' * 30}\n"
+                f"{self.__class__.__name__} with parameters: "
+                f"drop_old={self.drop_old}, "
+                f"use_global_constraints={self.use_global_constraints}\n"
+                f"{' '*20}margin={self.margin}, columns={self.columns}\n"
+                f"{'-'*30}\nconstraints are: {self.constraints}")
 
 
 class DropShort(BaseFilter):

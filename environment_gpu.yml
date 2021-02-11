@@ -25,6 +25,3 @@ dependencies:
   - faiss-gpu=1.7.0
   - jupyter=1.0.0
   - jupyterlab
-  - 
-prefix: C:\Miniconda3\envs\ariadne_gpu
-

@@ -1,3 +1,5 @@
+from typing import Union, List, Any
+
 import gin
 import numpy as np
 import torch
@@ -15,7 +17,7 @@ class TrainModel(pl.LightningModule):
                  data_loader: BaseDataLoader.__class__):
         super().__init__()
         # configure model and criterion
-        self.model = model().float()
+        self.model = model()
         self.criterion = criterion()
         self.optimizer = optimizer
         self.metrics = metrics
@@ -26,7 +28,6 @@ class TrainModel(pl.LightningModule):
         # Arguments
             inputs (dict): kwargs dict with model inputs
         """
-        #print(inputs)
         return self.model(**inputs)
 
     def _calc_metrics(self, batch_output, batch_target):
@@ -36,15 +37,9 @@ class TrainModel(pl.LightningModule):
         return metric_vals
 
     def _forward_batch(self, batch, val=False):
-        #print(batch)
         x, y = batch
-        #print('in batch: ', y)
-        y_pred = self.model(**x)
-        #print('preds: ', y_pred)
-        try:
-            loss = self.criterion(y_pred, y)
-        except:
-            loss = self.criterion(y_pred, y.long()) #for classifier!
+        y_pred = self.forward(x)
+        loss = self.criterion(y_pred, y)
         metric_vals = self._calc_metrics(y_pred, y)
         return {'loss': loss, **metric_vals}
 
@@ -52,10 +47,12 @@ class TrainModel(pl.LightningModule):
         result_dict = self._forward_batch(batch)
         tqdm_dict = {f'train_{k}': v for k, v in result_dict.items()}
         result = pl.TrainResult(result_dict['loss'])
-        #print(result)
-        #result['minimize'].backward()
         result.log_dict(tqdm_dict, on_step=False, prog_bar=True)
         return result
+
+#    @property
+#    def example_input_array(self) -> Any:
+#        return [self.data_loader.get_one_sample()]
 
     def validation_step(self, batch, batch_idx):
         result_dict = self._forward_batch(batch, val=True)
