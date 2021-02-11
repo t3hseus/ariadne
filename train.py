@@ -42,7 +42,7 @@ def setup_logger(logger_dir):
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 
     # add formatter to ch
-    #ch.setFormatter(formatter)
+    fh.setFormatter(formatter)
 
     # add ch to logger
     logger.addHandler(fh)
@@ -100,7 +100,7 @@ def experiment(model,
         # TODO: check epoch and step
         filepath=f"{trainer_kwargs['logger'].log_dir}/_{{epoch}}-{{step}}")
     if torch.cuda.is_available():
-        trainer_kwargs['gpus'] = torch.cuda.device_count()
+        trainer_kwargs['gpus'] = 1 #torch.cuda.device_count()
         if trainer_kwargs['gpus'] > 1:
             # TODO: fix multi-GPU support
             trainer_kwargs['distributed_backend'] = 'ddp'
