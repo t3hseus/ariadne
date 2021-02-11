@@ -12,7 +12,7 @@ from ariadne.transformations import Compose, StandardScale, ToCylindrical, \
 LOGGER = logging.getLogger('ariadne.prepare')
 
 
-@gin.configurable(blacklist=['df_chunk_data'])
+@gin.configurable(denylist=['df_chunk_data'])
 class TracknetDataChunk(DataChunk):
 
     def __init__(self, df_chunk_data: pd.DataFrame):
@@ -34,7 +34,7 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
         self.output_name = output_name
 
 
-@gin.configurable(blacklist=['data_df'])
+@gin.configurable(denylist=['data_df'])
 class TrackNet_Processor(DataProcessor):
 
     def __init__(self,

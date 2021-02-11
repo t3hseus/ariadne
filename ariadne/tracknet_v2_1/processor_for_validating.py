@@ -14,7 +14,7 @@ LOGGER = logging.getLogger('ariadne.prepare')
 import torch
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 
-@gin.configurable(blacklist=['df_chunk_data'])
+@gin.configurable(denylist=['df_chunk_data'])
 class ValidDataChunk(DataChunk):
     def __init__(self, df_chunk_data: pd.DataFrame):
         super().__init__(df_chunk_data)
@@ -37,7 +37,7 @@ class ProcessedValidDataChunk(ProcessedDataChunk):
         self.id = id
 
 
-@gin.configurable(blacklist=['data_df'])
+@gin.configurable(denylist=['data_df'])
 class Valid_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
@@ -196,4 +196,3 @@ class Valid_Processor(DataProcessor):
         np.savez(self.output_name+'_last_station', hits=valid_data_last_station, events=valid_data_last_station_event)
         print('Saved hits to: ', self.output_name + '.npz')
         print('Saved last station hits to: ', self.output_name + '_last_station.npz')
-

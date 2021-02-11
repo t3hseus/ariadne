@@ -11,9 +11,10 @@ from absl import flags
 from absl import app
 
 from pytorch_lightning import Trainer, seed_everything
-from ariadne.lightning import TrainModel
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
+from ariadne.lightning import TrainModel
+
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
@@ -91,8 +92,9 @@ def experiment(model,
         'deterministic': True,
         'terminate_on_nan': True,
         'accumulate_grad_batches': accumulate_grad_batches,
-        'logger':tb_logger
-        #'accumulate_grad_batches' : 5
+        'logger': tb_logger,
+        #'progress_bar_refresh_rate': 100,
+        #'log_every_n_steps': 50,
     }
     trainer_kwargs['checkpoint_callback'] = ModelCheckpoint(
         # TODO: check epoch and step

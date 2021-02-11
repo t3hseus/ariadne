@@ -5,7 +5,7 @@ import numpy as np
 import torch.nn.functional as F
 
 
-@gin.configurable(whitelist=[])
+@gin.configurable(allowlist=[])
 def ellipse_area(preds, target):
     """Computes the area of predicted ellipses
 
@@ -19,7 +19,7 @@ def ellipse_area(preds, target):
     return torch.mean(areas.float())
 
 
-@gin.configurable(whitelist=[])
+@gin.configurable(allowlist=[])
 def point_in_ellipse(preds, target):
     """Checks if the next point of track segment
     is located in the predicted circle
@@ -46,7 +46,7 @@ def point_in_ellipse(preds, target):
     left_side = x_part + y_part
     return left_side <= 1
 
-@gin.configurable(whitelist=[])
+@gin.configurable(allowlist=[])
 def efficiency(preds, target):
     """Checks if the next point of track segment
     is located in the predicted circle
@@ -55,7 +55,7 @@ def efficiency(preds, target):
     idx = point_in_ellipse(preds, target)
     return torch.sum(idx.float()) / len(idx)
 
-@gin.configurable(whitelist=[])
+@gin.configurable(allowlist=[])
 def calc_metrics(inputs, model, tracklen=None):
     """ Take array of tracks in the format of numpy 3d array
     [[[x1, y1, z1, ...], [x2, y2, z2, ...]], [...]],
