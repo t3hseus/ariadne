@@ -1,10 +1,14 @@
 import glob
 import logging
+import multiprocessing
 import os
 import os.path
+from functools import partial
+from multiprocessing import Pool
 from typing import Dict
 
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
+import _gin_bugfix
 
 import gin
 import pandas as pd
@@ -30,13 +34,12 @@ flags.DEFINE_enum(
 
 
 def setup_logger(logger_dir, preprocessor_name):
-
     # create logger
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
     # create console handler and set level to debug
-    logger_dir = os.path.join(logger_dir, "logs_"+preprocessor_name)
+    logger_dir = os.path.join(logger_dir, "logs_" + preprocessor_name)
     os.makedirs(logger_dir, exist_ok=True)
     fh = logging.FileHandler('%s/prepare_%s.log' % (logger_dir, preprocessor_name))
     fh.setLevel(logging.DEBUG)
@@ -74,7 +77,7 @@ def parse(input_file_mask,
     assert len(files_list) > 0, f"no files found matching mask {input_file_mask}"
     assert isinstance(events_quantity, str), 'events_quantity should be a str. see comments in config to set it ' \
                                              'correctly. Got: %r with type %r ' % (
-                                             events_quantity, type(events_quantity))
+                                                 events_quantity, type(events_quantity))
     event_idxs, parse_all = parse_single_arr_arg(events_quantity)
     LOGGER.info("[Parse]: matched following files:")
     LOGGER.info("[Parse]: %r" % files_list)
@@ -94,6 +97,24 @@ def parse(input_file_mask,
 
 
 # endof TODO
+
+def proc(processor, ignore_asserts, basename, data):
+    idx, chunk_df = data
+    try:
+        try:
+            data_chunk = processor.construct_chunk(chunk_df)
+        except AssertionError as ex:
+            if ignore_asserts:
+                #LOGGER.warning("GOT ASSERT %r on idx %d" % (ex, idx))
+                return [None, ['error %s' % ex]]
+            else:
+                raise ex
+        res = processor.preprocess_chunk(chunk=data_chunk, idx=basename)
+    except Exception as ex:
+        #LOGGER.warning("GOT ASSERT %r on idx %d" % (ex, idx))
+        return [None, ['error %s' % ex]]
+    return [res, None]
+
 
 @gin.configurable
 def preprocess(
@@ -115,18 +136,18 @@ def preprocess(
 
         preprocessed_chunks = []
         try:
-            for (idx, df_chunk) in tqdm(generator):
-                try:
-                    data_chunk = processor.construct_chunk(df_chunk)
-                except AssertionError as ex:
-                    if ignore_asserts:
-                        LOGGER.warning("GOT ASSERT %r on idx %d" % (ex, idx))
-                        continue
-                    else:
-                        raise ex
-                preprocessed_chunks.append(
-                    processor.preprocess_chunk(chunk=data_chunk, idx=basename)
-                )
+            with Pool(processes=multiprocessing.cpu_count() - 1) as pool:
+                funcc = partial(proc, processor, ignore_asserts, basename)
+                total = processor.total_chunks()
+                with tqdm(total=total) as pbar:
+                    for results in pool.imap_unordered(funcc, generator, 32):
+                        pbar.update()
+                        if results[0] is not None:
+                            preprocessed_chunks.append(results[0])
+                        else:
+                            LOGGER.warning("Got exception from processor:\n '%r'\n" % (results[1]))
+
+
         except KeyboardInterrupt as ex:
             LOGGER.warning("BREAKING by interrupt. got %d processed chunks" % len(preprocessed_chunks))
         processed_data = processor.postprocess_chunks(preprocessed_chunks)
@@ -141,6 +162,7 @@ def main(argv):
     LOGGER.setLevel(FLAGS.log)
     preprocess()
     LOGGER.info("end processing")
+
 
 if __name__ == '__main__':
     app.run(main)

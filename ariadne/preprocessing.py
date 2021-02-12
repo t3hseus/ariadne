@@ -39,6 +39,10 @@ class DataProcessor(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def total_chunks(self) -> int:
+        pass
+
+    @abstractmethod
     def construct_chunk(self,
                         chunk_df: pd.DataFrame)->DataChunk:
         pass
