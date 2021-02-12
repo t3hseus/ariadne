@@ -13,17 +13,20 @@ class Classifier(nn.Module):
     # Arguments
         gru_size: number of features in gru output of base model
         coord_size: number of predicted point coords
+        num_classes: number of classes to use (real/fake candidate etc)
     """
     def __init__(self, gru_size=32, coord_size=2, num_classes=2):
         super().__init__()
         self.features1 = nn.Sequential(nn.Linear(gru_size*2, 30),
+                                       nn.BatchNorm1d(30),
                                        nn.ReLU(),
-                                       nn.BatchNorm1d(30)
+                                       nn.Linear(30, 30)
                                        )
         self.features2 = nn.Sequential(
             nn.Linear(coord_size, 30),
+            nn.BatchNorm1d(30),
             nn.ReLU(),
-            nn.BatchNorm1d(30)
+            nn.Linear(30, 30)
         )
         self.classifier = nn.Sequential(nn.Linear(60, 40),
                                         nn.ReLU(),
@@ -43,7 +46,7 @@ class Classifier(nn.Module):
         #x1 = x1.view(x1.size(0), -1)
         #x2 = x2.view(x2.size(0), -1)
         x = torch.cat((x1, x2), dim=1)
-        x = self.classifier(x)
+        x = self.classifier(x).float()
         return x
 
 

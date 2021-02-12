@@ -23,12 +23,11 @@ from absl import app
 FLAGS = flags.FLAGS
 
 @gin.configurable()
-def process_input_data(file_name,
+def process_input_data_to_lists(file_name,
                  csv_params: Dict[str, object],
                  events_quantity=10,
                  transformer=None,
-                 radial_stations_constraints=None,
-                 output_name='../output/temp/tracknet_valid'):
+                 radial_stations_constraints=None):
     data_df = parse_df(file_name, **csv_params)
     res = np.arange(int(events_quantity))
     data_df = data_df[data_df.event.isin(res)]
@@ -69,8 +68,6 @@ def process_input_data(file_name,
             chunk_data_len.append(2)
             chunk_data_moment.append(data[['px', 'py', 'pz']].values[-1])
             chunk_data_real.append(1)
-        print('=====> id', id)
-        print('Multiplicity: ', len(chunk_data_x))
         first_station = df[df['station'] == 0][['r', 'phi', 'z', 'track']]
         first_station.columns = ['r_left', 'phi_left', 'z_left', 'track_left']
 
@@ -94,11 +91,8 @@ def process_input_data(file_name,
         chunk_data_moment = np.stack(chunk_data_moment, axis=0)
         chunk_data_real = np.stack(chunk_data_real, axis=0)
         chunk_data_len = np.stack(chunk_data_len, axis=0)
-        chunk_data_event = np.ones(chunk_data_len.shape)
-        chunk_data_event *= id
-
-        chunk_data_event_last_station = np.ones(last_station.shape[0])
-        chunk_data_event_last_station *= id
+        chunk_data_event = id
+        chunk_data_event_last_station = id
 
         inputs.append(chunk_data_x)
         ys.append(chunk_data_y)
@@ -113,7 +107,7 @@ def process_input_data(file_name,
 def main(argv):
     del argv
     gin.parse_config(open(FLAGS.config))
-    process_input_data()
+    process_input_data_to_lists()
 
 if __name__ == '__main__':
     app.run(main)

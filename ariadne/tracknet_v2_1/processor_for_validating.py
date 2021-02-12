@@ -47,6 +47,14 @@ class ProcessedValidDataChunk(ProcessedDataChunk):
 
 @gin.configurable(denylist=['data_df'])
 class Valid_Processor(DataProcessor):
+    """This processor prepares data for validating of Classifier and TrackNetV2.
+       Only input data is saved, so it is needed to use TrackNetV2 and Classifier simultaneously or use only TrackNetV2.
+       To prepare data, cartesian product is used, and real tracks are marked as True, synthetic as False.
+       Some additional data for analysis is saved too (moment of particle, event).
+
+       Validating needs to be done event-by-event, so to validate models, it is needed to group prepared data event-wise.
+
+       Validating includes search of next hit of track, so last station data for each event is stored."""
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
@@ -107,9 +115,7 @@ class Valid_Processor(DataProcessor):
             df = chunk.processed_object
             grouped_df = df[df['track'] != -1].groupby('track')
             last_station = df[df['station'] > 1][['phi', 'z', 'track']]
-            print(last_station)
             last_station = df[df['station'] > 1][['phi', 'z']].values
-            print(last_station.shape)
             for i, data in grouped_df:
                 chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
                 chunk_data_y.append(data[['phi', 'z']].values[-1])
