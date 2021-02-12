@@ -46,13 +46,14 @@ class GraphNet_Processor(DataProcessor):
                  output_dir: str,
                  data_df: pd.DataFrame,
                  stations_constraints,
-                 df_suffixes: Tuple[str]
+                 df_suffixes: Tuple[str],
+                 **kwargs
                  ):
         super().__init__(
             processor_name='RDGraphNet_v1_Processor',
             output_dir=output_dir,
             data_df=data_df)
-
+        self.func_vals = kwargs
         self._suffixes_df = df_suffixes
         self.transformer = Compose([
             ConstraintsNormalize(
@@ -64,6 +65,9 @@ class GraphNet_Processor(DataProcessor):
 
     def generate_chunks_iterable(self) -> Iterable[GraphDataChunk]:
         return self.data_df.groupby('event')
+
+    def total_chunks(self) -> int:
+        return self.data_df['event'].nunique()
 
     def construct_chunk(self,
                         chunk_df: pd.DataFrame) -> GraphDataChunk:
@@ -77,17 +81,23 @@ class GraphNet_Processor(DataProcessor):
         chunk_df = chunk.df_chunk_data
         chunk_id = int(chunk_df.event.values[0])
         output_name = (self.output_dir + '/graph_%s_%d' % (idx, chunk_id))
+        if not chunk_df[chunk_df.track < -1].empty:
+            LOGGER.warning("SKIPPED %d event with bad indices" % chunk_id)
+            return ReversedDiGraphDataChunk(None, output_name)
         pd_graph_df = to_pandas_graph_from_df(single_event_df=chunk_df,
                                               suffixes=self._suffixes_df,
                                               compute_is_true_track=True)
-        nodes_t, edges_t = get_pd_line_graph(pd_graph_df, apply_nodes_restrictions)
+
+        nodes_t, edges_t = get_pd_line_graph(pd_graph_df, apply_nodes_restrictions,
+                                             **self.func_vals['get_pd_line_graph'],
+                                             spec_kwargs=self.func_vals['get_supernodes_df'])
         # skip completely broken events (happens rarely but should not disturb the whole preprocessing)
         if edges_t.empty:
             LOGGER.warning("SKIPPED broken %d event" % chunk_id)
             return ReversedDiGraphDataChunk(None, output_name)
 
         # here we are filtering out superedges, trying to leave true superedges as much as we can
-        edges_filtered = apply_edge_restriction(edges_t)
+        edges_filtered = apply_edge_restriction(edges_t,  **self.func_vals['apply_edge_restriction'])
 
         # construct the output graph suitable for the neural network
         out = construct_output_graph(nodes_t, edges_filtered, ['y_p', 'y_c', 'z_p', 'z_c', 'z'],

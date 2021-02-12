@@ -42,8 +42,6 @@ def get_edges_from_supernodes(sn_from, sn_to):
     indexation = ['weight', 'true_superedge', 'edge_index_p', 'edge_index_c']
     return line_graph_edges[indexation]
 
-
-@gin.configurable(denylist=['one_station_segments', 'station'])
 def get_supernodes_df(one_station_segments,
                       axes,
                       suffix_p, suffix_c,
@@ -110,7 +108,7 @@ def apply_nodes_restrictions(nodes,
 def get_pd_line_graph(segments,
                       restrictions_func,
                       restrictions_0, restrictions_1,
-                      suffix_p, suffix_c):
+                      suffix_p, suffix_c, spec_kwargs):
     nodes = pd.DataFrame()
     edges = pd.DataFrame()
 
@@ -121,8 +119,8 @@ def get_pd_line_graph(segments,
     for i in range(1, len(by_stations)):
         # take segments (which will be nodes as a result) which go
         # from station i-1 to i AND from i to i+1
-        supernodes_from = get_supernodes_df(by_stations[i - 1], station=i - 1, STATION_COUNT=3, pi_fix=True)
-        supernodes_to = get_supernodes_df(by_stations[i], station=i, STATION_COUNT=3, pi_fix=True)
+        supernodes_from = get_supernodes_df(by_stations[i - 1], **spec_kwargs, station=i - 1, STATION_COUNT=3, pi_fix=True)
+        supernodes_to = get_supernodes_df(by_stations[i], **spec_kwargs, station=i, STATION_COUNT=3, pi_fix=True)
 
         if restrictions_func:
             # if restriction function is defined, apply it to edges (supernodes)
@@ -164,15 +162,13 @@ def to_pandas_graph_from_df(
         cartesian_product['track'] = ((pid1 == pid2) & (pid1 != -1))
     return cartesian_product
 
-
-@gin.configurable(denylist=['pd_edges_df'])
 def apply_edge_restriction(pd_edges_df: pd.DataFrame,
                            edge_restriction: float):
     assert 'weight' in pd_edges_df
     return pd_edges_df[pd_edges_df.weight < edge_restriction]
 
 
-@gin.configurable(allowlist=['index_label_prev', 'index_label_current'])
+
 def construct_output_graph(hits,
                            edges,
                            feature_names,
