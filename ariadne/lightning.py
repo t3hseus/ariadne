@@ -22,12 +22,14 @@ class TrainModel(pl.LightningModule):
         self.optimizer = optimizer
         self.metrics = metrics
         self.data_loader = data_loader()
+        print(torch.cuda.current_device())
 
     def forward(self, inputs):
         """
         # Arguments
             inputs (dict): kwargs dict with model inputs
         """
+        print(torch.cuda.current_device())
         return self.model(**inputs)
 
     def _calc_metrics(self, batch_output, batch_target):

@@ -68,14 +68,6 @@ def experiment(model,
 
     LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
 
-
-    os.makedirs(log_dir , exist_ok=True)
-    tb_logger = TensorBoardLogger(log_dir, name=model.__name__)
-    setup_logger(tb_logger.log_dir)
-
-
-    LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
-
     # for reproducibility
     if random_seed is not None:
         LOGGER.info('Setting random seed to %d', random_seed)

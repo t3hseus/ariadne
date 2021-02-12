@@ -1,4 +1,4 @@
-name: ariadne_gpu
+name: ariadne_gpu_new
 channels:
   - pytorch
   - conda-forge
