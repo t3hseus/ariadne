@@ -114,9 +114,6 @@ def experiment(model,
     trainer.fit(model=model)
 
 
-
-
-
 def main(argv):
     del argv
     gin.parse_config(open(FLAGS.config))

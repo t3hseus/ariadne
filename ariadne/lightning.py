@@ -22,14 +22,12 @@ class TrainModel(pl.LightningModule):
         self.optimizer = optimizer
         self.metrics = metrics
         self.data_loader = data_loader()
-        print(torch.cuda.current_device())
 
     def forward(self, inputs):
         """
         # Arguments
             inputs (dict): kwargs dict with model inputs
         """
-        print(torch.cuda.current_device())
         return self.model(**inputs)
 
     def _calc_metrics(self, batch_output, batch_target):
@@ -50,10 +48,6 @@ class TrainModel(pl.LightningModule):
         tqdm_dict = {f'train_{k}': v for k, v in result_dict.items()}
         self.log_dict(tqdm_dict, on_step=False, prog_bar=True)
         return tqdm_dict['train_loss']
-
-#    @property
-#    def example_input_array(self) -> Any:
-#        return [self.data_loader.get_one_sample()]
 
     def validation_step(self, batch, batch_idx):
         result_dict = self._forward_batch(batch)
