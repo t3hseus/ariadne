@@ -1,31 +1,33 @@
 import logging
+import os
 from typing import List, Tuple, Optional, Iterable
-from ariadne.preprocessing import DataProcessor, DataChunk, ProcessedDataChunk, ProcessedData
 
 import gin
 import pandas as pd
 import numpy as np
 
-from ariadne.transformations import Compose, StandardScale, ToCylindrical, \
-    ConstraintsNormalize, MinMaxScale, DropSpinningTracks, DropFakes, DropShort
+from ariadne.preprocessing import (
+    BaseTransformer,
+    DataProcessor,
+    DataChunk,
+    ProcessedDataChunk,
+    ProcessedData
+)
 
 LOGGER = logging.getLogger('ariadne.prepare')
 
 
 @gin.configurable(denylist=['df_chunk_data'])
 class TracknetDataChunk(DataChunk):
-
     def __init__(self, df_chunk_data: pd.DataFrame):
         super().__init__(df_chunk_data)
 
 class ProcessedTracknetData(ProcessedData):
-
     def __init__(self, processed_data: List[ProcessedDataChunk]):
         super().__init__(processed_data)
         self.processed_data = processed_data
 
 class ProcessedTracknetDataChunk(ProcessedDataChunk):
-
     def __init__(self,
                  processed_object: Optional,
                  output_name: str):
@@ -36,30 +38,17 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
 
 @gin.configurable(denylist=['data_df'])
 class TrackNet_Processor(DataProcessor):
-
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
-                 radial_stations_constraints,
-                 name_suffix: str
-                 ):
+                 name_suffix: str,
+                 transforms: List[BaseTransformer] = None):
         super().__init__(
             processor_name='TrackNet_v2_Processor',
             output_dir=output_dir,
-            data_df=data_df)
-
-        self.transformer = Compose([
-            DropFakes(),
-            DropSpinningTracks(),
-            DropShort(),
-            ToCylindrical(),
-            ConstraintsNormalize(
-                use_global_constraints=False,
-                constraints=radial_stations_constraints,
-                columns=('r', 'phi', 'z')
-            ),
-        ])
-        self.output_name = (self.output_dir + '/tracknet_' + name_suffix)
+            data_df=data_df,
+            transforms=transforms)
+        self.output_name = os.path.join(self.output_dir, f'tracknet_{name_suffix}')
 
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
         return self.data_df.groupby('event')
@@ -73,27 +62,36 @@ class TrackNet_Processor(DataProcessor):
                          chunk: TracknetDataChunk,
                          idx: str) -> ProcessedTracknetDataChunk:
         chunk_df = chunk.df_chunk_data
-        chunk_id = int(chunk_df.event.values[0])
-        output_name = (self.output_dir + '/tracknet_%s_%d' % (idx, chunk_id))
 
+        if chunk_df.empty:
+            return ProcessedTracknetDataChunk(None, '')
+
+        chunk_id = int(chunk_df.event.values[0])
+        output_name = os.path.join(self.output_dir, f'tracknet{idx}_{chunk_id}')
         return ProcessedTracknetDataChunk(chunk_df, output_name)
+
 
     def postprocess_chunks(self,
                            chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
         for chunk in chunks:
+            if chunk.processed_object is None:
+                continue
             chunk_data_x = []
             chunk_data_y = []
             chunk_data_len = []
             df = chunk.processed_object
             grouped_df = df[df['track'] != -1].groupby('track')
             for i, data in grouped_df:
-                #print(data)
                 chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
                 chunk_data_y.append(data[['r', 'phi', 'z']].values[-1])
                 chunk_data_len.append(2)
             chunk_data_x = np.stack(chunk_data_x, axis=0)
             chunk_data_y = np.stack(chunk_data_y, axis=0)
-            chunk_data = {'x': {'inputs': chunk_data_x, 'input_lengths': chunk_data_len}, 'y': chunk_data_y}
+            chunk_data = {
+                'x': {
+                    'inputs': chunk_data_x,
+                    'input_lengths': chunk_data_len},
+                'y': chunk_data_y}
             chunk.processed_object = chunk_data
         return ProcessedTracknetData(chunks)
 
@@ -112,5 +110,9 @@ class TrackNet_Processor(DataProcessor):
         all_data_inputs = np.concatenate(all_data_inputs).astype('float32')
         all_data_y = np.concatenate(all_data_y).astype('float32')
         all_data_len = np.concatenate(all_data_len)
-        np.savez(self.output_name, inputs=all_data_inputs, input_lengths=all_data_len, y=all_data_y )
-        print('Saved to: ', self.output_name+'.npz')
+        np.savez(
+            self.output_name,
+            inputs=all_data_inputs,
+            input_lengths=all_data_len, y=all_data_y
+        )
+        LOGGER.info(f'Saved to: {self.output_name}.npz')

@@ -1,31 +1,37 @@
 import logging
+import itertools
+import os
 from typing import List, Tuple, Optional, Iterable
-from ariadne.preprocessing import DataProcessor, DataChunk, ProcessedDataChunk, ProcessedData
 
 import gin
 import pandas as pd
 import numpy as np
-import itertools
-from ariadne.transformations import Compose, StandardScale, ToCylindrical, \
-    ConstraintsNormalize, MinMaxScale, DropSpinningTracks, DropFakes, DropShort
 from tqdm import tqdm
+
+from ariadne.preprocessing import (
+    BaseTransformer,
+    DataProcessor,
+    DataChunk,
+    ProcessedDataChunk,
+    ProcessedData
+)
+
 LOGGER = logging.getLogger('ariadne.prepare')
 
 
 @gin.configurable(denylist=['df_chunk_data'])
 class TracknetDataChunk(DataChunk):
-
     def __init__(self, df_chunk_data: pd.DataFrame):
         super().__init__(df_chunk_data)
 
-class ProcessedTracknetData(ProcessedData):
 
+class ProcessedTracknetData(ProcessedData):
     def __init__(self, processed_data: List[ProcessedDataChunk]):
         super().__init__(processed_data)
         self.processed_data = processed_data
 
-class ProcessedTracknetDataChunk(ProcessedDataChunk):
 
+class ProcessedTracknetDataChunk(ProcessedDataChunk):
     def __init__(self,
                  processed_object: Optional,
                  output_name: str,
@@ -38,29 +44,17 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
 
 @gin.configurable(denylist=['data_df'])
 class TrackNet_Explicit_Processor(DataProcessor):
-
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
-                 radial_stations_constraints,
-                 name_suffix: str
-                 ):
+                 name_suffix: str,
+                 transforms: List[BaseTransformer] = None):
         super().__init__(
             processor_name='TrackNet_Explicit_Processor',
             output_dir=output_dir,
-            data_df=data_df)
-
-        self.transformer = Compose([
-            DropSpinningTracks(),
-            DropShort(),
-            ToCylindrical(),
-            ConstraintsNormalize(
-                use_global_constraints=False,
-                constraints=radial_stations_constraints,
-                columns=('r', 'phi', 'z')
-            ),
-        ])
-        self.output_name = (self.output_dir + '/tracknet_' + name_suffix)
+            data_df=data_df,
+            transforms=transforms)
+        self.output_name = os.path.join(self.output_dir, f'tracknet_{name_suffix}')
 
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
         return self.data_df.groupby('event')
@@ -74,10 +68,14 @@ class TrackNet_Explicit_Processor(DataProcessor):
                          chunk: TracknetDataChunk,
                          idx: str) -> ProcessedTracknetDataChunk:
         chunk_df = chunk.df_chunk_data
-        chunk_id = int(chunk_df.event.values[0])
-        output_name = (self.output_dir + '/tracknet_%s_%d' % (idx, chunk_id))
 
+        if chunk_df.empty:
+            return ProcessedTracknetDataChunk(None, '', 0)
+
+        chunk_id = int(chunk_df.event.values[0])
+        output_name = os.path.join(self.output_dir, f'tracknet{idx}_{chunk_id}')
         return ProcessedTracknetDataChunk(chunk_df, output_name, chunk_id)
+
 
     def cartesian(self, df1, df2):
         rows = itertools.product(df1.iterrows(), df2.iterrows())
@@ -87,9 +85,12 @@ class TrackNet_Explicit_Processor(DataProcessor):
         df = pd.concat([df, df_fakes], axis=0)
         return df.reset_index(drop=True)
 
+
     def postprocess_chunks(self,
                            chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
         for chunk in chunks:
+            if chunk.processed_object is None:
+                continue
             chunk_data_x = []
             chunk_data_y = []
             chunk_data_len = []
@@ -116,7 +117,6 @@ class TrackNet_Explicit_Processor(DataProcessor):
                 temp_data[0, :] = row[['r_left', 'phi_left', 'z_left']].values
                 temp_data[1, :] = row[['r_right', 'phi_right', 'z_right']].values
                 chunk_data_x.append(temp_data)
-                #print(chunk_data_x[-1].shape)
                 chunk_data_y.append(chunk_data_y[0])
                 chunk_data_moment.append(chunk_data_moment[0])
                 chunk_data_real.append(0)
@@ -127,8 +127,15 @@ class TrackNet_Explicit_Processor(DataProcessor):
             chunk_data_moment = np.stack(chunk_data_moment, axis=0)
             chunk_data_real = np.stack(chunk_data_real, axis=0)
             chunk_data_event = np.stack(chunk_data_event, axis=0)
-            chunk_data = {'x': {'inputs': chunk_data_x, 'input_lengths': chunk_data_len},
-                          'y': chunk_data_y, 'moment': chunk_data_moment, 'is_real': chunk_data_real, 'event': chunk_data_event}
+            chunk_data = {
+                'x': {
+                    'inputs': chunk_data_x,
+                    'input_lengths': chunk_data_len},
+                'y': chunk_data_y,
+                'moment': chunk_data_moment,
+                'is_real': chunk_data_real,
+                'event': chunk_data_event
+            }
             chunk.processed_object = chunk_data
         return ProcessedTracknetData(chunks)
 
@@ -153,12 +160,22 @@ class TrackNet_Explicit_Processor(DataProcessor):
         all_data_inputs = np.concatenate(all_data_inputs)
         all_data_y = np.concatenate(all_data_y)
         all_data_len = np.concatenate(all_data_len)
-        #print(all_data_len.shape)
         all_data_real = np.concatenate(all_data_real)
         all_data_event = np.concatenate(all_data_event)
         all_data_moment = np.concatenate(all_data_moment)
-        np.savez(self.output_name, inputs=all_data_inputs, input_lengths=all_data_len, y=all_data_y,
-                 moments=all_data_moment, is_real=all_data_real, events=all_data_event)
-        print('Saved data to: ', self.output_name + '.npz')
-        np.savez(self.output_name+'_all_last_station', hits=all_data_y, event=all_data_event)
-        print('Saved only last station hits to: ', self.output_name+'_last_station.npz')
+        np.savez(
+            self.output_name,
+            inputs=all_data_inputs,
+            input_lengths=all_data_len,
+            y=all_data_y,
+            moments=all_data_moment,
+            is_real=all_data_real,
+            events=all_data_event
+        )
+        LOGGER.info(f'Saved to: {self.output_name}.npz')
+        np.savez(
+            f'{self.output_name}_all_last_station',
+            hits=all_data_y,
+            event=all_data_event
+        )
+        LOGGER.info(f'Saved only last station hits to: {self.output_name}_last_station.npz')

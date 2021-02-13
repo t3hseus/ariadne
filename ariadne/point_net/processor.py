@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Tuple, Iterable, Optional, List
 
 import gin
@@ -6,21 +7,25 @@ import pandas as pd
 import numpy as np
 
 from ariadne.point_net.point.points import Points, save_points_new
-from ariadne.preprocessing import DataProcessor, DataChunk, ProcessedDataChunk, ProcessedData
-from ariadne.transformations import Compose, ConstraintsNormalize, ToCylindrical
+from ariadne.preprocessing import (
+    BaseTransformer,
+    DataProcessor,
+    DataChunk,
+    ProcessedDataChunk,
+    ProcessedData
+)
+from ariadne.transformations import Compose
 
 LOGGER = logging.getLogger('ariadne.prepare')
 
 
 @gin.configurable(denylist=['df_chunk_data'])
 class PointsDataChunk(DataChunk):
-
     def __init__(self, df_chunk_data: pd.DataFrame):
         super().__init__(df_chunk_data)
 
 
 class TransformedPointsDataChunk(ProcessedDataChunk):
-
     def __init__(self,
                  processed_object: Optional[Points],
                  output_name: str):
@@ -30,7 +35,6 @@ class TransformedPointsDataChunk(ProcessedDataChunk):
 
 
 class ProcessedPointsData(ProcessedData):
-
     def __init__(self, processed_data: List[TransformedPointsDataChunk]):
         super().__init__(processed_data)
         self.processed_data = processed_data
@@ -41,23 +45,14 @@ class PointNet_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
-                 stations_constraints
-                 ):
+                 transforms: List[BaseTransformer] = None):
         super().__init__(
             processor_name='PointNet_Processor',
             output_dir=output_dir,
-            data_df=data_df)
-        self.stations_constraints = stations_constraints
-        self.transformer = None
+            data_df=data_df,
+            transforms=transforms)
 
     def generate_chunks_iterable(self) -> Iterable[PointsDataChunk]:
-        self.transformer = Compose([
-            ConstraintsNormalize(
-                use_global_constraints=False,
-                constraints=self.stations_constraints
-            ),
-            ToCylindrical(drop_old=True, cart_columns=('y', 'x'))
-        ])
         return self.data_df.groupby('event')
 
     def construct_chunk(self,
@@ -65,16 +60,14 @@ class PointNet_Processor(DataProcessor):
         processed = self.transformer(chunk_df)
         return PointsDataChunk(processed)
 
+
     def preprocess_chunk(self,
                          chunk: PointsDataChunk,
                          idx: str) -> ProcessedDataChunk:
         chunk_df = chunk.df_chunk_data
         chunk_id = int(chunk_df.event.values[0])
-        output_name = (self.output_dir + '/points_%s_%d' % (idx, chunk_id))
+        output_name = os.path.join(self.output_dir, f'points_{idx}_{chunk_id}')
         out = (chunk_df[['r', 'phi', 'z']].values / [1., np.pi, 1.]).T
-        # if not chunk_df[(chunk_df.track != -1) & (chunk_df.track < 0) ].empty:
-        #    logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
-        #    return TransformedPointsDataChunk(None, "")
         out = Points(
             X=out.astype(np.float32),
             track=(chunk_df[['track']] >= 0).values.squeeze(-1).astype(np.float32)
@@ -93,7 +86,7 @@ class PointNet_Processor(DataProcessor):
             if obj.processed_object is None:
                 broken += 1
 
-        LOGGER.info("\n==Collected %d broken events out of %d events.==\n" % (broken, total))
+        LOGGER.info(f'\n==Collected {broken} broken events out of {total} events.==\n')
         save_points_new(processed_data.processed_data)
 
 
@@ -102,63 +95,48 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
-                 stations_constraints,
-                 stats_cols
-                 ):
+                 stats_cols,
+                 transforms: List[BaseTransformer] = None):
         super().__init__(
             output_dir=output_dir,
-            data_df=data_df, stations_constraints=stations_constraints)
+            data_df=data_df,
+            transforms=transforms
+        )
         self.stats_cols = stats_cols
         self.maxis = {col: -1e7 for col in stats_cols}
         self.minis = {col: 1e7 for col in stats_cols}
         self.mean_hits = []
 
-    def generate_chunks_iterable(self) -> Iterable[PointsDataChunk]:
-        self.transformer = Compose([
-            ConstraintsNormalize(
-                use_global_constraints=True,
-                constraints=self.stations_constraints
-            )
-        ])
-        return self.data_df.groupby('event')
 
     def preprocess_chunk(self,
                          chunk: PointsDataChunk,
                          idx: str) -> ProcessedDataChunk:
         chunk_df = chunk.df_chunk_data
+
+        if chunk_df.empty:
+            return TransformedPointsDataChunk(None, '')
+
         chunk_id = int(chunk_df.event.values[0])
-        output_name = (self.output_dir + '/points_%s_%d' % (idx, chunk_id))
+        output_name = os.path.join(self.output_dir, f'points_{idx}_{chunk_id}')
         chunk_df = chunk_df[chunk_df.det == 1]
 
         if not chunk_df[chunk_df.track < -1].empty:
-            logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
-            return TransformedPointsDataChunk(None, "")
+            LOGGER.info(f'\nPointNet_Processor got hit with id < -1!\n for event {chunk_id}')
+            return TransformedPointsDataChunk(None, '')
 
         if chunk_df[chunk_df.track == -1].empty:
-            logging.info("\nPointNet_Processor got event with no fakes!\n for event %d" % chunk_id)
-            return TransformedPointsDataChunk(None, "")
+            LOGGER.info(f'\nPointNet_Processor got event with no fakes!\n for event {chunk_id}')
+            return TransformedPointsDataChunk(None, '')
 
         if chunk_df[chunk_df.track != -1].empty:
-            logging.info("\nPointNet_Processor got event with no real hits!\n for event %d" % chunk_id)
-            return TransformedPointsDataChunk(None, "")
-
-        if chunk_df.empty:
-            LOGGER.warning("SKIPPED empty %d event" % chunk_id)
-            return TransformedPointsDataChunk(None, output_name)
-
+            LOGGER.info(f'\nPointNet_Processor got event with no real hits!\n for event {chunk_id}')
+            return TransformedPointsDataChunk(None, '')
 
         for col in self.stats_cols:
             self.maxis[col] = max(chunk_df[col].max(), self.maxis[col])
             self.minis[col] = min(chunk_df[col].min(), self.minis[col])
 
-        # chunk_df = chunk_df[chunk_df.det == 0]
-        if chunk_df.empty:
-            LOGGER.warning("SKIPPED broken %d event" % chunk_id)
-            return TransformedPointsDataChunk(None, output_name)
         out = chunk_df[['x', 'y', 'z']].values.T
-        # if not chunk_df[(chunk_df.track != -1) & (chunk_df.track < 0) ].empty:
-        #    logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
-        #    return TransformedPointsDataChunk(None, "")
         out = Points(
             X=out.astype(np.float32),
             track=(chunk_df[['track']] >= 0).values.squeeze(-1).astype(np.float32)
@@ -166,14 +144,15 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
         self.mean_hits.append(len(chunk_df))
         return TransformedPointsDataChunk(out, output_name)
 
+
     def save_on_disk(self,
                      processed_data: ProcessedPointsData):
-        print("\n\n=================\nSome stats:")
+        LOGGER.info("\n\n=================\nSome stats:")
         for col in self.stats_cols:
-            print("MAXIS %s: %f" % (col, self.maxis[col]))
-            print("MINIS %s: %f" % (col, self.minis[col]))
-        print("Mean hits per event: %f" % (np.mean(self.mean_hits)))
-        print("End\n===============\n")
+            LOGGER.info(f'MAXIS {col}: {self.maxis[col]}')
+            LOGGER.info(f'MINIS {col}: {self.minis[col]}')
+        LOGGER.info(f'Mean hits per event: {np.mean(self.mean_hits)}')
+        LOGGER.info('End\n===============\n')
         super(PointNet_ProcessorBMN7, self).save_on_disk(processed_data)
 
 
@@ -182,26 +161,32 @@ class PointNet_ProcessorBMN7_dist(PointNet_ProcessorBMN7):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
-                 stations_constraints
-                 ):
+                 transforms: List[BaseTransformer] = None):
         super().__init__(
             output_dir=output_dir,
-            data_df=data_df, stations_constraints=stations_constraints)
-        raise NotImplementedError("implements cols for stats plz")
+            data_df=data_df,
+            transforms=transforms
+        )
+        raise NotImplementedError('implements cols for stats plz')
 
     def preprocess_chunk(self,
                          chunk: PointsDataChunk,
                          idx: str) -> ProcessedDataChunk:
         chunk_df = chunk.df_chunk_data
+
+        if chunk_df.empty:
+            return TransformedPointsDataChunk(None, '')
+
         chunk_id = int(chunk_df.event.values[0])
-        output_name = (self.output_dir + '/points_%s_%d' % (idx, chunk_id))
+        output_name = os.path.join(self.output_dir, f'points_{idx}_{chunk_id}')
+
         for col in ['x', 'y', 'z']:
             self.maxis[col] = max(chunk_df[col].max(), self.maxis[col])
             self.minis[col] = min(chunk_df[col].min(), self.minis[col])
 
         chunk_df = chunk_df[chunk_df.det == 1]
         if chunk_df.empty:
-            LOGGER.warning("SKIPPED broken %d event" % chunk_id)
+            LOGGER.warning(f'SKIPPED broken {chunk_id} event')
             return TransformedPointsDataChunk(None, output_name)
 
         track_pnts = chunk_df[chunk_df.track >= 0]
@@ -218,9 +203,6 @@ class PointNet_ProcessorBMN7_dist(PointNet_ProcessorBMN7):
         chunk_df['dist'] = a
 
         out = chunk_df[['x', 'y', 'z']].values.T
-        # if not chunk_df[(chunk_df.track != -1) & (chunk_df.track < 0) ].empty:
-        #    logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
-        #    return TransformedPointsDataChunk(None, "")
         out = Points(
             X=out.astype(np.float32),
             track=chunk_df[['dist']].values.squeeze(-1).astype(np.float32)
@@ -234,54 +216,52 @@ class PointNet_ProcessorBMN7_impulse(PointNet_ProcessorBMN7):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
-                 stations_constraints,
                  stats_cols,
-                 impulses
-                 ):
+                 impulses,
+                 transforms: List[BaseTransformer] = None):
         super().__init__(
             output_dir=output_dir,
-            data_df=data_df, stations_constraints=stations_constraints, stats_cols=stats_cols)
-
+            data_df=data_df,
+            stats_cols=stats_cols,
+            transforms=transforms
+        )
         self.impulse_minmax = impulses
+
 
     def preprocess_chunk(self,
                          chunk: PointsDataChunk,
                          idx: str) -> ProcessedDataChunk:
         chunk_df = chunk.df_chunk_data
-        chunk_id = int(chunk_df.event.values[0])
-        output_name = (self.output_dir + '/points_%s_%d' % (idx, chunk_id))
 
+        if chunk_df.empty:
+            return TransformedPointsDataChunk(None, '')
+
+        chunk_id = int(chunk_df.event.values[0])
+        output_name = os.path.join(self.output_dir, f'points_{idx}_{chunk_id}')
         chunk_df = chunk_df[chunk_df.det == 1]
 
         if not chunk_df[chunk_df.track < -1].empty:
-            logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
-            return TransformedPointsDataChunk(None, "")
+            LOGGER.info(f'\nPointNet_Processor got hit with id < -1!\n for event {chunk_id}')
+            return TransformedPointsDataChunk(None, '')
 
         if chunk_df[chunk_df.track == -1].empty:
-            logging.info("\nPointNet_Processor got event with no fakes!\n for event %d" % chunk_id)
-            return TransformedPointsDataChunk(None, "")
+            LOGGER.info(f'\nPointNet_Processor got event with no fakes!\n for event {chunk_id}')
+            return TransformedPointsDataChunk(None, '')
 
         if chunk_df[chunk_df.track != -1].empty:
-            logging.info("\nPointNet_Processor got event with no real hits!\n for event %d" % chunk_id)
-            return TransformedPointsDataChunk(None, "")
-
-        if chunk_df.empty:
-            LOGGER.warning("SKIPPED empty %d event" % chunk_id)
-            return TransformedPointsDataChunk(None, output_name)
+            LOGGER.info(f'\nPointNet_Processor got event with no real hits!\n for event {chunk_id}')
+            return TransformedPointsDataChunk(None, '')
 
         for key, val in self.impulse_minmax.items():
             vals = chunk_df[[key]].values
             normed = vals / val[1]
             chunk_df[key] = normed
-
             true = chunk_df[chunk_df.track >= 0][key].values
             false = chunk_df[chunk_df.track < 0][key].values
             self.maxis[key + "_true"] = max(self.maxis[key + "_true"], true.max())
             self.minis[key + "_true"] = min(self.minis[key + "_true"], true.min())
-
             self.maxis[key + "_false"] = max(self.maxis[key + "_false"], false.max())
             self.minis[key + "_false"] = min(self.minis[key + "_false"], false.min())
-
 
 
         chunk_df['station'] = (chunk_df['station'].values / 5.0)
@@ -292,7 +272,6 @@ class PointNet_ProcessorBMN7_impulse(PointNet_ProcessorBMN7):
             self.maxis[col] = max(chunk_df[col].max(), self.maxis[col])
             self.minis[col] = min(chunk_df[col].min(), self.minis[col])
 
-
         # track_pnts = chunk_df[chunk_df.track >= 0]
         # xs = track_pnts[['x']].values
         # ys = track_pnts[['y']].values
@@ -301,7 +280,7 @@ class PointNet_ProcessorBMN7_impulse(PointNet_ProcessorBMN7):
 
         out = chunk_df[['x', 'y', 'z', 'station']].values.T
         # if not chunk_df[(chunk_df.track != -1) & (chunk_df.track < 0) ].empty:
-        #    logging.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
+        #    LOGGER.info("\nPointNet_Processor got hit with id < -1!\n for event %d" % chunk_id)
         #    return TransformedPointsDataChunk(None, "")
 
         tgt = chunk_df[['px', 'py', 'pz']].values

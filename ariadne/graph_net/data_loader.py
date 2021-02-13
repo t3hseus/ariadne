@@ -9,7 +9,6 @@ from ariadne.graph_net.dataset import GraphDataset, GraphsDatasetMemory, GraphBa
 
 @gin.configurable
 class GraphDataLoader(BaseDataLoader):
-
     def __init__(self,
                  batch_size: int,
                  dataset: GraphDataset.__class__,
@@ -41,7 +40,6 @@ class GraphDataLoader(BaseDataLoader):
 
 @gin.configurable
 class GraphsDataLoaderNew(BaseDataLoader):
-
     def __init__(self,
                  dataset: GraphsDatasetMemory.__class__,
                  collate_fn: Callable,

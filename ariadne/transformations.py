@@ -1,14 +1,25 @@
-import pandas as pd
-import numpy as np
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
+import logging
+from typing import Optional, List
 from copy import deepcopy
 
+import gin
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import (
+    StandardScaler,
+    MinMaxScaler,
+    Normalizer
+)
 
-class Compose(object):
+LOGGER = logging.getLogger('ariadne.transforms')
+
+class Compose:
     """Composes several transforms together.
-    # Args:
-        transforms (list of ``Transform`` objects): list of transforms to compose.
-    # Example:
+    Args:
+        transforms (list of ``Transform`` objects): list of
+            transforms to compose.
+
+    Example:
         >>> Compose([
         >>>     transforms.StandardScale(),
         >>>     transforms.ToCylindrical(),
@@ -17,21 +28,27 @@ class Compose(object):
 
     def __init__(self, transforms):
         self.transforms = transforms
-    def __call__(self, data):
+
+    def __call__(self, data: pd.DataFrame):
         for t in self.transforms:
             data = t(data)
+            if data.empty:
+                LOGGER.warning(f'{t.__class__.__name__} returned empty data. '
+                               'Skipping all further transforms')
+                return data
         return data
 
     def __repr__(self):
         """
-        # Returns: formatted strings with class_names, parameters and some statistics for each class
+        Returns:
+            str: formatted strings with class_names,
+                parameters and some statistics for each class
         """
-        format_string = self.__class__.__name__ + '('
-        for t in self.transforms:
-            format_string += '\n'
-            format_string += '{0} \n'.format(t)
-        format_string += '\n)'
-        return format_string
+        transforms_str = ',\n'.join(
+            [f'  {t.__class__.__name__}' for t in self.transforms])
+        fmt_str = f'{self.__name__}(\n{transforms_str}\n)'
+        return fmt_str
+
 
 class PreserveOriginal(object):
     """Preserves original state of given columns.
@@ -94,7 +111,9 @@ class BaseTransformer(object):
         return data.loc[data[self.track_column] != -1, :]
 
     def get_num_fakes(self):
-        return len(self.fakes)
+        if self.fakes:
+            return len(self.fakes)
+        return 0
 
     def add_fakes(self, data):
         return pd.concat([data, self.fakes], axis=0).reset_index()
@@ -236,6 +255,7 @@ class BaseCoordConverter(BaseTransformer):
         return '-' * 30 + '\n' + f'{self.__class__.__name__} with convert_function: {self.convert_function}\n' + '-' * 30 + '\n'
 
 
+@gin.configurable
 class StandardScale(BaseScaler):
     """Standardizes coordinates by removing the mean and scaling to unit variance
     # Args:
@@ -258,6 +278,7 @@ class StandardScale(BaseScaler):
                f' Mean: {self.scaler.mean_} \n Var: {self.scaler.var_} \n Scale: {self.scaler.scale_} '
 
 
+@gin.configurable
 class MinMaxScale(BaseScaler):
     """Transforms features by scaling each feature to a given range.
      # Args:
@@ -281,6 +302,7 @@ class MinMaxScale(BaseScaler):
                f' Data min: {self.scaler.data_min_} \n Data max: {self.scaler.data_max_} \n Scale: {self.scaler.scale_} '
 
 
+@gin.configurable
 class Normalize(BaseScaler):
     """Normalizes samples individually to unit norm.
     Each sample (i.e. each row of the data matrix) with at least one non zero component is rescaled independently of
@@ -305,6 +327,7 @@ class Normalize(BaseScaler):
                '-' * 30 + '\n'
 
 
+@gin.configurable
 class ConstraintsNormalize(BaseTransformer):
     """Normalizes samples using station given characteristics  or computes them by call.
     If you need to compute characteristics, you can use MinMaxScale too (maybe better)
@@ -423,6 +446,7 @@ class ConstraintsNormalize(BaseTransformer):
                 f"{'-'*30}\nconstraints are: {self.constraints}")
 
 
+@gin.configurable
 class DropShort(BaseFilter):
     """Drops tracks with num of points less then given from data.
       # Args:
@@ -451,6 +475,7 @@ class DropShort(BaseFilter):
                f'Number of broken tracks: {super().get_num_broken()} \n'
 
 
+@gin.configurable
 class DropSpinningTracks(BaseFilter):
     """Drops tracks with points on same stations (e.g. (2,2,2) or (1,2,1)).
       # Args:
@@ -473,6 +498,7 @@ class DropSpinningTracks(BaseFilter):
                f'Number of broken tracks: {super().get_num_broken()} \n'
 
 
+@gin.configurable
 class DropFakes(BaseTransformer):
     """Drops points without tracks.
     Args:
@@ -502,6 +528,7 @@ class DropFakes(BaseTransformer):
                f'Number of misses: {self.get_num_fakes()} \n'
 
 
+@gin.configurable
 class ToCylindrical(BaseCoordConverter):
     """Convertes data to polar coordinates. Note that cartesian coordinates are used in reversed order!
        Formula used: r = sqrt(x^2 + y^2), phi = atan2(x,y)
@@ -531,6 +558,7 @@ class ToCylindrical(BaseCoordConverter):
                f' Ranges: {super().get_ranges_str()} '
 
 
+@gin.configurable
 class ToCartesian(BaseCoordConverter):
     """Converts coordinates to cartesian. Formula is: y = r * cos(phi), x = r * sin(phi).
     Note that always resulting columns are x,y,z.
@@ -558,6 +586,7 @@ class ToCartesian(BaseCoordConverter):
                f'Ranges:' + super().get_ranges_str()
 
 
+@gin.configurable
 class ToBuckets(BaseTransformer):
     """Data may contains from tracks with varying lengths.
     To prepare a train dataset in a proper way, we have to
