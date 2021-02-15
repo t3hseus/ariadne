@@ -38,20 +38,24 @@ def weights_update(model, checkpoint):
     model.eval()
     return model
 
-def find_nearest_hit_no_faiss(ellipses, y):
+def find_nearest_hit_no_faiss(ellipses, y, return_numpy=False):
     centers = ellipses[:, :2]
     last_station_hits = deepcopy(y)
     dists = torch.cdist(last_station_hits.float(), centers.float())
     minimal = last_station_hits[torch.argmin(dists, dim=0)]
     is_in_ellipse = point_in_ellipse(ellipses, minimal)
+    if return_numpy:
+        minimal = minimal.detach().cpu().numpy()
+        is_in_ellipse  = is_in_ellipse.detach().cpu().numpy()
     return minimal, is_in_ellipse
 
-def find_nearest_hit(torch_ellipses, last_station_hits):
+def find_nearest_hit(ellipses, last_station_hits):
+    #numpy, numpy -> numpy, numpy
     index = faiss.IndexFlatL2(2)
-    index.add(last_station_hits)
-    ellipses = torch_ellipses.detach().cpu().numpy()
+    index.add(last_station_hits.astype('float32'))
+    #ellipses = torch_ellipses.detach().cpu().numpy()
     centers = ellipses[:,:2]
-    d, i = index.search(np.ascontiguousarray(centers), 1)
+    d, i = index.search(np.ascontiguousarray(centers.astype('float32')), 1)
     x_part = d.flatten() / ellipses[:, 2].flatten()**2
     y_part = d.flatten() / ellipses[:, 3].flatten()**2
     left_side = x_part + y_part
