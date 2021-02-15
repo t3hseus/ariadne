@@ -18,7 +18,7 @@ from absl import app
 from copy import deepcopy
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2_1.model import Classifier
-from ariadne.utils import cartesian, weights_update, find_nearest_hit, find_nearest_hit_faiss
+from ariadne.utils import cartesian, weights_update, find_nearest_hit, find_nearest_hit_no_faiss
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -62,7 +62,7 @@ def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, ba
         batch_real_flag = torch.from_numpy(batch_real_flag).to(DEVICE)
         num_real_tracks = batch_real_flag.sum()
         t1 = time.time()
-        nearest_points, is_point_in_ellipse = find_nearest_hit(test_pred, all_last_y)
+        nearest_points, is_point_in_ellipse = find_nearest_hit_no_faiss(test_pred, all_last_y)
         t2 = time.time()
         nearest_points[~is_point_in_ellipse] = -2.
         if use_classifier:
@@ -100,9 +100,9 @@ def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_fl
         test_pred = model(inputs=torch.from_numpy(batch_input).to(DEVICE), input_lengths=torch.from_numpy(batch_len).to(DEVICE))
         num_real_tracks = batch_real_flag.sum()
         t1 = time.time()
-        nearest_points_index, is_point_in_ellipse = find_nearest_hit_faiss(test_pred, all_last_y)
+        nearest_points, is_point_in_ellipse = find_nearest_hit(test_pred, all_last_y)
         t2 = time.time()
-        nearest_points = all_last_y[nearest_points_index.flatten()]
+        #nearest_points = all_last_y[nearest_points_index.flatten()]
         if use_classifier:
             pred_classes = class_model(model.last_gru_output, torch.from_numpy(nearest_points.astype('float')).to(DEVICE))
             softmax = torch.nn.Softmax()
