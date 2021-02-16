@@ -19,7 +19,8 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2_1.model import Classifier
-from ariadne.utils import cartesian, weights_update, find_nearest_hit, find_nearest_hit_no_faiss
+from ariadne.utils import weights_update, find_nearest_hit, find_nearest_hit_no_faiss,\
+    get_diagram_arr_linspace,draw_for_col,draw_from_data
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -140,6 +141,7 @@ all_time_faiss = 0
 search_time_no_faiss = 0
 search_time_faiss = 0
 num_batches = 0
+times = {i:[] for i in range(1,11)}
 
 for batch_event in tqdm(np.unique(events['events'])):
     batch_x = events['x'][events['events'] == batch_event]
@@ -154,6 +156,7 @@ for batch_event in tqdm(np.unique(events['events'])):
     df_faiss, elapsed_time_faiss, total_elapsed_faiss = handle_event_to_df_faiss(batch_x, batch_len, batch_y, batch_labels, last_station_data, batch_moments)
     search_time_faiss += elapsed_time_faiss
     all_time_faiss += total_elapsed_faiss
+    times[int(batch_labels.sum())].append(total_elapsed_faiss)
     result_df = pd.concat([result_df,df], axis=0)
     result_df_faiss = pd.concat([result_df, df_faiss], axis=0)
     num_batches +=1
@@ -192,66 +195,23 @@ print('-'*10)
 print(f'Total time: {all_time_faiss} sec')
 print(f'Total time per batch: {(all_time_faiss/num_batches)} sec')
 
-from scipy.interpolate import make_interp_spline, BSpline
-
-
-def get_diagram_arr_linspace(all_real_hits, found_hits, start, end, num, col):
-    spac = np.linspace(start, end, num=num)
-
-    arr = []
-
-    for i in range(len(spac) - 1):
-        beg = spac[i]
-        end = spac[i + 1]
-        elems_real = all_real_hits[(all_real_hits[col] > beg) & (all_real_hits[col] < end)]
-        elems_pred = found_hits[(found_hits[col] > beg) & (found_hits[col] < end)]
-        if elems_real.empty:
-            arr.append(np.NaN)
-            continue
-        arr.append(len(elems_pred) / len(elems_real))
-
-    return arr, spac[:-1]
-
-
-def draw_for_col(tracks_real, tracks_pred_true,
-                 col, col_pretty, total_events, n_ticks=150, save_disk=True):
-    start = tracks_real[tracks_real[col] > -np.inf][col].min()
-    end = tracks_real[tracks_real[col] < np.inf][col].max()
-
-    initial, spac = get_diagram_arr_linspace(tracks_real, tracks_pred_true, start, end, n_ticks, col)
-
-    # mean line
-    # find number of ticks until no nans present
-    second = np.array([np.nan])
-    count_start = n_ticks // 5
-    while np.isnan(second).any():
-        second, spac2 = get_diagram_arr_linspace(tracks_real, tracks_pred_true, start, end, count_start, col)
-        count_start = count_start - count_start // 2
-
-    xnew = np.linspace(spac2.min(), spac2.max(), count_start)
-
-    spl = make_interp_spline(spac2, second, k=3)  # type: BSpline
-    power_smooth = spl(xnew)
-
-    maxX = end
-    plt.figure(figsize=(8, 7))
-
-    plt.subplot(111)
-    plt.ylabel('Track efficiency', fontsize=12)
-    plt.xlabel(col_pretty, fontsize=12)
-    # plt.axis([0, maxX, 0, 1.005])
-    plt.plot(spac, initial, alpha=0.8, lw=0.8)
-    plt.title('GraphNet_V1 track efficiency vs impulse (%d events)' % total_events, fontsize=14)
-    plt.plot(xnew, power_smooth, ls='--', label='mean', lw=2.5)
-    plt.xticks(np.linspace(start, maxX, 8))
-    plt.yticks(np.linspace(0, 1, 9))
-    plt.legend(loc=0)
-    plt.grid()
-    plt.tight_layout()
-    plt.rcParams['savefig.facecolor'] = 'white'
-    os.makedirs('../output', exist_ok=True)
-    plt.savefig('../output/img_track_eff_%s_ev%r_t%d.png' % (col, total_events, n_ticks), dpi=300)
-    plt.show()
-
+true_tracks_result_df = result_df[result_df.is_real_track == 1]
+tracks_pred_true = true_tracks_result_df[true_tracks_result_df.found_right_point]
+tracks_real = true_tracks_result_df[(true_tracks_result_df.found_right_point == False)  | (true_tracks_result_df.found == False)]
+#draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', 2000, 175)
+draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', 2000, 175, style='plot')
+#draw_for_col(true_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', 2000, 175)
+draw_for_col(true_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', 2000, 175, style='plot')
+#draw_for_col(true_tracks_result_df, tracks_pred_true, 'cos_t', '$cos_t$', 2000, 175)
+draw_for_col(true_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', 2000, 175, style='plot')
+times_mean = {k: np.mean(v) for k, v in times.items()}
+times_std = {k: np.std(v) for k, v in times.items()}
+draw_from_data(title = "TrackNETv2.1 Mean Processing Time vs Multiplicity (ms)",
+               data_x=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+               data_y=[v * 1000 for v in times_mean.values()],
+               data_y_err=[v * 1000 for v in times_std.values()],
+               axis_x="multiplicity",
+               mean_label='mean'
+               )
 
 
