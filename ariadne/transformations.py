@@ -50,32 +50,6 @@ class Compose:
         return fmt_str
 
 
-class PreserveOriginal(object):
-    """Preserves original state of given columns.
-    # Args:
-         columns (list or tuple, ['x', 'y', 'z'] by default): Columns to keep
-    """
-
-    def __init__(self, columns=('x', 'y', 'z')):
-        self.columns = columns
-
-    def __call__(self, data):
-        """
-        # Args:
-            data (pd.DataFrame):  to clean up.
-        # Returns:
-            data (pd.DataFrame): transformed dataframe
-        """
-        for col in self.columns:
-            data.loc[:, col + '_original'] = data.loc[:, col]
-        return data
-
-    def __repr__(self):
-        return '-' * 30 + '\n' + \
-               f'{self.__class__.__name__} ceeping original state of columns: {self.columns} \n' + \
-               '-' * 30 + '\n'
-
-
 class BaseTransformer(object):
     """Base class for transforms
     # Args:
@@ -85,11 +59,10 @@ class BaseTransformer(object):
          keep_fakes (boolean, True by default): If True, hits with no track are preserved
     """
 
-    def __init__(self, drop_old=False, keep_fakes=True, columns=('x', 'y', 'z'), track_col='track', event_col='event',
+    def __init__(self, drop_old=False, columns=('x', 'y', 'z'), track_col='track', event_col='event',
                  station_col='station'):
         self.drop_old = drop_old
         self.columns = columns
-        self.keep_fakes = keep_fakes
         self.fakes = None
         self.event_column = event_col
         self.track_column = track_col
@@ -106,9 +79,9 @@ class BaseTransformer(object):
         return data
 
     def drop_fakes(self, data):
-        if self.keep_fakes:
-            self.fakes = data.loc[data[self.track_column] == -1, :]
-        return data.loc[data[self.track_column] != -1, :]
+        self.fakes = data.loc[data[self.track_column] == -1, :]
+        data = data.loc[data[self.track_column] != -1, :]
+        return data
 
     def get_num_fakes(self):
         if self.fakes:
@@ -117,6 +90,7 @@ class BaseTransformer(object):
 
     def add_fakes(self, data):
         return pd.concat([data, self.fakes], axis=0).reset_index()
+
 
 
 class BaseScaler(BaseTransformer):
@@ -159,14 +133,15 @@ class BaseFilter(BaseTransformer):
          track_col (string, 'track' by default): column with station identifiers
     """
 
-    def __init__(self, filter_rule, num_stations=None, keep_fakes=True, station_col='station', track_col='track',
+    def __init__(self, filter_rule, num_stations=None, keep_filtered=True, station_col='station', track_col='track',
                  event_col='event'):
         self.num_stations = num_stations
         self._broken_tracks = None
         self._num_broken_tracks = None
-        self.keep_fakes = keep_fakes
+        self.keep_fakes = True
         self.filter_rule = filter_rule
-        super().__init__(keep_fakes=keep_fakes, station_col=station_col, track_col=track_col, event_col=event_col)
+        self.keep_filtered = keep_filtered
+        super().__init__(station_col=station_col, track_col=track_col, event_col=event_col)
 
     def __call__(self, data):
         """
@@ -176,7 +151,7 @@ class BaseFilter(BaseTransformer):
             data (pd.DataFrame): transformed dataframe
         """
         # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        data = super().drop_fakes(data)
+        data = self.drop_fakes(data)
         tracks = data.groupby([self.event_column, self.track_column])
         if self.num_stations is None:
             self.num_stations = tracks.size().max()
@@ -184,8 +159,12 @@ class BaseFilter(BaseTransformer):
         broken = list(data.loc[~data.index.isin(good_tracks.index)].index)
         self._broken_tracks = data.loc[broken, [self.event_column, self.track_column, self.station_column]]
         self._num_broken_tracks = len(self._broken_tracks[[self.event_column, self.track_column]].drop_duplicates())
-        good_tracks = super().add_fakes(good_tracks)
-        return good_tracks
+        if self.keep_filtered:
+            data.loc[~data.index.isin(good_tracks.index), 'track'] = -1
+        else:
+            data = data.loc[data.index.isin(good_tracks.index), :]
+        data = self.add_fakes(data)
+        return data
 
     def get_broken(self):
         return self._broken_tracks
@@ -254,6 +233,31 @@ class BaseCoordConverter(BaseTransformer):
     def __repr__(self):
         return '-' * 30 + '\n' + f'{self.__class__.__name__} with convert_function: {self.convert_function}\n' + '-' * 30 + '\n'
 
+@gin.configurable
+class PreserveOriginal(object):
+    """Preserves original state of given columns.
+    # Args:
+         columns (list or tuple, ['x', 'y', 'z'] by default): Columns to keep
+    """
+
+    def __init__(self, columns=('x', 'y', 'z')):
+        self.columns = columns
+
+    def __call__(self, data):
+        """
+        # Args:
+            data (pd.DataFrame):  to clean up.
+        # Returns:
+            data (pd.DataFrame): transformed dataframe
+        """
+        for col in self.columns:
+            data.loc[:, col + '_original'] = data.loc[:, col]
+        return data
+
+    def __repr__(self):
+        return '-' * 30 + '\n' + \
+               f'{self.__class__.__name__} ceeping original state of columns: {self.columns} \n' + \
+               '-' * 30 + '\n'
 
 @gin.configurable
 class StandardScale(BaseScaler):
@@ -457,22 +461,21 @@ class DropShort(BaseFilter):
         event_column (str, 'event' by default): Station column in data
     """
 
-    def __init__(self, num_stations=0, keep_fakes=True, station_col='station', track_col='track', event_col='event'):
+    def __init__(self, num_stations=0, keep_filtered=True, station_col='station', track_col='track', event_col='event'):
         self.num_stations = num_stations
         self.broken_tracks_ = None
         self.num_broken_tracks_ = None
-        self.filter = lambda x: x.shape[0] >= self.num_stations
-        super().__init__(self.filter, station_col=station_col, track_col=track_col,
-                         event_col=event_col, keep_fakes=keep_fakes)
+        self.filter = lambda x: len(x) >= self.num_stations
+        super().__init__(self.filter, num_stations=num_stations, station_col=station_col, track_col=track_col,
+                         event_col=event_col, keep_filtered=keep_filtered)
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
                f'{self.__class__.__name__} with parameters: num_stations={self.num_stations}, ' \
-               f'keep_fakes={super().keep_fakes}, \n' + \
-               f'    track_column={super().track_column}, station_column={super().station_column}, ' \
-               f'event_column={super().event_column}\n' + \
+               f'    track_column={self.track_column}, station_column={self.station_column}, ' \
+               f'event_column={self.event_column}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f'Number of broken tracks: {super().get_num_broken()} \n'
+               f'Number of broken tracks: {self.get_num_broken()} \n'
 
 
 @gin.configurable
@@ -485,17 +488,17 @@ class DropSpinningTracks(BaseFilter):
         event_col (str, 'event' by default): Station column in data
     """
 
-    def __init__(self, keep_fakes=True, station_col='station', track_col='track', event_col='event'):
+    def __init__(self, keep_fakes=True,keep_filtered=True, station_col='station', track_col='track', event_col='event'):
         self.filter = lambda x: x[self.station_column].unique().shape[0] == x[self.station_column].shape[0]
         super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
-                         keep_fakes=keep_fakes)
+                         keep_filtered=keep_filtered)
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
                f'{self.__class__.__name__} with parameters:' + \
-               f'    track_column={super().track_column}, station_column={super().station_column}, event_column={super().event_column}\n' + \
+               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f'Number of broken tracks: {super().get_num_broken()} \n'
+               f'Number of broken tracks: {self.get_num_broken()} \n'
 
 
 @gin.configurable
@@ -508,7 +511,7 @@ class DropFakes(BaseTransformer):
     def __init__(self, track_col='track'):
         self._num_fakes = None
         self.track_col = track_col
-        super().__init__(track_col=track_col, keep_fakes=False)
+        super().__init__(track_col=track_col)
 
     def __call__(self, data):
         """"
@@ -555,7 +558,7 @@ class ToCylindrical(BaseCoordConverter):
                f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, ' + \
                f'from_columns={self.from_columns}, to_columns={self.to_columns}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f' Ranges: {super().get_ranges_str()} '
+               f' Ranges: {self.get_ranges_str()} '
 
 
 @gin.configurable
@@ -574,6 +577,8 @@ class ToCartesian(BaseCoordConverter):
         super().__init__(self.convert, drop_old=drop_old, from_columns=self.from_columns, to_columns=self.to_columns)
 
     def convert(self, data):
+        print(data.columns)
+        print(self.from_columns)
         y_new = data[self.from_columns[0]] * np.cos(data[self.from_columns[1]])
         x_new = data[self.from_columns[0]] * np.sin(data[self.from_columns[1]])
         return (x_new, y_new)
@@ -583,7 +588,7 @@ class ToCartesian(BaseCoordConverter):
                f'{self.__class__.__name__} with parameters: ' \
                f'drop_old={self.drop_old}, phi_col={self.to_columns[1]}, r_col={self.to_columns[0]}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f'Ranges:' + super().get_ranges_str()
+               f'Ranges:' + self.get_ranges_str()
 
 
 @gin.configurable

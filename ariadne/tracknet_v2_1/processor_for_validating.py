@@ -11,8 +11,8 @@ from tqdm import tqdm
 
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2.metrics import point_in_ellipse
+from ariadne.transformations import BaseTransformer
 from ariadne.preprocessing import (
-    BaseTransformer,
     DataProcessor,
     DataChunk,
     ProcessedDataChunk,
@@ -29,9 +29,12 @@ class ValidDataChunk(DataChunk):
 
 
 class ProcessedValidData(ProcessedData):
-    def __init__(self, processed_data: List[ProcessedDataChunk]):
+    def __init__(self,
+                 processed_data: List[ProcessedDataChunk],
+                 output_name=''):
         super().__init__(processed_data)
         self.processed_data = processed_data
+        self.output_name = output_name
 
 
 class ProcessedValidDataChunk(ProcessedDataChunk):
@@ -89,7 +92,7 @@ class Valid_Processor(DataProcessor):
             return ProcessedValidDataChunk(None, '', 0)
 
         chunk_id = int(chunk_df.event.values[0])
-        output_name = os.path.join(self.output_dir, f'tracknet{idx}_{chunk_id}')
+        output_name = os.path.join(self.output_dir, f'tracknet_{idx}')
         self.chunks.append(chunk_id)
         return ProcessedValidDataChunk(chunk_df, output_name, chunk_id)
 
@@ -105,7 +108,7 @@ class Valid_Processor(DataProcessor):
     def postprocess_chunks(self,
                            chunks: List[ProcessedValidDataChunk]) -> ProcessedValidData:
         for chunk in chunks:
-            if chunk.processed_object is None:
+            if chunk.processed_object is None or len(chunk.processed_object)==0:
                 continue
             chunk_data_x = []
             chunk_data_y = []
@@ -116,6 +119,10 @@ class Valid_Processor(DataProcessor):
             grouped_df = df[df['track'] != -1].groupby('track')
             last_station = df[df['station'] > 1][['phi', 'z', 'track']]
             last_station = df[df['station'] > 1][['phi', 'z']].values
+            if grouped_df.ngroups == 0:
+                print('multiplicity is 0!')
+                chunk.processed_object = None
+                continue
             for i, data in grouped_df:
                 chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
                 chunk_data_y.append(data[['phi', 'z']].values[-1])
@@ -124,6 +131,7 @@ class Valid_Processor(DataProcessor):
                 chunk_data_real.append(1)
             print(f'=====> id {chunk.id}')
             print(f'Multiplicity: {len(chunk_data_x)}')
+
             first_station = df[df['station'] == 0][['r', 'phi', 'z', 'track']]
             first_station.columns = ['r_left', 'phi_left', 'z_left', 'track_left']
 
@@ -164,7 +172,7 @@ class Valid_Processor(DataProcessor):
                 'len': chunk_data_len
             }
             chunk.processed_object = chunk_data
-        return ProcessedValidData(chunks)
+        return ProcessedValidData(chunks, chunks[0].output_name)
 
 
     def save_on_disk(self,
@@ -201,7 +209,7 @@ class Valid_Processor(DataProcessor):
         valid_data_last_station_event = np.concatenate(valid_data_last_station_event)
 
         np.savez(
-            self.output_name,
+            processed_data.output_name,
             x=valid_data_inputs,
             y=valid_data_y,
             len=valid_data_len,
@@ -210,9 +218,9 @@ class Valid_Processor(DataProcessor):
             events=valid_data_event
         )
         np.savez(
-            f'{self.output_name}_last_station',
+            f'{processed_data.output_name}_last_station',
             hits=valid_data_last_station,
             events=valid_data_last_station_event
         )
-        LOGGER.info(f'Saved hits to: {self.output_name}.npz')
-        LOGGER.info(f'Saved last station hits to: {self.output_name}_last_station.npz')
+        LOGGER.info(f'Saved hits to: {processed_data.output_name}.npz')
+        LOGGER.info(f'Saved last station hits to: {processed_data.output_name}_last_station.npz')

@@ -36,8 +36,8 @@ class_model = weights_update(model=Classifier(), checkpoint=torch.load('../light
 class_model.to(DEVICE)
 use_classifier = True
 
-events = np.load('../output/cgem_t_tracknet_valid/test_data_events.npz')
-all_last_station_coordinates = np.load('../output/cgem_t_tracknet_valid/test_data_events_last_station.npz')
+events = np.load('../output/cgem_t_tracknet_valid/tracknet_all_3.txt.npz')
+all_last_station_coordinates = np.load('../output/cgem_t_tracknet_valid/tracknet_all_3.txt_last_station.npz')
 last_station_hits = all_last_station_coordinates['hits']
 last_station_hits_events = all_last_station_coordinates['events']
 
@@ -141,9 +141,11 @@ all_time_faiss = 0
 search_time_no_faiss = 0
 search_time_faiss = 0
 num_batches = 0
-times = {i:[] for i in range(1,11)}
+times = {i:[] for i in range(1,20)}
 
+num_events = 0
 for batch_event in tqdm(np.unique(events['events'])):
+    num_events+=1
     batch_x = events['x'][events['events'] == batch_event]
     batch_len = events['len'][events['events'] == batch_event]
     batch_y = events['y'][events['events'] == batch_event]
@@ -199,11 +201,11 @@ true_tracks_result_df = result_df[result_df.is_real_track == 1]
 tracks_pred_true = true_tracks_result_df[true_tracks_result_df.found_right_point]
 tracks_real = true_tracks_result_df[(true_tracks_result_df.found_right_point == False)  | (true_tracks_result_df.found == False)]
 #draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', 2000, 175)
-draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', 2000, 175, style='plot')
+draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, style='plot')
 #draw_for_col(true_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', 2000, 175)
-draw_for_col(true_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', 2000, 175, style='plot')
+draw_for_col(true_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot')
 #draw_for_col(true_tracks_result_df, tracks_pred_true, 'cos_t', '$cos_t$', 2000, 175)
-draw_for_col(true_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', 2000, 175, style='plot')
+draw_for_col(true_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', num_events, 175, style='plot')
 times_mean = {k: np.mean(v) for k, v in times.items()}
 times_std = {k: np.std(v) for k, v in times.items()}
 draw_from_data(title = "TrackNETv2.1 Mean Processing Time vs Multiplicity (ms)",
