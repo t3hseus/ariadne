@@ -1,14 +1,14 @@
 import logging
 from typing import List, Tuple, Optional, Iterable
 from ariadne.preprocessing import DataProcessor, DataChunk, ProcessedDataChunk, ProcessedData
-
+import os
 import gin
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from ariadne.transformations import Compose, StandardScale, ToCylindrical, \
     ConstraintsNormalize, MinMaxScale, DropSpinningTracks, DropFakes, DropShort
-
+from ariadne.preprocessing import BaseTransformer
 from ariadne.utils import cartesian
 LOGGER = logging.getLogger('ariadne.prepare')
 
@@ -32,9 +32,12 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
 
 class ProcessedTracknetData(ProcessedData):
 
-    def __init__(self, processed_data: List[ProcessedTracknetDataChunk]):
+    def __init__(self,
+                 processed_data: List[ProcessedTracknetDataChunk],
+                 output_name=''):
         super().__init__(processed_data)
         self.processed_data = processed_data
+        self.output_name = output_name
 
 @gin.configurable(denylist=['data_df'])
 class TrackNetV2_1_Processor(DataProcessor):
@@ -45,27 +48,17 @@ class TrackNetV2_1_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
-                 radial_stations_constraints,
                  name_suffix: str,
                  n_times_oversampling: int,
-                 valid_size: float
+                 valid_size: float,
+                 transforms: List[BaseTransformer] = None
                  ):
         super().__init__(
             processor_name='TrackNet_Explicit_Processor',
             output_dir=output_dir,
-            data_df=data_df)
-
-        self.transformer = Compose([
-            DropSpinningTracks(),
-            DropShort(),
-            ToCylindrical(),
-            ConstraintsNormalize(
-                use_global_constraints=False,
-                constraints=radial_stations_constraints,
-                columns=('r', 'phi', 'z')
-            ),
-        ])
-        self.output_name = (self.output_dir + '/' + name_suffix)
+            data_df=data_df,
+            transforms=transforms)
+        self.output_name = self.output_dir + '/' +f'{name_suffix}'
         self.n_times_oversampling = n_times_oversampling
         self.valid_size = valid_size
         self.chunks = []
@@ -83,22 +76,28 @@ class TrackNetV2_1_Processor(DataProcessor):
                          idx: str) -> ProcessedTracknetDataChunk:
         chunk_df = chunk.df_chunk_data
         chunk_id = int(chunk_df.event.values[0])
-        output_name = (self.output_dir + '/tracknet_%s_%d' % (idx, chunk_id))
+        output_name = os.path.join(self.output_dir, f'tracknet_{idx.replace(".txt", "")}')
         self.chunks.append(chunk_id)
-
         return ProcessedTracknetDataChunk(chunk_df, output_name, chunk_id)
 
     def postprocess_chunks(self,
                            chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
         for chunk in chunks:
+            if chunk.processed_object is None or len(chunk.processed_object)==0:
+                continue
             chunk_data_x = []
             chunk_data_y = []
             chunk_data_len = []
             chunk_data_real = []
             chunk_data_moment = []
             df = chunk.processed_object
+
             grouped_df = df[df['track'] != -1].groupby('track')
             last_station = df[df['station'] > 1][['phi', 'z']].values
+            if grouped_df.ngroups == 0:
+                print('multiplicity is 0!')
+                chunk.processed_object = None
+                continue
             for i, data in grouped_df:
                 chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
                 chunk_data_y.append(data[['phi', 'z']].values[-1])
@@ -119,13 +118,13 @@ class TrackNetV2_1_Processor(DataProcessor):
                 temp_data = np.zeros((2, 3))
                 temp_data[0, :] = row[['r_left', 'phi_left', 'z_left']].values
                 temp_data[1, :] = row[['r_right', 'phi_right', 'z_right']].values
+
                 chunk_data_x.append(temp_data)
                 #print(chunk_data_x[-1].shape)
                 chunk_data_y.append(chunk_data_y[0])
                 chunk_data_moment.append(chunk_data_moment[0])
                 chunk_data_real.append(0)
                 chunk_data_len.append(2)
-
             chunk_data_x = np.stack(chunk_data_x, axis=0)
             chunk_data_y = np.stack(chunk_data_y, axis=0)
             chunk_data_moment = np.stack(chunk_data_moment, axis=0)
@@ -147,7 +146,7 @@ class TrackNetV2_1_Processor(DataProcessor):
                           'last_station_event': chunk_data_event_last_station,
                           'multiplicity': multiplicity}
             chunk.processed_object = chunk_data
-        return ProcessedTracknetData(chunks)
+        return ProcessedTracknetData(chunks,chunks[0].output_name)
 
 
     def save_on_disk(self,
@@ -178,9 +177,7 @@ class TrackNetV2_1_Processor(DataProcessor):
                 initial_len = len(data_chunk.processed_object['y'])
                 multiplicity = data_chunk.processed_object['multiplicity']
                 max_len = int(multiplicity + (initial_len - multiplicity) / self.n_times_oversampling)
-                #print(f"{data_chunk.processed_object['event'][0]} is in train data")
                 train_data_inputs.append(data_chunk.processed_object['x']['inputs'][0:max_len])
-                #print(train_data_inputs)
                 train_data_len.append(data_chunk.processed_object['x']['input_lengths'][0:max_len])
                 train_data_y.append(data_chunk.processed_object['y'][0:max_len])
                 train_data_real.append(data_chunk.processed_object['is_real'][0:max_len])
@@ -213,13 +210,11 @@ class TrackNetV2_1_Processor(DataProcessor):
         valid_data_moment = np.concatenate(valid_data_moment)
         valid_data_event = np.concatenate(valid_data_event)
 
-        np.savez(self.output_name+'_train', inputs=train_data_inputs, input_lengths=train_data_len, y=train_data_y,
+        np.savez(processed_data.output_name +'_train', inputs=train_data_inputs, input_lengths=train_data_len, y=train_data_y,
                  moments=train_data_moment, is_real=train_data_real, events=train_data_event)
-        np.savez(self.output_name + '_valid', inputs=valid_data_inputs, input_lengths=valid_data_len, y=valid_data_y,
+        np.savez(processed_data.output_name + '_valid', inputs=valid_data_inputs, input_lengths=valid_data_len, y=valid_data_y,
                  moments=valid_data_moment, is_real=valid_data_real, events=valid_data_event)
-        print('Saved last station hits to: ', self.output_name + '.npz')
-        np.savez(self.output_name + '_valid_last_station', hits=train_data_last_station, events=train_data_last_station_event)
-        np.savez(self.output_name + '_valid_last_station', hits=valid_data_last_station, events=valid_data_last_station_event)
-        np.savez(self.output_name+'_train_last_station', hits=train_data_y, axis=0, events=train_data_event)
-        np.savez(self.output_name + '_valid_last_station', hits=valid_data_y, axis=0, events=valid_data_event)
-        print('Saved last station hits to: ', self.output_name+'_train_last_station.npz', self.output_name+'_valid_last_station.npz')
+        np.savez(processed_data.output_name + '_train_last_station', hits=train_data_last_station, events=train_data_last_station_event)
+        np.savez(processed_data.output_name + '_valid_last_station', hits=valid_data_last_station, events=valid_data_last_station_event)
+        print('Saved last station hits to: ', processed_data.output_name + '_train_last_station.npz',
+              processed_data.output_name+'_valid_last_station.npz')

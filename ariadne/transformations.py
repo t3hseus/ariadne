@@ -461,7 +461,7 @@ class DropShort(BaseFilter):
         event_column (str, 'event' by default): Station column in data
     """
 
-    def __init__(self, num_stations=0, keep_filtered=True, station_col='station', track_col='track', event_col='event'):
+    def __init__(self, num_stations=None, keep_filtered=True, station_col='station', track_col='track', event_col='event'):
         self.num_stations = num_stations
         self.broken_tracks_ = None
         self.num_broken_tracks_ = None
@@ -488,9 +488,9 @@ class DropSpinningTracks(BaseFilter):
         event_col (str, 'event' by default): Station column in data
     """
 
-    def __init__(self, keep_fakes=True,keep_filtered=True, station_col='station', track_col='track', event_col='event'):
+    def __init__(self, num_stations=None, keep_fakes=True,keep_filtered=True, station_col='station', track_col='track', event_col='event'):
         self.filter = lambda x: x[self.station_column].unique().shape[0] == x[self.station_column].shape[0]
-        super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
+        super().__init__(self.filter,num_stations=num_stations, station_col=station_col, track_col=track_col, event_col=event_col,
                          keep_filtered=keep_filtered)
 
     def __repr__(self):

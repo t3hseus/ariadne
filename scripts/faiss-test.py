@@ -209,7 +209,7 @@ draw_for_col(true_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', num_eve
 times_mean = {k: np.mean(v) for k, v in times.items()}
 times_std = {k: np.std(v) for k, v in times.items()}
 draw_from_data(title = "TrackNETv2.1 Mean Processing Time vs Multiplicity (ms)",
-               data_x=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+               data_x=list(times_mean.keys()),
                data_y=[v * 1000 for v in times_mean.values()],
                data_y_err=[v * 1000 for v in times_std.values()],
                axis_x="multiplicity",
