@@ -4,6 +4,8 @@ from pytorch_lightning.metrics import functional as metrics
 
 from ariadne.point_net.model import MIN_EPS_HOLDER
 
+# TODO: update all metrics!!!
+
 
 @gin.configurable('point_net.precision', allowlist=[])
 def precision(preds, target):
