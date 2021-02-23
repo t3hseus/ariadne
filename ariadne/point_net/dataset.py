@@ -110,14 +110,6 @@ class BatchBucketSampler(Sampler):
         if not self.zero_pad_available:
             raise NotImplementedError
 
-            for len_, objs in self.buckets.items():
-                if len(objs) < self.batch_size:
-                    self.buckets[len_] = []
-
-            self.buckets = {len_: objs[:len(objs) - (len(objs) % self.batch_size)]
-                            for len_, objs in self.buckets.items() if len(objs) >= self.batch_size}
-            self.indices = [[item for item in objs] for len_, objs in self.buckets.items()]
-
         logging.info("_build buckets end")
         self._store_indices()
 

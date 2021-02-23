@@ -46,25 +46,19 @@ class ProcessedGraphData(ProcessedData):
         self.processed_data = processed_data
 
 
-@gin.configurable(denylist=['data_df'])
+@gin.configurable
 class GraphNet_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
-                 data_df: pd.DataFrame,
                  df_suffixes: Tuple[str],
                  transforms: List[BaseTransformer] = None,
                  **kwargs):
-        super().__init__(
-            processor_name='RDGraphNet_v1_Processor',
-            output_dir=output_dir,
-            data_df=data_df,
-            transforms=transforms
-        )
+        super().__init__(processor_name='RDGraphNet_v1_Processor', output_dir=output_dir, transforms=transforms)
         self.func_vals = kwargs
         self._suffixes_df = df_suffixes
 
-    def generate_chunks_iterable(self) -> Iterable[GraphDataChunk]:
-        return self.data_df.groupby('event')
+    def generate_chunks_iterable(self, data_df:pd.DataFrame) -> Iterable[GraphDataChunk]:
+        return data_df.groupby('event')
 
     def total_chunks(self) -> int:
         return self.data_df['event'].nunique()
