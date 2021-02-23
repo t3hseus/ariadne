@@ -44,7 +44,7 @@ class TNet(nn.Module):
             conv_block = nn.Sequential(
                 nn.Conv1d(in_features, out_features, 1),
                 nn.BatchNorm1d(out_features),
-                nn.ReLU()
+                nn.PReLU()
             )
             features_layers.append((f'conv{i+1}', conv_block))
             in_features = out_features
@@ -59,7 +59,7 @@ class TNet(nn.Module):
             linear_block = nn.Sequential(
                 nn.Linear(in_features, out_features),
                 nn.BatchNorm1d(out_features),
-                nn.ReLU()
+                nn.PReLU()
             )
             features_layers.append((f'fc{i+1}', linear_block))
             in_features = out_features
@@ -108,7 +108,7 @@ class Transform(nn.Module):
             self.input2features = nn.Sequential(
                 nn.Conv1d(in_features, self.feature_transform.k, 1),
                 nn.BatchNorm1d(self.feature_transform.k),
-                nn.ReLU()
+                nn.PReLU()
             )
             in_features = self.feature_transform.k
             self.output_size += self.feature_transform.k
@@ -122,10 +122,10 @@ class Transform(nn.Module):
             conv_block = nn.Sequential(
                 nn.Conv1d(in_features, out_features, 1),
                 nn.BatchNorm1d(out_features),
-                nn.ReLU()
+                nn.PReLU()
             )
             if i == len(top_layers) - 1 and not add_top_relu:
-                # without last ReLU
+                # without last PReLU
                 self.top_layers.append((f'conv{i+1}', conv_block[:-1]))
             else:
                 self.top_layers.append((f'conv{i+1}', conv_block))
@@ -193,7 +193,7 @@ class PointNet(nn.Module):
             linear_block = nn.Sequential(
                 nn.Conv1d(in_features, out_features, 1),
                 nn.BatchNorm1d(out_features),
-                nn.ReLU()
+                nn.PReLU()
             )
             self.top_layers.append((f'conv{i+1}', linear_block))
             in_features = out_features

@@ -163,7 +163,7 @@ class BaseFilter(BaseTransformer):
                  event_col='event'):
         self.num_stations = num_stations
         self._broken_tracks = None
-        self._num_broken_tracks = None
+        self._num_broken_tracks = 0
         self.keep_fakes = keep_fakes
         self.filter_rule = filter_rule
         super().__init__(keep_fakes=keep_fakes, station_col=station_col, track_col=track_col, event_col=event_col)
@@ -183,7 +183,7 @@ class BaseFilter(BaseTransformer):
         good_tracks = tracks.filter(self.filter_rule)
         broken = list(data.loc[~data.index.isin(good_tracks.index)].index)
         self._broken_tracks = data.loc[broken, [self.event_column, self.track_column, self.station_column]]
-        self._num_broken_tracks = len(self._broken_tracks[[self.event_column, self.track_column]].drop_duplicates())
+        self._num_broken_tracks += len(self._broken_tracks[[self.event_column, self.track_column]].drop_duplicates())
         good_tracks = super().add_fakes(good_tracks)
         return good_tracks
 
@@ -338,6 +338,7 @@ class ConstraintsNormalize(BaseTransformer):
         margin (number, positive): margin applied to stations (min = min-margin, max=max+margin)
         constraints (dict, None by deault) If None, constraints are computed using dataset statistics.
         use_global_constraints (boolean, True by default) If True, all data is scaled using given global constraints.
+        mode (str, 'default' by default) if 'positive', then normalize in range [0, 1] else [-1, 1]
 
     If use_global_constraints is True and constraints is not None, constraints must be {column:(min,max)},
     else it must be {station: {column:(min,max)}}.
@@ -346,13 +347,14 @@ class ConstraintsNormalize(BaseTransformer):
     """
 
     def __init__(self, drop_old=True, columns=('x', 'y', 'z'), margin=1e-3, use_global_constraints=True,
-                 constraints=None):
+                 constraints=None, mode='default'):
         assert margin > 0, 'Margin is not positive'
         self.columns = columns
         self.drop_old = drop_old
         self.margin = margin
         self.use_global_constraints = use_global_constraints
         self.constraints = constraints
+        self.positive_mode = mode == 'positive'
         # print(self.constraints)
         if constraints is not None:
             if use_global_constraints:
@@ -426,6 +428,7 @@ class ConstraintsNormalize(BaseTransformer):
         x_min, x_max = constraints[self.columns[0]]
         y_min, y_max = constraints[self.columns[1]]
         z_min, z_max = constraints[self.columns[2]]
+
         assert all(df[self.columns[0]].between(x_min, x_max)), \
             f'Some values in column {self.columns[0]} are not in {constraints[self.columns[0]]}'
         x_norm = 2 * (df[self.columns[0]] - x_min) / (x_max - x_min) - 1
@@ -435,6 +438,12 @@ class ConstraintsNormalize(BaseTransformer):
         assert all(df[self.columns[2]].between(z_min, z_max)), \
             f'Some values in column {self.columns[2]} are not in {constraints[self.columns[2]]}'
         z_norm = 2 * (df[self.columns[2]] - z_min) / (z_max - z_min) - 1
+
+        if self.positive_mode:
+            x_norm = (x_norm + 1.) / 2.
+            y_norm = (y_norm + 1.) / 2.
+            z_norm = (z_norm + 1.) / 2.
+
         return x_norm, y_norm, z_norm
 
     def __repr__(self):

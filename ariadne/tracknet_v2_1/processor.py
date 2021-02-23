@@ -37,21 +37,17 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
         self.id = id
 
 
-@gin.configurable(denylist=['data_df'])
+@gin.configurable()
 class TrackNetV2_1_Processor(DataProcessor):
 
     def __init__(self,
                  output_dir: str,
-                 data_df: pd.DataFrame,
                  radial_stations_constraints,
                  name_suffix: str,
                  n_times_oversampling: int,
                  valid_size: float
                  ):
-        super().__init__(
-            processor_name='TrackNet_Explicit_Processor',
-            output_dir=output_dir,
-            data_df=data_df)
+        super().__init__(processor_name='TrackNet_Explicit_Processor', output_dir=output_dir)
 
         self.transformer = Compose([
             DropSpinningTracks(),
@@ -68,8 +64,8 @@ class TrackNetV2_1_Processor(DataProcessor):
         self.valid_size = valid_size
         self.chunks = []
 
-    def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
-        return self.data_df.groupby('event')
+    def generate_chunks_iterable(self, data_df) -> Iterable[TracknetDataChunk]:
+        return data_df.groupby('event')
 
     def construct_chunk(self,
                         chunk_df: pd.DataFrame) -> TracknetDataChunk:

@@ -45,27 +45,22 @@ class ProcessedValidDataChunk(ProcessedDataChunk):
         self.id = id
 
 
-@gin.configurable(denylist=['data_df'])
+@gin.configurable()
 class Valid_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
-                 data_df: pd.DataFrame,
                  name_suffix: str,
                  n_times_oversampling: int,
                  valid_size: float,
                  transforms: List[BaseTransformer] = None):
-        super().__init__(
-            processor_name='Valid_Processor',
-            output_dir=output_dir,
-            data_df=data_df,
-            transforms=transforms)
+        super().__init__(processor_name='Valid_Processor', output_dir=output_dir, transforms=transforms)
         self.output_name = os.path.join(self.output_dir, f'test_{name_suffix}')
         self.n_times_oversampling = n_times_oversampling
         self.valid_size = valid_size
         self.chunks = []
 
-    def generate_chunks_iterable(self) -> Iterable[ValidDataChunk]:
-        return self.data_df.groupby('event')
+    def generate_chunks_iterable(self, data_df) -> Iterable[ValidDataChunk]:
+        return data_df.groupby('event')
 
     def construct_chunk(self,
                         chunk_df: pd.DataFrame) -> ValidDataChunk:

@@ -140,3 +140,4 @@ slurm-*.out
 /resources/test_data/data_with_moment.txt
 lightning_logs
 .idea
+.jit

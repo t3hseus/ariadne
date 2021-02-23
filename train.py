@@ -98,7 +98,8 @@ def experiment(model,
     }
     trainer_kwargs['checkpoint_callback'] = ModelCheckpoint(
         # TODO: check epoch and step
-        filepath=f"{trainer_kwargs['logger'].log_dir}/_{{epoch}}-{{step}}")
+        dirpath=f"{trainer_kwargs['logger'].log_dir}",
+        filename="_{epoch}-{step}")
     if torch.cuda.is_available():
         trainer_kwargs['gpus'] = 1 #torch.cuda.device_count()
         if trainer_kwargs['gpus'] > 1:

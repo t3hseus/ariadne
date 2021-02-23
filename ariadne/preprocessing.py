@@ -24,22 +24,17 @@ class ProcessedData(metaclass=ABCMeta):
 
 
 class DataProcessor(metaclass=ABCMeta):
-    def __init__(self,
-                 processor_name: str,
-                 output_dir: str,
-                 data_df: pd.DataFrame,
-                 transforms: List[BaseTransformer] = None):
-        self.data_df = data_df
+    def __init__(self, processor_name: str, output_dir: str, transforms: List[BaseTransformer] = None):
         self.processor_name = processor_name
         self.output_dir = output_dir
         self.transformer = Compose(transforms)
 
     @abstractmethod
-    def generate_chunks_iterable(self) -> Iterable[DataChunk]:
+    def generate_chunks_iterable(self, data_df) -> Iterable[DataChunk]:
         pass
 
     @abstractmethod
-    def total_chunks(self) -> int:
+    def total_chunks(self, data_df) -> int:
         pass
 
     @abstractmethod
@@ -56,6 +51,14 @@ class DataProcessor(metaclass=ABCMeta):
     @abstractmethod
     def postprocess_chunks(self,
                            chunks: List[ProcessedDataChunk]) -> ProcessedData:
+        pass
+
+    @abstractmethod
+    def forward_fields(self):
+        pass
+
+    @abstractmethod
+    def reduce_fields(self, params_dict):
         pass
 
     @abstractmethod

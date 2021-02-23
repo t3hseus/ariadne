@@ -46,7 +46,7 @@ class TrainModel(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         result_dict = self._forward_batch(batch)
         tqdm_dict = {f'train_{k}': v for k, v in result_dict.items()}
-        self.log_dict(tqdm_dict, on_step=False, prog_bar=True)
+        self.log_dict(tqdm_dict, prog_bar=True, on_epoch=True, on_step=False)
         return tqdm_dict['train_loss']
 
     def validation_step(self, batch, batch_idx):

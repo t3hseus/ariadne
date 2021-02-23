@@ -46,11 +46,10 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
         self.id = id
 
 
-@gin.configurable(denylist=['data_df'])
+@gin.configurable()
 class TrackNetV2_1_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
-                 data_df: pd.DataFrame,
                  name_suffix: str,
                  n_times_oversampling: int,
                  valid_size: float,
@@ -58,11 +57,7 @@ class TrackNetV2_1_Processor(DataProcessor):
                  tracknet_v2_model: TrackNETv2,
                  tracknet_v2_checkpoint: str = '',
                  transforms: List[BaseTransformer] = None):
-        super().__init__(
-            processor_name='TrackNet_v2_1_Processor',
-            output_dir=output_dir,
-            data_df=data_df,
-            transforms=transforms)
+        super().__init__(processor_name='TrackNet_v2_1_Processor', output_dir=output_dir, transforms=transforms)
 
         self.output_name = os.path.join(self.output_dir, f'tracknet_{name_suffix}')
         self.n_times_oversampling = n_times_oversampling
@@ -107,8 +102,8 @@ class TrackNetV2_1_Processor(DataProcessor):
         return minimal, is_in_ellipse
 
 
-    def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
-        return self.data_df.groupby('event')
+    def generate_chunks_iterable(self, data_df) -> Iterable[TracknetDataChunk]:
+        return data_df.groupby('event')
 
 
     def construct_chunk(self,

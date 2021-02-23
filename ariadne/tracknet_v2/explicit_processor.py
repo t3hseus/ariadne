@@ -42,22 +42,17 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
         self.id = event
 
 
-@gin.configurable(denylist=['data_df'])
+@gin.configurable()
 class TrackNet_Explicit_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
-                 data_df: pd.DataFrame,
                  name_suffix: str,
                  transforms: List[BaseTransformer] = None):
-        super().__init__(
-            processor_name='TrackNet_Explicit_Processor',
-            output_dir=output_dir,
-            data_df=data_df,
-            transforms=transforms)
+        super().__init__(processor_name='TrackNet_Explicit_Processor', output_dir=output_dir, transforms=transforms)
         self.output_name = os.path.join(self.output_dir, f'tracknet_{name_suffix}')
 
-    def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
-        return self.data_df.groupby('event')
+    def generate_chunks_iterable(self, data_df) -> Iterable[TracknetDataChunk]:
+        return data_df.groupby('event')
 
     def construct_chunk(self,
                         chunk_df: pd.DataFrame) -> TracknetDataChunk:
