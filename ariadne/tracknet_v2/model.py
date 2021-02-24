@@ -48,10 +48,12 @@ class TrackNETv2(nn.Module):
             nn.Linear(conv_features, 2),
             nn.Softplus()
         )
+        self.dummy_param = nn.Parameter(torch.empty(0))
 
-    def forward(self, inputs, input_lengths, *args):
+    def forward(self, inputs, input_lengths, return_gru_state=False, *args):
         # BxTxC -> BxCxT
         inputs = inputs.transpose(1, 2).float()
+        input_lengths = input_lengths.int().cpu()
         x = self.conv(inputs)
         # BxCxT -> BxTxC
         x = x.transpose(1, 2)
@@ -62,8 +64,11 @@ class TrackNETv2(nn.Module):
         x, _ = self.rnn(packed)
         # unpack padding
         x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
-        self.last_gru_output = x
+        last_gru_output = x
         # get result using only the output on the last timestep
         xy_coords = self.xy_coords(x[:, -1])
         r1_r2 = self.r1_r2(x[:, -1])
-        return torch.squeeze(torch.cat([xy_coords, r1_r2], dim=1), dim=1)
+        if return_gru_state:
+            return torch.squeeze(torch.cat([xy_coords, r1_r2], dim=1), dim=1), last_gru_output
+        else:
+            return torch.squeeze(torch.cat([xy_coords, r1_r2], dim=1), dim=1)

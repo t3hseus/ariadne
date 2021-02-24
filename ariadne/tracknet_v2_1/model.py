@@ -7,7 +7,7 @@ ALLOWED_RNN_TYPES = ['GRU', 'LSTM']
 
 
 @gin.configurable
-class Classifier(nn.Module):
+class TrackNetClassifier(nn.Module):
     """Builds TrackNETv2_1 classifier model
 
     # Arguments
@@ -17,12 +17,12 @@ class Classifier(nn.Module):
     """
     def __init__(self, gru_size=32, coord_size=2, num_classes=2):
         super().__init__()
-        self.features1 = nn.Sequential(nn.Linear(gru_size*2, 30),
+        self.gru_feat_block = nn.Sequential(nn.Linear(gru_size*2, 30),
                                        nn.BatchNorm1d(30),
                                        nn.ReLU(),
                                        nn.Linear(30, 30)
                                        )
-        self.features2 = nn.Sequential(
+        self.coord_feat_block = nn.Sequential(
             nn.Linear(coord_size, 30),
             nn.BatchNorm1d(30),
             nn.ReLU(),
@@ -33,18 +33,16 @@ class Classifier(nn.Module):
                                         nn.BatchNorm1d(40),
                                         nn.Linear(40, num_classes))
 
-    def forward(self, gru_x, coord_x):
+    def forward(self, gru_features, coord_features):
         """
         # Arguments
         gru_x: GRU output of base model
         coord_x: coordinates of predicted point (found as last hit) 
         """
         # BxTxC -> BxCxT
-        gru_x = gru_x.contiguous().view(gru_x.size()[0], -1)
-        x1 = self.features1(gru_x.float())
-        x2 = self.features2(coord_x.float())
-        #x1 = x1.view(x1.size(0), -1)
-        #x2 = x2.view(x2.size(0), -1)
+        gru_features = gru_features.contiguous().view(gru_features.size()[0], -1)
+        x1 = self.gru_feat_block(gru_features.float())
+        x2 = self.coord_feat_block(coord_features.float())
         x = torch.cat((x1, x2), dim=1)
         x = self.classifier(x).float()
         return x
@@ -70,7 +68,7 @@ class TrackNETv2_1(nn.Module):
                  coord_size=2):
         super().__init__()
         self.base_model = TrackNETv2(input_features=input_features, conv_features=conv_features, rnn_type=rnn_type, batch_first=batch_first)
-        self.classifier = Classifier(gru_size=16, coord_size=coord_size)
+        self.classifier = TrackNetClassifier(gru_size=16, coord_size=coord_size)
 
     def forward(self, inputs, input_lengths):
         class_dict = self.base_model.get_tracknet_v2_1_inputs(inputs, input_lengths)

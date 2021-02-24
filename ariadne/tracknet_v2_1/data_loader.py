@@ -8,13 +8,15 @@ from ariadne.data_loader import BaseDataLoader
 
 @gin.configurable
 class EventWiseSplitDataLoader(BaseDataLoader):
-
+    """
+    Dataset class if train and test data were splitted by event previously and saved in separate files.
+    """
     def __init__(self,
                  batch_size: int,
                  train_dataset,
                  valid_dataset,
                  max_size=None):
-        super(EventWiseSplitDataLoader, self).__init__(batch_size)
+        super().__init__(batch_size)
         self.train_data = train_dataset(n_samples=max_size)
         self.val_data = valid_dataset(n_samples=max_size)
 

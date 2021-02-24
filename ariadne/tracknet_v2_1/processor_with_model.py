@@ -19,6 +19,7 @@ from ariadne.preprocessing import (
     ProcessedDataChunk,
     ProcessedData
 )
+from ariadne.utils import cartesian_product_two_stations, find_nearest_hit
 
 LOGGER = logging.getLogger('ariadne.prepare')
 
@@ -47,7 +48,7 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
 
 
 @gin.configurable(denylist=['data_df'])
-class TrackNetV2_1_Processor(DataProcessor):
+class TrackNetV21ProcessorWithModel(DataProcessor):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
@@ -78,7 +79,6 @@ class TrackNetV2_1_Processor(DataProcessor):
                 checkpoint=tracknet_v2_checkpoint
             )
 
-
     def weights_update(self, model, checkpoint):
         # TODO: save torch model near the checkpoint
         pretrained_dict = torch.load(checkpoint).to(self.device)['state_dict']
@@ -89,23 +89,6 @@ class TrackNetV2_1_Processor(DataProcessor):
         model.load_state_dict(real_dict)
         model.eval()
         return model
-
-
-    def find_nearest_hit(self, ellipses, y):
-        centers = ellipses[:, :2]
-        #print(centers)
-        last_station_hits = deepcopy(y)
-        #print(last_station_hits.size())
-        # print('center', centers)
-        # print(torch.isclose(torch.tensor(y, dtype=torch.double), last_station_hits))
-        # print(self.last_station_hits[0:10])
-        dists = torch.cdist(last_station_hits.float(), centers.float())
-        #print(dists)
-        minimal = last_station_hits[torch.argmin(dists, dim=0)]
-        #print(minimal)
-        is_in_ellipse = point_in_ellipse(ellipses, minimal)
-        return minimal, is_in_ellipse
-
 
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
         return self.data_df.groupby('event')
@@ -130,17 +113,6 @@ class TrackNetV2_1_Processor(DataProcessor):
         self.chunks.append(chunk_id)
         return ProcessedTracknetDataChunk(chunk_df, output_name, chunk_id)
 
-
-    def cartesian(self, df1, df2):
-        rows = itertools.product(df1.iterrows(), df2.iterrows())
-        df = pd.DataFrame(left.append(right) for (_, left), (_, right) in rows)
-        df_fakes = df[(df['track_left'] == -1) & (df['track_right'] == -1)]
-        df = df[(df['track_left'] != df['track_right'])]
-        df = pd.concat([df, df_fakes], axis=0)
-        df = df.sample(frac=1).reset_index(drop=True)
-        return df.reset_index(drop=True)
-
-
     def postprocess_chunks(self,
                            chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
         # TODO: this code requires check (unittest)
@@ -151,57 +123,48 @@ class TrackNetV2_1_Processor(DataProcessor):
             chunk_data_y = []
             chunk_data_len = []
             chunk_data_real = []
-            chunk_data_moment = []
+            chunk_data_momentum = []
             df = chunk.processed_object
             grouped_df = df[df['track'] != -1].groupby('track')
+
             for i, data in grouped_df:
                 chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
-                chunk_data_y.append(data[['r', 'phi', 'z']].values[-1])
+                chunk_data_y.append(data[['phi', 'z']].values[-1])
                 chunk_data_len.append(2)
-                chunk_data_moment.append(data[['px','py','pz']].values[-1])
+                chunk_data_momentum.append(data[['px','py','pz']].values[-1])
                 chunk_data_real.append(1)
             LOGGER.info(f'=====> id {chunk.id}')
-            first_station = df[df['station'] == 0][['r', 'phi', 'z', 'track']]
-            first_station.columns = ['r_left', 'phi_left', 'z_left', 'track_left']
-
-            second_station = df[df['station'] == 1][['r', 'phi', 'z', 'track']]
-            second_station.columns = ['r_right', 'phi_right', 'z_right', 'track_right']
-
-            fake_tracks = self.cartesian(first_station, second_station)
-            fake_tracks = fake_tracks.sample(n=int(fake_tracks.shape[0] / 10), random_state=1)
+            fake_tracks = cartesian_product_two_stations(df)
             for i, row in tqdm(fake_tracks.iterrows()):
                 temp_data = np.zeros((2, 3))
                 temp_data[0, :] = row[['r_left', 'phi_left', 'z_left']].values
                 temp_data[1, :] = row[['r_right', 'phi_right', 'z_right']].values
                 chunk_data_x.append(temp_data)
-                #print(chunk_data_x[-1].shape)
                 chunk_data_y.append(chunk_data_y[0])
-                chunk_data_moment.append(chunk_data_moment[0])
+                chunk_data_momentum.append(chunk_data_momentum[0])
                 chunk_data_real.append(0)
                 chunk_data_len.append(2)
 
             chunk_data_x = np.stack(chunk_data_x, axis=0)
             chunk_data_y = np.stack(chunk_data_y, axis=0)
-            chunk_data_moment = np.stack(chunk_data_moment, axis=0)
+            chunk_data_momentum = np.stack(chunk_data_momentum, axis=0)
             chunk_data_real = np.stack(chunk_data_real, axis=0)
             chunk_data_len = np.stack(chunk_data_len, axis=0)
-            chunk_data_event = np.ones(chunk_data_len.shape)
 
-            chunk_data_event *= chunk.id
-            #print(chunk_data_event)
+            chunk_data_event = np.full(len(chunk_data_x), chunk.id)
+            #chunk_data_event_last_station = np.full(len(last_station), chunk.id)
+
             last_station_hits = torch.from_numpy(chunk_data_y[:, 1:]).to(self.device)
             chunk_prediction = self.model(torch.tensor(chunk_data_x).to(self.device),
                                            torch.tensor(chunk_data_len, dtype=torch.int64).to(self.device))
             chunk_gru = self.model.last_gru_output.detach().cpu().numpy()
-            nearest_hits, in_ellipse = self.find_nearest_hit(chunk_prediction, last_station_hits)
+            nearest_hits, in_ellipse = find_nearest_hit(chunk_prediction, last_station_hits)
             is_prediction_true = torch.isclose(last_station_hits.to(torch.float32).to(self.device), nearest_hits.to(torch.float32).to(self.device))
             is_prediction_true = is_prediction_true.sum(dim=1) / 2.
-            # second_is_prediction_true = torch.isclose(batch_target.to(torch.float32), second_nearest_points.to(torch.float32))
-            # second_is_prediction_true = second_is_prediction_true.sum(axis=1) / 2.
             found_right_points = (in_ellipse).detach().cpu().numpy() & (chunk_data_real == 1) & (is_prediction_true.detach().cpu().numpy() == 1)
             chunk_data = {'x': {'gru': chunk_gru, 'preds': nearest_hits},
                           'y': found_right_points,
-                          'moment': chunk_data_moment,
+                          'momentum': chunk_data_momentum,
                           'is_real': chunk_data_real,
                           'event': chunk_data_event}
             chunk.processed_object = chunk_data
@@ -214,14 +177,14 @@ class TrackNetV2_1_Processor(DataProcessor):
         train_data_y = []
         train_data_len = []
         train_data_real = []
-        train_data_moment = []
+        train_data_momentum = []
         train_data_event = []
 
         valid_data_inputs = []
         valid_data_y = []
         valid_data_len = []
         valid_data_real = []
-        valid_data_moment = []
+        valid_data_momentum = []
         valid_data_event = []
 
         train_chunks = np.random.choice(self.chunks, int(len(self.chunks) * (1-self.valid_size)), replace=False)
@@ -231,40 +194,34 @@ class TrackNetV2_1_Processor(DataProcessor):
             if data_chunk.processed_object is None:
                 continue
             if data_chunk.id in train_chunks:
-                #print(f"{data_chunk.processed_object['event'][0]} is in train data")
-
                 y = data_chunk.processed_object['y']
-                print(y)
                 max_len = int(0.5*len(y))
-                print(y[0:max_len])
                 train_data_inputs.append(data_chunk.processed_object['x']['gru'][0:max_len])
-                #print(train_data_inputs)
                 train_data_len.append(data_chunk.processed_object['x']['preds'][0:max_len].detach().cpu().numpy())
                 train_data_y.append(data_chunk.processed_object['y'][0:max_len])
                 train_data_real.append(data_chunk.processed_object['is_real'][0:max_len])
-                train_data_moment.append(data_chunk.processed_object['moment'][0:max_len])
+                train_data_momentum.append(data_chunk.processed_object['momentum'][0:max_len])
                 train_data_event.append(data_chunk.processed_object['event'][0:max_len])
             else:
-                #print(f"{data_chunk.processed_object['event'][0]} is in valid data")
                 valid_data_inputs.append(data_chunk.processed_object['x']['gru'])
                 valid_data_len.append(data_chunk.processed_object['x']['preds'].detach().cpu().numpy())
                 valid_data_y.append(data_chunk.processed_object['y'])
                 valid_data_real.append(data_chunk.processed_object['is_real'])
-                valid_data_moment.append(data_chunk.processed_object['moment'])
+                valid_data_momentum.append(data_chunk.processed_object['momentum'])
                 valid_data_event.append(data_chunk.processed_object['event'])
 
         train_data_inputs = np.concatenate(train_data_inputs)
         train_data_y = np.concatenate(train_data_y)
         train_data_len = np.concatenate(train_data_len)
         train_data_real = np.concatenate(train_data_real)
-        train_data_moment = np.concatenate(train_data_moment)
+        train_data_momentum = np.concatenate(train_data_momentum)
         train_data_event = np.concatenate(train_data_event)
 
         valid_data_inputs = np.concatenate(valid_data_inputs)
         valid_data_y = np.concatenate(valid_data_y)
         valid_data_len = np.concatenate(valid_data_len)
         valid_data_real = np.concatenate(valid_data_real)
-        valid_data_moment = np.concatenate(valid_data_moment)
+        valid_data_momentum = np.concatenate(valid_data_momentum)
         valid_data_event = np.concatenate(valid_data_event)
 
         np.savez(
@@ -272,7 +229,7 @@ class TrackNetV2_1_Processor(DataProcessor):
             gru=train_data_inputs,
             preds=train_data_len,
             y=train_data_y,
-            moments=train_data_moment,
+            momentums=train_data_momentum,
             is_real=train_data_real,
             events=train_data_event
         )
@@ -281,7 +238,7 @@ class TrackNetV2_1_Processor(DataProcessor):
             gru=valid_data_inputs,
             preds=valid_data_len,
             y=valid_data_y,
-            moments=valid_data_moment,
+            momentums=valid_data_momentum,
             is_real=valid_data_real,
             events=valid_data_event
         )

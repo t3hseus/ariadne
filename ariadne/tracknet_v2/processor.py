@@ -35,9 +35,8 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
         self.processed_object = processed_object
         self.output_name = output_name
 
-
 @gin.configurable(denylist=['data_df'])
-class TrackNet_Processor(DataProcessor):
+class TrackNetProcessor(DataProcessor):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
@@ -67,7 +66,7 @@ class TrackNet_Processor(DataProcessor):
             return ProcessedTracknetDataChunk(None, '')
 
         chunk_id = int(chunk_df.event.values[0])
-        output_name = os.path.join(self.output_dir, f'tracknet{idx}_{chunk_id}')
+        output_name = f'{self.output_dir}/tracknet{idx}_{chunk_id}'
         return ProcessedTracknetDataChunk(chunk_df, output_name)
 
 
@@ -83,7 +82,7 @@ class TrackNet_Processor(DataProcessor):
             grouped_df = df[df['track'] != -1].groupby('track')
             for i, data in grouped_df:
                 chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
-                chunk_data_y.append(data[['r', 'phi', 'z']].values[-1])
+                chunk_data_y.append(data[['phi', 'z']].values[-1])
                 chunk_data_len.append(2)
             chunk_data_x = np.stack(chunk_data_x, axis=0)
             chunk_data_y = np.stack(chunk_data_y, axis=0)

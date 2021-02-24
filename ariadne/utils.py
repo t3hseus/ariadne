@@ -9,15 +9,12 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline, BSpline
 import os
 
-def fix_random_seed(seed):
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.deterministic = True #torch.backends.cudnn.determenistic
-        torch.benchmark = False #torch.backends.cudnn.benchmark
-
-def cartesian(df1, df2):
-    rows = itertools.product(df1.iterrows(), df2.iterrows())
+def cartesian_product_two_stations(df):
+    first_station = df[df['station'] == 0][['r', 'phi', 'z', 'track']]
+    first_station.columns = ['r_left', 'phi_left', 'z_left', 'track_left']
+    second_station = df[df['station'] == 1][['r', 'phi', 'z', 'track']]
+    second_station.columns = ['r_right', 'phi_right', 'z_right', 'track_right']
+    rows = itertools.product(first_station.iterrows(), second_station.iterrows())
     df = pd.DataFrame(left.append(right) for (_, left), (_, right) in rows)
     df_fakes = df[(df['track_left'] == -1) & (df['track_right'] == -1)]
     df = df[(df['track_left'] != df['track_right'])]
@@ -42,9 +39,21 @@ def weights_update(model, checkpoint):
     model.eval()
     return model
 
-def find_nearest_hit_no_faiss(ellipses, y, return_numpy=False):
+def load_data(input_file, n_samples):
+    data = np.load(input_file, mmap_mode='r')
+    first_file_len = len(data[data.files[0]])
+    print([len(data[f]) for f in data.files])
+    lengths = [len(data[f])==first_file_len for f in data.files]
+    print(all(lengths))
+    assert all(lengths), 'Lengths of files in npz are not equal!'
+    if n_samples is None:
+        n_samples = first_file_len
+    else:
+        n_samples = min(n_samples,first_file_len)
+    return {key: data[key][:n_samples] for key in data.files}
+
+def find_nearest_hit_no_faiss(ellipses, last_station_hits, return_numpy=False):
     centers = ellipses[:, :2]
-    last_station_hits = deepcopy(y)
     dists = torch.cdist(last_station_hits.float(), centers.float())
     minimal = last_station_hits[torch.argmin(dists, dim=0)]
     is_in_ellipse = point_in_ellipse(ellipses, minimal)
@@ -57,6 +66,7 @@ def find_nearest_hit(ellipses, last_station_hits):
     #numpy, numpy -> numpy, numpy
     index = faiss.IndexFlatL2(2)
     index.add(last_station_hits.astype('float32'))
+
     #ellipses = torch_ellipses.detach().cpu().numpy()
     centers = ellipses[:,:2]
     d, i = index.search(np.ascontiguousarray(centers.astype('float32')), 1)
@@ -83,8 +93,15 @@ def get_diagram_arr_linspace(all_real_hits, found_hits, start, end, num, col):
 
     return arr, spac[:-1]
 
-def draw_for_col(tracks_real, tracks_pred_true,
-                 col, col_pretty, total_events, n_ticks=150, n_boxes=10, model_name='TrackNETV2.1', style='boxplot'):
+def draw_for_col(tracks_real,
+                 tracks_pred_true,
+                 col,
+                 col_pretty,
+                 total_events,
+                 n_ticks=150,
+                 n_boxes=10,
+                 model_name='',
+                 style='boxplot'):
 
     start = tracks_real[tracks_real[col] > -np.inf][col].min()
     end = tracks_real[tracks_real[col] < np.inf][col].max()
@@ -171,7 +188,14 @@ def boxplot_style_data(bp):
     #    flier.set(marker='o', color='#e7298a', alpha=0.5)
 
 
-def draw_from_data(title, data_x, data_y, data_y_err, axis_x=None, axis_y=None, model_name='tracknet', **kwargs):
+def draw_from_data(title,
+                   data_x,
+                   data_y,
+                   data_y_err,
+                   axis_x=None,
+                   axis_y=None,
+                   model_name='tracknet',
+                   **kwargs):
     data_x = np.array(data_x)
     data_y_init = np.array(data_y)
     dataep = data_y + np.array(data_y_err)

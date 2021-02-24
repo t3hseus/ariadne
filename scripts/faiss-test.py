@@ -18,7 +18,7 @@ from absl import app
 from copy import deepcopy
 import matplotlib.pyplot as plt
 from ariadne.tracknet_v2.model import TrackNETv2
-from ariadne.tracknet_v2_1.model import Classifier
+from ariadne.tracknet_v2_1.model import TrackNetClassifier
 from ariadne.utils import weights_update, find_nearest_hit, find_nearest_hit_no_faiss,\
     get_diagram_arr_linspace,draw_for_col,draw_from_data
 from ariadne.tracknet_v2.metrics import point_in_ellipse
@@ -30,9 +30,9 @@ gin.bind_parameter('TrackNETv2.conv_features', 32)
 gin.bind_parameter('TrackNETv2.rnn_type', 'gru')
 gin.bind_parameter('TrackNETv2.batch_first', True)
 
-model = weights_update(model=TrackNETv2(), checkpoint=torch.load('../lightning_logs/version_112/checkpoints/epoch=161.ckpt'))
+model = weights_update(model=TrackNETv2(), checkpoint=torch.load('../lightning_logs/TrackNETv2/version_11/epoch=29-step=29.ckpt'))
 model.to(DEVICE)
-class_model = weights_update(model=Classifier(), checkpoint=torch.load('../lightning_logs/Classifier/version_39/_epoch=99-step=0.ckpt'))
+class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('../lightning_logs/TrackNetClassifier/version_23/epoch=26-step=863.ckpt'))
 class_model.to(DEVICE)
 use_classifier = True
 
@@ -45,7 +45,7 @@ last_station_hits_events = all_last_station_coordinates['events']
 all_tracks_df = pd.DataFrame(columns=['event', 'track', 'hit_0_id', 'hit_1_id', 'hit_2_id', 'px', 'py', 'pz', 'pred'])
 reco_df = all_tracks_df.copy()
 
-def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, batch_last_station, batch_moment):
+def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, batch_last_station, batch_momentum):
     t0 = time.time()
     all_last_y = batch_last_station
     with torch.no_grad():
@@ -81,16 +81,16 @@ def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, ba
         temp_dict['found'] = found_points.detach().cpu().numpy()
         temp_dict['found_right_point'] = found_right_points.detach().cpu().numpy()
         temp_dict['is_real_track'] = batch_real_flag.detach().cpu().numpy()
-        temp_dict['px'] = batch_moment[:, 0]
-        temp_dict['py'] = batch_moment[:, 1]
-        temp_dict['pz'] = batch_moment[:, 2]
-        temp_dict['p'] = np.linalg.norm(batch_moment, axis=1)
+        temp_dict['px'] = batch_momentum[:, 0]
+        temp_dict['py'] = batch_momentum[:, 1]
+        temp_dict['pz'] = batch_momentum[:, 2]
+        temp_dict['p'] = np.linalg.norm(batch_momentum, axis=1)
         temp_df = pd.DataFrame(temp_dict)
         t3 = time.time()
         return temp_df, t2-t1, t3-t0
 
 
-def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_flag, batch_last_station, batch_moment):
+def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_flag, batch_last_station, batch_momentum):
     t0 = time.time()
     all_last_y = batch_last_station.astype('float32')
     with torch.no_grad():
@@ -124,10 +124,10 @@ def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_fl
         temp_dict['found'] = found_points
         temp_dict['found_right_point'] = found_right_points
         temp_dict['is_real_track'] = batch_real_flag
-        temp_dict['px'] = batch_moment[:, 0]
-        temp_dict['py'] = batch_moment[:, 1]
-        temp_dict['pz'] = batch_moment[:, 2]
-        temp_dict['p'] = np.linalg.norm(batch_moment, axis=1)
+        temp_dict['px'] = batch_momentum[:, 0]
+        temp_dict['py'] = batch_momentum[:, 1]
+        temp_dict['pz'] = batch_momentum[:, 2]
+        temp_dict['p'] = np.linalg.norm(batch_momentum, axis=1)
         temp_df = pd.DataFrame(temp_dict)
         t3 = time.time()
         return temp_df, t2-t1, t3-t0
@@ -150,12 +150,12 @@ for batch_event in tqdm(np.unique(events['events'])):
     batch_len = events['len'][events['events'] == batch_event]
     batch_y = events['y'][events['events'] == batch_event]
     batch_labels = events['is_real'][events['events'] == batch_event]
-    batch_moments = events['moments'][events['events'] == batch_event]
+    batch_momentums = events['momentums'][events['events'] == batch_event]
     last_station_data = last_station_hits[last_station_hits_events == batch_event]
-    df, elapsed_time, total_elapsed = handle_event_to_df(batch_x, batch_len, batch_y, batch_labels, last_station_data, batch_moments)
+    df, elapsed_time, total_elapsed = handle_event_to_df(batch_x, batch_len, batch_y, batch_labels, last_station_data, batch_momentums)
     search_time_no_faiss += elapsed_time
     all_time_no_faiss += total_elapsed
-    df_faiss, elapsed_time_faiss, total_elapsed_faiss = handle_event_to_df_faiss(batch_x, batch_len, batch_y, batch_labels, last_station_data, batch_moments)
+    df_faiss, elapsed_time_faiss, total_elapsed_faiss = handle_event_to_df_faiss(batch_x, batch_len, batch_y, batch_labels, last_station_data, batch_momentums)
     search_time_faiss += elapsed_time_faiss
     all_time_faiss += total_elapsed_faiss
     times[int(batch_labels.sum())].append(total_elapsed_faiss)

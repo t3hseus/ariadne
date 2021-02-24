@@ -79,17 +79,15 @@ class BaseTransformer(object):
         return data
 
     def drop_fakes(self, data):
-        self.fakes = data.loc[data[self.track_column] == -1, :]
-        data = data.loc[data[self.track_column] != -1, :]
-        return data
+        return data.loc[data[self.track_column] != -1, :]
 
     def get_num_fakes(self):
         if self.fakes:
             return len(self.fakes)
         return 0
 
-    def add_fakes(self, data):
-        return pd.concat([data, self.fakes], axis=0).reset_index()
+    def add_fakes(self, data, fakes):
+        return pd.concat([data, fakes], axis=0).reset_index()
 
 
 
@@ -103,9 +101,9 @@ class BaseScaler(BaseTransformer):
     """
 
     def __init__(self, scaler, drop_old=True, columns=('x', 'y', 'z')):
+        super().__init__(drop_old=drop_old, columns=columns)
         self.columns = columns
         self.scaler = scaler
-        super().__init__(drop_old=drop_old, columns=columns)
 
     def __call__(self, data):
         """
@@ -119,7 +117,9 @@ class BaseScaler(BaseTransformer):
         return data
 
     def __repr__(self):
-        return '-' * 30 + '\n' + f'{self.__class__.__name__} with scaler: {self.scaler} \n' + '-' * 30 + '\n'
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with scaler: {self.scaler}'
+                f'{"-" * 30}\n')
 
 
 class BaseFilter(BaseTransformer):
@@ -135,13 +135,13 @@ class BaseFilter(BaseTransformer):
 
     def __init__(self, filter_rule, num_stations=None, keep_filtered=True, station_col='station', track_col='track',
                  event_col='event'):
+        super().__init__(station_col=station_col, track_col=track_col, event_col=event_col)
         self.num_stations = num_stations
         self._broken_tracks = None
         self._num_broken_tracks = None
-        self.keep_fakes = True
         self.filter_rule = filter_rule
         self.keep_filtered = keep_filtered
-        super().__init__(station_col=station_col, track_col=track_col, event_col=event_col)
+
 
     def __call__(self, data):
         """
@@ -150,7 +150,7 @@ class BaseFilter(BaseTransformer):
         # Returns:
             data (pd.DataFrame): transformed dataframe
         """
-        # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
+        fakes = data.loc[data[self.track_column] == -1, :]
         data = self.drop_fakes(data)
         tracks = data.groupby([self.event_column, self.track_column])
         if self.num_stations is None:
@@ -163,7 +163,7 @@ class BaseFilter(BaseTransformer):
             data.loc[~data.index.isin(good_tracks.index), 'track'] = -1
         else:
             data = data.loc[data.index.isin(good_tracks.index), :]
-        data = self.add_fakes(data)
+        data = self.add_fakes(data, fakes)
         return data
 
     def get_broken(self):
@@ -173,7 +173,10 @@ class BaseFilter(BaseTransformer):
         return self._num_broken_tracks
 
     def __repr__(self):
-        return '-' * 30 + '\n' + f'{self.__class__.__name__} with filter_rule: {self.filter_rule}\n' + '-' * 30 + '\n'
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with filter_rule: {self.filter_rule}\n'
+                f'{"-" * 30}\n')
+
 
 
 class BaseCoordConverter(BaseTransformer):
@@ -189,6 +192,7 @@ class BaseCoordConverter(BaseTransformer):
 
     def __init__(self, convert_function, drop_old=False, from_columns=('x', 'y'),
                  to_columns=('r', 'phi'), postfix='general_convert'):
+        super().__init__(drop_old=drop_old, columns=list(to_columns) + ['z'])
         self.drop_old = drop_old
         self.cart_columns = from_columns
         self.polar_columns = to_columns
@@ -197,7 +201,7 @@ class BaseCoordConverter(BaseTransformer):
         self.from_columns = from_columns
         self.to_columns = to_columns
         self.postfix = postfix
-        super().__init__(drop_old=drop_old, columns=list(to_columns) + ['z'])
+
 
     def __call__(self, data):
         """
@@ -231,16 +235,19 @@ class BaseCoordConverter(BaseTransformer):
         return '\n'.join([f'{i}: from {j[0]} to {j[1]}' for i, j in self.range_.items()])
 
     def __repr__(self):
-        return '-' * 30 + '\n' + f'{self.__class__.__name__} with convert_function: {self.convert_function}\n' + '-' * 30 + '\n'
+        return(f'{"-" * 30}\n'
+               f'{self.__class__.__name__} with convert_function: '
+               f'{self.convert_function}\n'
+               f'{"-" * 30}\n')
 
 @gin.configurable
-class PreserveOriginal(object):
+class PreserveOriginal:
     """Preserves original state of given columns.
     # Args:
          columns (list or tuple, ['x', 'y', 'z'] by default): Columns to keep
     """
 
-    def __init__(self, columns=('x', 'y', 'z')):
+    def __init__(self, columns=None):
         self.columns = columns
 
     def __call__(self, data):
@@ -250,14 +257,16 @@ class PreserveOriginal(object):
         # Returns:
             data (pd.DataFrame): transformed dataframe
         """
+        if not self.columns:
+            self.columns = data.columns
         for col in self.columns:
             data.loc[:, col + '_original'] = data.loc[:, col]
         return data
 
     def __repr__(self):
-        return '-' * 30 + '\n' + \
-               f'{self.__class__.__name__} ceeping original state of columns: {self.columns} \n' + \
-               '-' * 30 + '\n'
+        return (f"{'-' * 30}\n"
+               f'{self.__class__.__name__} ceeping original state of columns: {self.columns} \n'
+               f"{'-' * 30}\n")
 
 @gin.configurable
 class StandardScale(BaseScaler):
@@ -270,16 +279,18 @@ class StandardScale(BaseScaler):
     """
 
     def __init__(self, drop_old=True, with_mean=True, with_std=True, columns=('x', 'y', 'z')):
+
+        super().__init__(self.scaler, drop_old, columns)
         self.with_mean = with_mean
         self.with_std = with_std
         self.scaler = StandardScaler(with_mean, with_std)
-        super().__init__(self.scaler, drop_old, columns)
 
     def __repr__(self):
-        return '-' * 30 + '\n' + \
-               f'{self.__class__.__name__} with scaling_parameters: drop_old={self.drop_old}, with_mean={self.with_mean},with_std={self.with_std} \n' + \
-               '-' * 30 + '\n' + \
-               f' Mean: {self.scaler.mean_} \n Var: {self.scaler.var_} \n Scale: {self.scaler.scale_} '
+        return (f"{'-' * 30} \n"
+               f"{self.__class__.__name__} with scaling_parameters: drop_old={self.drop_old}, "
+               f"with_mean={self.with_mean},with_std={self.with_std} \n"
+               f"{'-' * 30} \n" 
+               f" Mean: {self.scaler.mean_} \n Var: {self.scaler.var_} \n Scale: {self.scaler.scale_} ")
 
 
 @gin.configurable
@@ -292,18 +303,20 @@ class MinMaxScale(BaseScaler):
     """
 
     def __init__(self, drop_old=True, feature_range=(0, 1), columns=('x', 'y', 'z')):
+        super().__init__(self.scaler, drop_old, columns=columns)
         assert feature_range[0] < feature_range[1], 'minimum is not smaller value then maximum'
         self.feature_range = feature_range
         self.scaler = MinMaxScaler(feature_range=feature_range)
         self.columns = columns
         self.drop_old = drop_old
-        super().__init__(self.scaler, drop_old, columns=columns)
+
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, feature_range={self.feature_range} \n' + \
-               '------------------------------------------------------------------------------------------------\n' + \
-               f' Data min: {self.scaler.data_min_} \n Data max: {self.scaler.data_max_} \n Scale: {self.scaler.scale_} '
+        return (f"{'-' * 30}\n"
+                f"{self.__class__.__name__} with parameters: "
+                f"drop_old={self.drop_old}, feature_range={self.feature_range} \n"
+                f"{'-' * 30}\n"
+                f" Data min: {self.scaler.data_min_} \n Data max: {self.scaler.data_max_} \n Scale: {self.scaler.scale_}")
 
 
 @gin.configurable
@@ -320,15 +333,17 @@ class Normalize(BaseScaler):
     """
 
     def __init__(self, drop_old=True, norm='l2', columns=('x', 'y', 'z')):
+        super().__init__(self.scaler, drop_old, columns)
         self.norm = norm
         self.scaler = Normalizer(norm=norm)
         self.columns = columns
         self.drop_old = drop_old
-        super().__init__(self.scaler, drop_old, columns)
+
 
     def __repr__(self):
-        return '-' * 30 + '\n' + f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, norm={self.norm} \n' + \
-               '-' * 30 + '\n'
+        return (f"{'-' * 30}\n"
+                f"{self.__class__.__name__} with parameters: drop_old={self.drop_old}, norm={self.norm} \n"
+                f"{'-' * 30}\n")
 
 
 @gin.configurable
@@ -351,9 +366,8 @@ class ConstraintsNormalize(BaseTransformer):
 
     def __init__(self, drop_old=True, columns=('x', 'y', 'z'), margin=1e-3, use_global_constraints=True,
                  constraints=None):
+        super().__init__(drop_old=drop_old, columns=columns)
         assert margin > 0, 'Margin is not positive'
-        self.columns = columns
-        self.drop_old = drop_old
         self.margin = margin
         self.use_global_constraints = use_global_constraints
         self.constraints = constraints
@@ -373,7 +387,7 @@ class ConstraintsNormalize(BaseTransformer):
                                        col]) == 2, f'Not applicable number of constraints for column {col} and station {key}'
                         assert constraint[col][0] < constraint[col][
                             1], f'Minimum is not smaller than maximum for column {col} and station {key}'
-        super().__init__(drop_old=drop_old, columns=columns)
+
 
     def __call__(self, data):
         """
@@ -469,13 +483,14 @@ class DropShort(BaseFilter):
         super().__init__(self.filter, num_stations=num_stations, station_col=station_col, track_col=track_col,
                          event_col=event_col, keep_filtered=keep_filtered)
 
+
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: num_stations={self.num_stations}, ' \
-               f'    track_column={self.track_column}, station_column={self.station_column}, ' \
-               f'event_column={self.event_column}\n' + \
-               '------------------------------------------------------------------------------------------------\n' + \
-               f'Number of broken tracks: {self.get_num_broken()} \n'
+        return(f'{"-" * 30}\n'
+               f'{self.__class__.__name__} with parameters: num_stations={self.num_stations}, '
+               f'    track_column={self.track_column}, station_column={self.station_column}, '
+               f'event_column={self.event_column}\n'
+               f'{"-" * 30}\n'
+               f'Number of broken tracks: {self.get_num_broken()} \n')
 
 
 @gin.configurable
@@ -488,30 +503,32 @@ class DropSpinningTracks(BaseFilter):
         event_col (str, 'event' by default): Station column in data
     """
 
-    def __init__(self, num_stations=None, keep_fakes=True,keep_filtered=True, station_col='station', track_col='track', event_col='event'):
+    def __init__(self, keep_filtered=True, station_col='station', track_col='track', event_col='event'):
+
         self.filter = lambda x: x[self.station_column].unique().shape[0] == x[self.station_column].shape[0]
-        super().__init__(self.filter,num_stations=num_stations, station_col=station_col, track_col=track_col, event_col=event_col,
+        super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
                          keep_filtered=keep_filtered)
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters:' + \
-               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n' + \
-               '------------------------------------------------------------------------------------------------\n' + \
-               f'Number of broken tracks: {self.get_num_broken()} \n'
+        return(f'{"-" * 30}\n'
+               f'{self.__class__.__name__} with parameters:'
+               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
+               f'{"-" * 30}\n'
+               f'Number of broken tracks: {self.get_num_broken()} \n')
 
 
 @gin.configurable
 class DropFakes(BaseTransformer):
-    """Drops points without tracks.
+    """Drops points without tracks (marked as -1).
     Args:
         track_col (str, 'track' by default): Track column in data
     """
 
     def __init__(self, track_col='track'):
+        super().__init__(track_col=track_col)
         self._num_fakes = None
         self.track_col = track_col
-        super().__init__(track_col=track_col)
+
 
     def __call__(self, data):
         """"
@@ -520,15 +537,14 @@ class DropFakes(BaseTransformer):
         # Returns:
             data (pd.DataFrame): transformed dataframe
         """
-        # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
         data = self.drop_fakes(data)
         return data
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: track_col={self.track_col}' + \
-               '------------------------------------------------------------------------------------------------\n' + \
-               f'Number of misses: {self.get_num_fakes()} \n'
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with parameters: track_col={self.track_col}'
+                f'{"-" * 30}\n'
+                f'Number of misses: {self.get_num_fakes()} \n')
 
 
 @gin.configurable
@@ -543,9 +559,6 @@ class ToCylindrical(BaseCoordConverter):
     """
 
     def __init__(self, drop_old=False, cart_columns=('x', 'y'), polar_columns=('r', 'phi'), postfix='before_cyl'):
-        self.drop_old = drop_old
-        self.from_columns = cart_columns
-        self.to_columns = polar_columns
         super().__init__(self.convert, drop_old=drop_old, from_columns=cart_columns, to_columns=polar_columns, postfix=postfix)
 
     def convert(self, data):
@@ -554,11 +567,11 @@ class ToCylindrical(BaseCoordConverter):
         return (r, phi)
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, ' + \
-               f'from_columns={self.from_columns}, to_columns={self.to_columns}\n' + \
-               '------------------------------------------------------------------------------------------------\n' + \
-               f' Ranges: {self.get_ranges_str()} '
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, '
+                f'from_columns={self.from_columns}, to_columns={self.to_columns}\n'
+                f'{"-" * 30}\n'
+                f' Ranges: {self.get_ranges_str()} ')
 
 
 @gin.configurable
@@ -577,18 +590,16 @@ class ToCartesian(BaseCoordConverter):
         super().__init__(self.convert, drop_old=drop_old, from_columns=self.from_columns, to_columns=self.to_columns)
 
     def convert(self, data):
-        print(data.columns)
-        print(self.from_columns)
         y_new = data[self.from_columns[0]] * np.cos(data[self.from_columns[1]])
         x_new = data[self.from_columns[0]] * np.sin(data[self.from_columns[1]])
         return (x_new, y_new)
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: ' \
-               f'drop_old={self.drop_old}, phi_col={self.to_columns[1]}, r_col={self.to_columns[0]}\n' + \
-               '------------------------------------------------------------------------------------------------\n' + \
-               f'Ranges:' + self.get_ranges_str()
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with parameters: ' 
+                f'drop_old={self.drop_old}, phi_col={self.to_columns[1]}, r_col={self.to_columns[0]}\n'
+                f'{"-" * 30}\n'
+                f'Ranges: {self.get_ranges_str()}')
 
 
 @gin.configurable
@@ -613,14 +624,14 @@ class ToBuckets(BaseTransformer):
     """
 
     def __init__(self, flat=True, shuffle=False, random_state=42,
-                 keep_fakes=False, event_col='event', track_col='track'):
+                 event_col='event', track_col='track'):
+        super().__init__(event_col=event_col, track_col=track_col)
         self.flat = flat
         self.shuffle = shuffle
         self.random_state = random_state
         self.track_col = track_col
         self.event_col = event_col
-        self.keep_fakes = keep_fakes
-        super().__init__(keep_fakes=keep_fakes, event_col=event_col, track_col=track_col)
+
 
     def __call__(self, df):
         """
@@ -698,7 +709,7 @@ class ToBuckets(BaseTransformer):
         return {i: len(j) for i, j in self.buckets_.items()}
 
     def __repr__(self):
-        return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: flat={self.flat}, ' \
-               f'random_state={self.random_state}, shuffle={self.shuffle}, keep_fakes={self.keep_fakes}\n' + \
-               '------------------------------------------------------------------------------------------------\n'
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with parameters: flat={self.flat}, '
+                f'random_state={self.random_state}, shuffle={self.shuffle}, keep_fakes={self.keep_fakes}\n' 
+                f'{"-" * 30}\n')
