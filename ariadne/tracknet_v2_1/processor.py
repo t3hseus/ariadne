@@ -166,7 +166,7 @@ class TrackNetV21Processor(DataProcessor):
             if data_chunk.id in train_chunks:
                 initial_len = len(data_chunk.processed_object['y'])
                 multiplicity = data_chunk.processed_object['multiplicity']
-                max_len = int(multiplicity + (initial_len - multiplicity) / self.n_times_oversampling)
+                max_len = int(multiplicity + (initial_len / self.n_times_oversampling))
                 train_data_inputs.append(data_chunk.processed_object['x']['inputs'][0:max_len])
                 train_data_len.append(data_chunk.processed_object['x']['input_lengths'][0:max_len])
                 train_data_y.append(data_chunk.processed_object['y'][0:max_len])
@@ -200,6 +200,10 @@ class TrackNetV21Processor(DataProcessor):
         valid_data_momentum = np.concatenate(valid_data_momentum)
         valid_data_event = np.concatenate(valid_data_event)
 
+        valid_data_last_station = np.concatenate(valid_data_last_station)
+        train_data_last_station = np.concatenate(train_data_last_station)
+        valid_data_last_station_event = np.concatenate(valid_data_last_station_event)
+        train_data_last_station_event = np.concatenate(train_data_last_station_event)
         np.savez(processed_data.output_name +'_train', inputs=train_data_inputs, input_lengths=train_data_len, y=train_data_y,
                  momentums=train_data_momentum, is_real=train_data_real, events=train_data_event)
         np.savez(processed_data.output_name + '_valid', inputs=valid_data_inputs, input_lengths=valid_data_len, y=valid_data_y,

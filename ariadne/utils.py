@@ -7,6 +7,7 @@ from ariadne.tracknet_v2.metrics import point_in_ellipse
 import faiss
 import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline, BSpline
+import glob
 import os
 
 def cartesian_product_two_stations(df):
@@ -39,18 +40,28 @@ def weights_update(model, checkpoint):
     model.eval()
     return model
 
-def load_data(input_file, n_samples):
-    data = np.load(input_file, mmap_mode='r')
-    first_file_len = len(data[data.files[0]])
-    print([len(data[f]) for f in data.files])
-    lengths = [len(data[f])==first_file_len for f in data.files]
-    print(all(lengths))
-    assert all(lengths), 'Lengths of files in npz are not equal!'
+def load_data(input_dir, file_mask, n_samples):
+    flag = 0
+    files = []
+    data_merged = {}
+    datafiles = glob.glob(f'{input_dir}/{file_mask}')
+    for f in datafiles:
+        one_file_data = np.load(f, mmap_mode='r', allow_pickle=False)
+        first_file_len = len(one_file_data[one_file_data.files[0]])
+        files = one_file_data.files
+        lengths = [len(one_file_data[f]) == first_file_len for f in files]
+        assert all(lengths), 'Lengths of files in npz are not equal!'
+        if flag == 0:
+            data_merged = dict(one_file_data.items())
+            flag = 1
+        else:
+            data_merged = {k: np.concatenate((data_merged[k], i), 0) for k, i in one_file_data.items()}
     if n_samples is None:
-        n_samples = first_file_len
+        n_samples = len(data_merged[files[0]])
     else:
-        n_samples = min(n_samples,first_file_len)
-    return {key: data[key][:n_samples] for key in data.files}
+        n_samples = min(n_samples, len(data_merged[files[0]]))
+    return {key: item[:n_samples] for key, item in data_merged.items()}
+
 
 def find_nearest_hit_no_faiss(ellipses, last_station_hits, return_numpy=False):
     centers = ellipses[:, :2]
@@ -59,19 +70,22 @@ def find_nearest_hit_no_faiss(ellipses, last_station_hits, return_numpy=False):
     is_in_ellipse = point_in_ellipse(ellipses, minimal)
     if return_numpy:
         minimal = minimal.detach().cpu().numpy()
-        is_in_ellipse  = is_in_ellipse.detach().cpu().numpy()
+        is_in_ellipse = is_in_ellipse.detach().cpu().numpy()
     return minimal, is_in_ellipse
 
 def find_nearest_hit(ellipses, last_station_hits):
     #numpy, numpy -> numpy, numpy
     index = faiss.IndexFlatL2(2)
+    index.train(last_station_hits.astype('float32'))
     index.add(last_station_hits.astype('float32'))
 
     #ellipses = torch_ellipses.detach().cpu().numpy()
-    centers = ellipses[:,:2]
+    centers = ellipses[:, :2]
     d, i = index.search(np.ascontiguousarray(centers.astype('float32')), 1)
-    x_part = d.flatten() / ellipses[:, 2].flatten()**2
-    y_part = d.flatten() / ellipses[:, 3].flatten()**2
+    d = np.sqrt(d)
+    found_hits = last_station_hits[i.flatten()]
+    x_part = abs(found_hits[:, 0] - ellipses[:, 0]).flatten() / ellipses[:, 2].flatten()**2
+    y_part = abs(found_hits[:, 1] - ellipses[:, 1]).flatten() / ellipses[:, 3].flatten()**2
     left_side = x_part + y_part
     is_in_ellipse = left_side <= 1
     return last_station_hits[i.flatten()], is_in_ellipse

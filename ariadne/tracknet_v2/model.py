@@ -48,7 +48,6 @@ class TrackNETv2(nn.Module):
             nn.Linear(conv_features, 2),
             nn.Softplus()
         )
-        self.dummy_param = nn.Parameter(torch.empty(0))
 
     def forward(self, inputs, input_lengths, return_gru_state=False, *args):
         # BxTxC -> BxCxT

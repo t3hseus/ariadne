@@ -23,9 +23,13 @@ class TracknetDataChunk(DataChunk):
         super().__init__(df_chunk_data)
 
 class ProcessedTracknetData(ProcessedData):
-    def __init__(self, processed_data: List[ProcessedDataChunk]):
+    def __init__(self,
+                 output_name: str,
+                 processed_data: List[ProcessedDataChunk]
+                 ):
         super().__init__(processed_data)
         self.processed_data = processed_data
+        self.output_name = output_name
 
 class ProcessedTracknetDataChunk(ProcessedDataChunk):
     def __init__(self,
@@ -66,7 +70,7 @@ class TrackNetProcessor(DataProcessor):
             return ProcessedTracknetDataChunk(None, '')
 
         chunk_id = int(chunk_df.event.values[0])
-        output_name = f'{self.output_dir}/tracknet{idx}_{chunk_id}'
+        output_name = f'{self.output_dir}/tracknet_{idx.replace(".txt", "")}'
         return ProcessedTracknetDataChunk(chunk_df, output_name)
 
 
@@ -92,7 +96,7 @@ class TrackNetProcessor(DataProcessor):
                     'input_lengths': chunk_data_len},
                 'y': chunk_data_y}
             chunk.processed_object = chunk_data
-        return ProcessedTracknetData(chunks)
+        return ProcessedTracknetData(chunks[0].output_name,chunks)
 
 
     def save_on_disk(self,
@@ -110,8 +114,8 @@ class TrackNetProcessor(DataProcessor):
         all_data_y = np.concatenate(all_data_y).astype('float32')
         all_data_len = np.concatenate(all_data_len)
         np.savez(
-            self.output_name,
+            processed_data.output_name,
             inputs=all_data_inputs,
             input_lengths=all_data_len, y=all_data_y
         )
-        LOGGER.info(f'Saved to: {self.output_name}.npz')
+        LOGGER.info(f'Saved to: {processed_data.output_name}.npz')

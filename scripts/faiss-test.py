@@ -22,7 +22,6 @@ from ariadne.tracknet_v2_1.model import TrackNetClassifier
 from ariadne.utils import weights_update, find_nearest_hit, find_nearest_hit_no_faiss,\
     get_diagram_arr_linspace,draw_for_col,draw_from_data
 from ariadne.tracknet_v2.metrics import point_in_ellipse
-
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 gin.bind_parameter('TrackNETv2.input_features', 3)
@@ -30,11 +29,11 @@ gin.bind_parameter('TrackNETv2.conv_features', 32)
 gin.bind_parameter('TrackNETv2.rnn_type', 'gru')
 gin.bind_parameter('TrackNETv2.batch_first', True)
 
-model = weights_update(model=TrackNETv2(), checkpoint=torch.load('../lightning_logs/TrackNETv2/version_11/epoch=29-step=29.ckpt'))
+model = weights_update(model=TrackNETv2(), checkpoint=torch.load('../lightning_logs/TrackNETv2/version_44/epoch=34-step=40144.ckpt'))
 model.to(DEVICE)
-class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('../lightning_logs/TrackNetClassifier/version_23/epoch=26-step=863.ckpt'))
+class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('../lightning_logs/TrackNetClassifier/version_52/epoch=1-step=6249.ckpt'))
 class_model.to(DEVICE)
-use_classifier = True
+use_classifier = False
 
 events = np.load('../output/cgem_t_tracknet_valid/tracknet_all_3.txt.npz')
 all_last_station_coordinates = np.load('../output/cgem_t_tracknet_valid/tracknet_all_3.txt_last_station.npz')
@@ -60,7 +59,9 @@ def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, ba
             all_last_y = np.expand_dims(all_last_y, axis=0)
         all_last_y = torch.from_numpy(all_last_y).to(DEVICE)
         batch_target = torch.from_numpy(batch_target).to(DEVICE)
-        test_pred = model(inputs=torch.from_numpy(batch_input).to(DEVICE), input_lengths=torch.from_numpy(batch_len).to(DEVICE))
+        test_pred,last_gru_output = model(inputs=torch.from_numpy(batch_input).to(DEVICE),
+                          input_lengths=torch.from_numpy(batch_len).to(DEVICE),
+                          return_gru_state=True)
         batch_real_flag = torch.from_numpy(batch_real_flag).to(DEVICE)
         num_real_tracks = batch_real_flag.sum()
         t1 = time.time()
@@ -68,13 +69,13 @@ def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, ba
         t2 = time.time()
         nearest_points[~is_point_in_ellipse] = -2.
         if use_classifier:
-            pred_classes = class_model(model.last_gru_output, nearest_points)
+            pred_classes = class_model(last_gru_output, nearest_points)
             softmax = torch.nn.Softmax()
             pred_classes = torch.argmax(softmax(pred_classes), dim=1)
         is_prediction_true = (batch_target == nearest_points)
         is_prediction_true = is_prediction_true.to(torch.int).sum(dim = 1) / 2.0
         if use_classifier:
-            found_points = is_point_in_ellipse & (pred_classes == 0)
+            found_points = is_point_in_ellipse & (pred_classes == 1)
         else:
             found_points = is_point_in_ellipse
         found_right_points = found_points & (is_prediction_true == 1) & (batch_real_flag == 1)
@@ -103,7 +104,9 @@ def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_fl
             batch_real_flag = np.expand_dims(batch_real_flag, axis=0)
         if all_last_y.ndim < 2:
             all_last_y = np.expand_dims(all_last_y, axis=0)
-        test_pred = model(inputs=torch.from_numpy(batch_input).to(DEVICE), input_lengths=torch.from_numpy(batch_len).to(DEVICE))
+        test_pred, last_gru_output = model(inputs=torch.from_numpy(batch_input).to(DEVICE),
+                                           input_lengths=torch.from_numpy(batch_len).to(DEVICE),
+                                           return_gru_state=True)
         num_real_tracks = batch_real_flag.sum()
         t1 = time.time()
         nearest_points, is_point_in_ellipse = find_nearest_hit(test_pred.detach().cpu().numpy(), all_last_y)
@@ -111,13 +114,14 @@ def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_fl
         #nearest_points = nearest_points.detach().cpu().numpy()
         #is_point_in_ellipse = is_point_in_ellipse.detach().cpu().numpy()
         if use_classifier:
-            pred_classes = class_model(model.last_gru_output, torch.from_numpy(nearest_points.astype('float')).to(DEVICE))
+            pred_classes = class_model(last_gru_output,
+                                       torch.from_numpy(nearest_points.astype('float')).to(DEVICE))
             softmax = torch.nn.Softmax()
             pred_classes = torch.argmax(softmax(pred_classes), dim=1).detach().cpu().numpy()
         is_prediction_true = np.logical_and(batch_target, nearest_points)
         is_prediction_true = is_prediction_true.all(1)
         if use_classifier:
-            found_points = is_point_in_ellipse  & (pred_classes == 0)
+            found_points = is_point_in_ellipse  & (pred_classes == 1)
         else:
             found_points = is_point_in_ellipse
         found_right_points = found_points & (is_prediction_true == 1) & (batch_real_flag == 1)
@@ -133,42 +137,53 @@ def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_fl
         return temp_df, t2-t1, t3-t0
 
 
-result_df = pd.DataFrame(columns=['found', 'found_right_point','is_real_track', 'px','py','pz','p'])
-result_df_faiss = pd.DataFrame(columns=['found', 'found_right_point','is_real_track', 'px','py','pz','p'])
+result_df = pd.DataFrame(columns=['found', 'found_right_point', 'is_real_track', 'px', 'py', 'pz', 'p'])
+result_df_faiss = pd.DataFrame(columns=['found', 'found_right_point', 'is_real_track', 'px', 'py', 'pz', 'p'])
 
 all_time_no_faiss = 0
 all_time_faiss = 0
 search_time_no_faiss = 0
 search_time_faiss = 0
-num_batches = 0
-times = {i:[] for i in range(1,20)}
-
+times = {i: [] for i in range(1, 20)}
 num_events = 0
 for batch_event in tqdm(np.unique(events['events'])):
-    num_events+=1
+    num_events += 1
     batch_x = events['x'][events['events'] == batch_event]
     batch_len = events['len'][events['events'] == batch_event]
     batch_y = events['y'][events['events'] == batch_event]
     batch_labels = events['is_real'][events['events'] == batch_event]
-    batch_momentums = events['momentums'][events['events'] == batch_event]
+    batch_momentums = events['moments'][events['events'] == batch_event]
     last_station_data = last_station_hits[last_station_hits_events == batch_event]
-    df, elapsed_time, total_elapsed = handle_event_to_df(batch_x, batch_len, batch_y, batch_labels, last_station_data, batch_momentums)
+    df, elapsed_time, total_elapsed = handle_event_to_df(batch_x,
+                                                         batch_len,
+                                                         batch_y,
+                                                         batch_labels,
+                                                         last_station_data,
+                                                         batch_momentums)
+    #print('\n df \n', df[['found', 'found_right_point', 'is_real_track']])
     search_time_no_faiss += elapsed_time
     all_time_no_faiss += total_elapsed
-    df_faiss, elapsed_time_faiss, total_elapsed_faiss = handle_event_to_df_faiss(batch_x, batch_len, batch_y, batch_labels, last_station_data, batch_momentums)
+    df_faiss, elapsed_time_faiss, total_elapsed_faiss = handle_event_to_df_faiss(batch_x,
+                                                                                 batch_len,
+                                                                                 batch_y,
+                                                                                 batch_labels,
+                                                                                 last_station_data,
+                                                                                 batch_momentums)
+    #print('\n df_faiss \n', df_faiss[['found', 'found_right_point', 'is_real_track']])
     search_time_faiss += elapsed_time_faiss
     all_time_faiss += total_elapsed_faiss
     times[int(batch_labels.sum())].append(total_elapsed_faiss)
-    result_df = pd.concat([result_df,df], axis=0)
-    result_df_faiss = pd.concat([result_df, df_faiss], axis=0)
-    num_batches +=1
+    result_df = pd.concat([result_df, df], axis=0)
+    result_df_faiss = pd.concat([result_df_faiss, df_faiss], axis=0)
+    if num_events == 3000:
+        break
 
-real_tracks = deepcopy(result_df.loc[result_df['is_real_track']==1, ])
+real_tracks = deepcopy(result_df.loc[result_df['is_real_track'] == 1, ])
 from numpy import linalg as LA
 recall = real_tracks['found_right_point'].sum() / float(len(real_tracks))
 precision = real_tracks['found_right_point'].sum() / float(result_df['found'].sum())
 result_df['pt'] = LA.norm(result_df[['px','py']].values, axis=1)
-result_df['cos_t'] = (result_df[['pz']].values/ LA.norm(result_df[['px','py','pz']].values, axis=1, keepdims=True))
+result_df['cos_t'] = (result_df[['pz']].values / LA.norm(result_df[['px', 'py', 'pz']].values, axis=1, keepdims=True))
 result_df['a_phi'] = np.arctan2(result_df[['px']].values, result_df[['py']].values)
 print('\n ===> NO FAISS:')
 print('Test set results:')
@@ -176,13 +191,12 @@ print(f'Precision: {precision}')
 print(f'Recall:    {recall}')
 print('-'*10)
 print(f'Search time: {search_time_no_faiss} sec')
-print(f'Search time per batch: {(search_time_no_faiss/num_batches)} sec')
+print(f'Search time per batch: {(search_time_no_faiss / num_events)} sec')
 print('-'*10)
 print(f'Total time: {all_time_no_faiss} sec')
-print(f'Total time per batch: {(all_time_no_faiss/num_batches)} sec')
+print(f'Total time per batch: {(all_time_no_faiss / num_events)} sec')
 
-result_df.loc[result_df['is_real_track']==1,].found_right_point.sum()
-real_tracks = deepcopy(result_df_faiss.loc[result_df_faiss['is_real_track']==1, ])
+real_tracks = deepcopy(result_df_faiss.loc[result_df_faiss['is_real_track'] == 1, ])
 recall = real_tracks['found_right_point'].sum() / float(len(real_tracks))
 precision = result_df_faiss['found_right_point'].sum() / float(result_df_faiss['found'].sum())
 
@@ -192,14 +206,21 @@ print(f'Precision: {precision}')
 print(f'Recall:    {recall}')
 print('-'*10)
 print(f'Search time: {search_time_faiss} sec')
-print(f'Search time per batch: {(search_time_faiss/num_batches)} sec')
+print(f'Search time per batch: {(search_time_faiss / num_events)} sec')
 print('-'*10)
 print(f'Total time: {all_time_faiss} sec')
-print(f'Total time per batch: {(all_time_faiss/num_batches)} sec')
+print(f'Total time per batch: {(all_time_faiss/num_events)} sec')
 
-true_tracks_result_df = result_df[result_df.is_real_track == 1]
+result_df_faiss['pt'] = LA.norm(result_df_faiss[['px','py']].values, axis=1)
+result_df_faiss['cos_t'] = (result_df_faiss[['pz']].values /
+                            LA.norm(result_df_faiss[['px', 'py', 'pz']].values, axis=1, keepdims=True))
+result_df_faiss['a_phi'] = np.arctan2(result_df_faiss[['px']].values, result_df_faiss[['py']].values)
+
+
+true_tracks_result_df = result_df_faiss[result_df_faiss.is_real_track == 1]
 tracks_pred_true = true_tracks_result_df[true_tracks_result_df.found_right_point]
-tracks_real = true_tracks_result_df[(true_tracks_result_df.found_right_point == False)  | (true_tracks_result_df.found == False)]
+tracks_real = true_tracks_result_df[(true_tracks_result_df.found_right_point == False)  |
+                                    (true_tracks_result_df.found == False)]
 #draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', 2000, 175)
 draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, style='plot')
 #draw_for_col(true_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', 2000, 175)

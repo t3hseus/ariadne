@@ -56,7 +56,7 @@ class TrackNetV2Dataset(Dataset):
     Contains first k hits of tracks as x and final hit as y. Can be used for train/test of TrackNETv2.
     """
 
-    def __init__(self, input_file='', use_index=False, n_samples=None):
+    def __init__(self, input_dir='', file_mask='', use_index=False, n_samples=None):
         """
         Args:
             input_dir (string): Path to files with data.
@@ -64,7 +64,7 @@ class TrackNetV2Dataset(Dataset):
             use_index (int)
 
         """
-        self.data = load_data(input_file, n_samples)
+        self.data = load_data(input_dir, file_mask, n_samples)
         self.use_index = use_index
 
 
