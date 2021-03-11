@@ -20,7 +20,7 @@ from ariadne.tracknet_v2.processor import (
     ProcessedTracknetData,
     TrackNetProcessor
 )
-from ariadne.utils import cartesian_product_two_stations
+from ariadne.utils import brute_force_hits_two_first_stations
 LOGGER = logging.getLogger('ariadne.prepare')
 
 class ProcessedTracknetDataChunk(ProcessedDataChunk):
@@ -81,7 +81,7 @@ class TrackNetV2ExplicitProcessor(TrackNetProcessor):
                 chunk_data_momentum.append(data[['px', 'py', 'pz']].values[0])
                 chunk_data_real.append(1)
                 chunk_data_event.append(chunk.id)
-            fake_tracks = cartesian_product_two_stations(df)
+            fake_tracks = brute_force_hits_two_first_stations(df)
             for i, row in tqdm(fake_tracks.iterrows()):
                 temp_data = np.zeros((2, 3))
                 temp_data[0, :] = row[['r_left', 'phi_left', 'z_left']].values
@@ -97,11 +97,6 @@ class TrackNetV2ExplicitProcessor(TrackNetProcessor):
             chunk_data_momentum = np.stack(chunk_data_momentum, axis=0)
             chunk_data_real = np.stack(chunk_data_real, axis=0)
             chunk_data_event = np.stack(chunk_data_event, axis=0)
-            print(chunk_data_x.shape)
-            print(chunk_data_y.shape)
-            print(chunk_data_momentum.shape)
-            print(chunk_data_real.shape)
-            print(chunk_data_event.shape)
             chunk_data = {
                 'x': {
                     'inputs': chunk_data_x,

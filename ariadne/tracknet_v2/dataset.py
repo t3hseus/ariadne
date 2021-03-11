@@ -74,7 +74,6 @@ class TrackNetV2Dataset(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        #print(self.data.keys())
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
         sample_y = self.data['y'][idx]
@@ -100,7 +99,6 @@ class TrackNetV2ExplicitDataset(TrackNetV2Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        #print(self.data.keys())
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
         sample_y = self.data['y'][idx]

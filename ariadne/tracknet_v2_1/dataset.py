@@ -17,7 +17,11 @@ warnings.filterwarnings("ignore")
 @gin.configurable    
 class TrackNetV21Dataset(TrackNetV2Dataset):
     """TrackNET_v2_1 dataset with use of base TrackNetV2 pretrained model.
-    It needs prepared data without model use (processor.py)"""
+    It needs prepared data without model use (processor.py)
+
+    Input features are created using state of
+    GRU-layer of tracknet and found hit.
+    """
 
     def __init__(self,
                  path_to_checkpoint,
@@ -31,11 +35,9 @@ class TrackNetV21Dataset(TrackNetV2Dataset):
                          file_mask=file_mask,
                          use_index=use_index,
                          n_samples=n_samples)
+        self.model = TrackNETv2(input_features=model_input_features)
         if path_to_checkpoint is not None:
-            self.model = weights_update(model=TrackNETv2(input_features=model_input_features),
-                                   checkpoint=torch.load(path_to_checkpoint))
-        else:
-            self.model = TrackNETv2(input_features=model_input_features)
+            self.model = weights_update(model=self.model, checkpoint=torch.load(path_to_checkpoint))
         self.model.eval()
         self.use_index = use_index
         self.data = load_data(input_dir, file_mask, n_samples)
@@ -62,7 +64,7 @@ class TrackNetV21Dataset(TrackNetV2Dataset):
         last_station_this_event = self.last_station_hits[self.last_station_events == sample_event.item()]
         nearest_hit, in_ellipse = find_nearest_hit(sample_prediction.detach().cpu().numpy(),
                                                    last_station_this_event.detach().cpu().numpy())
-        found_hit = nearest_hit if in_ellipse == True else None
+        found_hit = nearest_hit if in_ellipse else None
         found_real_track_ending = 0
         if found_hit is not None:
             if is_track:
@@ -98,7 +100,6 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        #print(self.data.keys())
         sample_gru = self.data['gru'][idx]
         sample_y = self.data['y'][idx]
         found_hit = self.data['preds'][idx]

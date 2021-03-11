@@ -19,7 +19,7 @@ from ariadne.preprocessing import (
     ProcessedDataChunk,
     ProcessedData
 )
-from ariadne.utils import cartesian_product_two_stations, find_nearest_hit
+from ariadne.utils import brute_force_hits_two_first_stations, find_nearest_hit
 
 LOGGER = logging.getLogger('ariadne.prepare')
 
@@ -134,7 +134,7 @@ class TrackNetV21ProcessorWithModel(DataProcessor):
                 chunk_data_momentum.append(data[['px','py','pz']].values[-1])
                 chunk_data_real.append(1)
             LOGGER.info(f'=====> id {chunk.id}')
-            fake_tracks = cartesian_product_two_stations(df)
+            fake_tracks = brute_force_hits_two_first_stations(df)
             for i, row in tqdm(fake_tracks.iterrows()):
                 temp_data = np.zeros((2, 3))
                 temp_data[0, :] = row[['r_left', 'phi_left', 'z_left']].values
@@ -188,7 +188,6 @@ class TrackNetV21ProcessorWithModel(DataProcessor):
         valid_data_event = []
 
         train_chunks = np.random.choice(self.chunks, int(len(self.chunks) * (1-self.valid_size)), replace=False)
-        #print(train_chunks)
         valid_chunks = list(set(self.chunks) - set(train_chunks))
         for data_chunk in processed_data.processed_data:
             if data_chunk.processed_object is None:

@@ -10,7 +10,7 @@ from scipy.interpolate import make_interp_spline, BSpline
 import glob
 import os
 
-def cartesian_product_two_stations(df):
+def brute_force_hits_two_first_stations(df):
     first_station = df[df['station'] == 0][['r', 'phi', 'z', 'track']]
     first_station.columns = ['r_left', 'phi_left', 'z_left', 'track_left']
     second_station = df[df['station'] == 1][['r', 'phi', 'z', 'track']]
@@ -41,6 +41,12 @@ def weights_update(model, checkpoint):
     return model
 
 def load_data(input_dir, file_mask, n_samples):
+    '''Function to load input data for tracknet-like models training.
+    Helps load prepared input of tracknet or classiier (like inputs,
+    input_lengths, labels etc) or last station hits stored somewhere
+    as npz-file (with info about positions and events).
+
+    '''
     flag = 0
     files = []
     data_merged = {}
@@ -81,8 +87,7 @@ def find_nearest_hit(ellipses, last_station_hits):
 
     #ellipses = torch_ellipses.detach().cpu().numpy()
     centers = ellipses[:, :2]
-    d, i = index.search(np.ascontiguousarray(centers.astype('float32')), 1)
-    d = np.sqrt(d)
+    _, i = index.search(np.ascontiguousarray(centers.astype('float32')), 1)
     found_hits = last_station_hits[i.flatten()]
     x_part = abs(found_hits[:, 0] - ellipses[:, 0]).flatten() / ellipses[:, 2].flatten()**2
     y_part = abs(found_hits[:, 1] - ellipses[:, 1]).flatten() / ellipses[:, 3].flatten()**2

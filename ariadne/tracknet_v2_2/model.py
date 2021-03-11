@@ -33,34 +33,3 @@ class TrackNetV22Classifier(nn.Module):
         # BxTxC -> BxCxT
         x = self.classifier(coord_features).float()
         return x
-
-
-
-@gin.configurable
-class TrackNETv2_1(nn.Module):
-    """Builds TrackNETv2 model
-
-    # Arguments
-        input_features: number of input features (channels)
-        rnn_type: type of the rnn unit, one of [`lstm`, `gru`]
-        conv_features: number of convolutional channels
-        batch_first: if True, size of inputs is BxTxC
-    """
-    def __init__(self,
-                 input_features=4,
-                 conv_features=32,
-                 rnn_type='gru',
-                 batch_first=True,
-                 gru_size=16,
-                 coord_size=2):
-        super().__init__()
-        self.base_model = TrackNETv2(input_features=input_features, conv_features=conv_features, rnn_type=rnn_type, batch_first=batch_first)
-        self.classifier = TrackNetClassifier(gru_size=16, coord_size=coord_size)
-
-    def forward(self, inputs, input_lengths):
-        class_dict = self.base_model.get_tracknet_v2_1_inputs(inputs, input_lengths)
-        gru_x = class_dict['last_layer']
-        tracknet_x = class_dict['model_outputs']
-        x = self.classifier(gru_x, tracknet_x)
-        return x
-

@@ -102,7 +102,6 @@ class BaseScaler(BaseTransformer):
 
     def __init__(self, scaler, drop_old=True, columns=('x', 'y', 'z')):
         super().__init__(drop_old=drop_old, columns=columns)
-        self.columns = columns
         self.scaler = scaler
 
     def __call__(self, data):
@@ -190,12 +189,9 @@ class BaseCoordConverter(BaseTransformer):
          to_columns (list or tuple, ['r', 'phi'] by default): list of features to convert to
     """
 
-    def __init__(self, convert_function, drop_old=False, from_columns=('x', 'y'),
-                 to_columns=('r', 'phi'), postfix='general_convert'):
-        super().__init__(drop_old=drop_old, columns=list(to_columns) + ['z'])
-        self.drop_old = drop_old
-        self.cart_columns = from_columns
-        self.polar_columns = to_columns
+    def __init__(self, convert_function, drop_old=False, from_columns=('x', 'y','z'),
+                 to_columns=('r', 'phi', 'z'), postfix='general_convert'):
+        super().__init__(drop_old=drop_old, columns=to_columns)
         self.convert_function = convert_function
         self.range_ = {}
         self.from_columns = from_columns
@@ -279,11 +275,10 @@ class StandardScale(BaseScaler):
     """
 
     def __init__(self, drop_old=True, with_mean=True, with_std=True, columns=('x', 'y', 'z')):
-
-        super().__init__(self.scaler, drop_old, columns)
         self.with_mean = with_mean
         self.with_std = with_std
         self.scaler = StandardScaler(with_mean, with_std)
+        super().__init__(self.scaler, drop_old, columns)
 
     def __repr__(self):
         return (f"{'-' * 30} \n"
@@ -303,13 +298,11 @@ class MinMaxScale(BaseScaler):
     """
 
     def __init__(self, drop_old=True, feature_range=(0, 1), columns=('x', 'y', 'z')):
-        super().__init__(self.scaler, drop_old, columns=columns)
+
         assert feature_range[0] < feature_range[1], 'minimum is not smaller value then maximum'
         self.feature_range = feature_range
         self.scaler = MinMaxScaler(feature_range=feature_range)
-        self.columns = columns
-        self.drop_old = drop_old
-
+        super().__init__(self.scaler, drop_old, columns=columns)
 
     def __repr__(self):
         return (f"{'-' * 30}\n"
@@ -333,12 +326,9 @@ class Normalize(BaseScaler):
     """
 
     def __init__(self, drop_old=True, norm='l2', columns=('x', 'y', 'z')):
-        super().__init__(self.scaler, drop_old, columns)
         self.norm = norm
         self.scaler = Normalizer(norm=norm)
-        self.columns = columns
-        self.drop_old = drop_old
-
+        super().__init__(self.scaler, drop_old, columns)
 
     def __repr__(self):
         return (f"{'-' * 30}\n"
@@ -371,7 +361,6 @@ class ConstraintsNormalize(BaseTransformer):
         self.margin = margin
         self.use_global_constraints = use_global_constraints
         self.constraints = constraints
-        # print(self.constraints)
         if constraints is not None:
             if use_global_constraints:
                 for col in columns:
@@ -558,13 +547,14 @@ class ToCylindrical(BaseCoordConverter):
            polar_columns = (list or tuple, ['r','phi'] by default):  columns of r and phi in cylindrical coordiates
     """
 
-    def __init__(self, drop_old=False, cart_columns=('x', 'y'), polar_columns=('r', 'phi'), postfix='before_cyl'):
+    def __init__(self, drop_old=False, cart_columns=('x', 'y', 'z'), polar_columns=('r', 'phi', 'z'), postfix='before_cyl'):
         super().__init__(self.convert, drop_old=drop_old, from_columns=cart_columns, to_columns=polar_columns, postfix=postfix)
 
     def convert(self, data):
         r = np.sqrt(data[self.from_columns[0]] ** 2 + data[self.from_columns[1]] ** 2)
         phi = np.arctan2(data[self.from_columns[0]], data[self.from_columns[1]])
-        return (r, phi)
+        z = data[self.from_columns[2]]
+        return (r, phi, z)
 
     def __repr__(self):
         return (f'{"-" * 30}\n'
@@ -584,7 +574,7 @@ class ToCartesian(BaseCoordConverter):
         polar_columns = (list or tuple, ['r','phi'] by default):  columns of r and phi in cylindrical coordiates
     """
 
-    def __init__(self, drop_old=True, cart_columns=('x', 'y'), polar_columns=('r', 'phi')):
+    def __init__(self, drop_old=True, cart_columns=('x', 'y', 'z'), polar_columns=('r', 'phi', 'z')):
         self.from_columns = polar_columns
         self.to_columns = cart_columns
         super().__init__(self.convert, drop_old=drop_old, from_columns=self.from_columns, to_columns=self.to_columns)
@@ -592,7 +582,8 @@ class ToCartesian(BaseCoordConverter):
     def convert(self, data):
         y_new = data[self.from_columns[0]] * np.cos(data[self.from_columns[1]])
         x_new = data[self.from_columns[0]] * np.sin(data[self.from_columns[1]])
-        return (x_new, y_new)
+        z_new = data[self.from_columns[2]]
+        return (x_new, y_new, z_new)
 
     def __repr__(self):
         return (f'{"-" * 30}\n'
@@ -629,8 +620,6 @@ class ToBuckets(BaseTransformer):
         self.flat = flat
         self.shuffle = shuffle
         self.random_state = random_state
-        self.track_col = track_col
-        self.event_col = event_col
 
 
     def __call__(self, df):

@@ -9,7 +9,7 @@ from tqdm import tqdm
 from ariadne.transformations import Compose, StandardScale, ToCylindrical, \
     ConstraintsNormalize, MinMaxScale, DropSpinningTracks, DropFakes, DropShort
 from ariadne.preprocessing import BaseTransformer
-from ariadne.utils import cartesian_product_two_stations
+from ariadne.utils import brute_force_hits_two_first_stations
 LOGGER = logging.getLogger('ariadne.prepare')
 
 
@@ -107,14 +107,13 @@ class TrackNetV21Processor(DataProcessor):
                 chunk_data_real.append(1)
             LOGGER.info(f'=====> id {chunk.id}')
             multiplicity = len(chunk_data_x)
-            fake_tracks = cartesian_product_two_stations(df)
+            fake_tracks = brute_force_hits_two_first_stations(df)
             for i, row in tqdm(fake_tracks.iterrows()):
                 temp_data = np.zeros((2, 3))
                 temp_data[0, :] = row[['r_left', 'phi_left', 'z_left']].values
                 temp_data[1, :] = row[['r_right', 'phi_right', 'z_right']].values
 
                 chunk_data_x.append(temp_data)
-                #print(chunk_data_x[-1].shape)
                 chunk_data_y.append(chunk_data_y[0])
                 chunk_data_momentum.append(chunk_data_momentum[0])
                 chunk_data_real.append(0)
@@ -126,7 +125,6 @@ class TrackNetV21Processor(DataProcessor):
             chunk_data_len = np.stack(chunk_data_len, axis=0)
             chunk_data_event = np.full(len(chunk_data_len), chunk.id)
             chunk_data_event_last_station = np.full(len(last_station), chunk.id)
-            #print(chunk_data_event)
             chunk_data = {'x': {'inputs': chunk_data_x, 'input_lengths': chunk_data_len},
                           'y': chunk_data_y,
                           'momentum': chunk_data_momentum,
@@ -176,7 +174,6 @@ class TrackNetV21Processor(DataProcessor):
                 train_data_last_station.append(data_chunk.processed_object['last_station'])
                 train_data_last_station_event.append(data_chunk.processed_object['last_station_event'])
             else:
-                #print(f"{data_chunk.processed_object['event'][0]} is in valid data")
                 valid_data_inputs.append(data_chunk.processed_object['x']['inputs'])
                 valid_data_len.append(data_chunk.processed_object['x']['input_lengths'])
                 valid_data_y.append(data_chunk.processed_object['y'])
@@ -204,10 +201,10 @@ class TrackNetV21Processor(DataProcessor):
         train_data_last_station = np.concatenate(train_data_last_station)
         valid_data_last_station_event = np.concatenate(valid_data_last_station_event)
         train_data_last_station_event = np.concatenate(train_data_last_station_event)
-        np.savez(processed_data.output_name +'_train', inputs=train_data_inputs, input_lengths=train_data_len, y=train_data_y,
+        np.savez(f'{processed_data.output_name}_train', inputs=train_data_inputs, input_lengths=train_data_len, y=train_data_y,
                  momentums=train_data_momentum, is_real=train_data_real, events=train_data_event)
-        np.savez(processed_data.output_name + '_valid', inputs=valid_data_inputs, input_lengths=valid_data_len, y=valid_data_y,
+        np.savez(f'{processed_data.output_name}_valid', inputs=valid_data_inputs, input_lengths=valid_data_len, y=valid_data_y,
                  momentums=valid_data_momentum, is_real=valid_data_real, events=valid_data_event)
-        np.savez(processed_data.output_name + '_train_last_station', hits=train_data_last_station, events=train_data_last_station_event)
-        np.savez(processed_data.output_name + '_valid_last_station', hits=valid_data_last_station, events=valid_data_last_station_event)
-        print(f'Saved last station hits to: {processed_data.output_name}_train_last_station.npz, {processed_data.output_name}_valid_last_station.npz')
+        np.savez(f'{processed_data.output_name}_train_last_station', hits=train_data_last_station, events=train_data_last_station_event)
+        np.savez(f'{processed_data.output_name}_valid_last_station', hits=valid_data_last_station, events=valid_data_last_station_event)
+        LOGGER.info(f'Saved last station hits to: {processed_data.output_name}_train_last_station.npz, {processed_data.output_name}_valid_last_station.npz')
