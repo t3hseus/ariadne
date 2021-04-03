@@ -41,7 +41,7 @@ class TrackNetV21Dataset(TrackNetV2Dataset):
         self.model.eval()
         self.use_index = use_index
         self.data = load_data(input_dir, file_mask, n_samples)
-        all_last_station_data =  load_data(input_dir, last_station_file_mask, n_samples)
+        all_last_station_data = load_data(input_dir, last_station_file_mask, n_samples)
         last_station_hits = all_last_station_data['hits']
         last_station_events = all_last_station_data['events']
         self.last_station_hits = torch.from_numpy(last_station_hits)
@@ -53,6 +53,7 @@ class TrackNetV21Dataset(TrackNetV2Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
+
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
         sample_y = self.data['y'][idx]
@@ -85,14 +86,16 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
     It needs prepared data using model (processor_with_model.py). For with dataset last station hits are not needed"""
 
     def __init__(self,
-                 input_file,
+                 input_dir,
+                 file_mask,
                  use_index=False,
                  n_samples=None):
-        super().__init__( input_file=input_file,
-                          use_index=use_index,
-                          n_samples=n_samples)
+        super().__init__(input_dir=input_dir,
+                         file_mask=file_mask,
+                         use_index=use_index,
+                         n_samples=n_samples)
         self.use_index = use_index
-        self.data = self.load_data(input_file, n_samples)
+        self.data = load_data(input_dir, file_mask, n_samples)
 
     def __len__(self):
         return len(self.data['is_real'])
@@ -101,13 +104,10 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
         sample_gru = self.data['gru'][idx]
-        sample_y = self.data['y'][idx]
         found_hit = self.data['preds'][idx]
-        sample_momentum = self.data['momentums'][idx]
-        is_track = self.data['is_real'][idx]
-        sample_event = self.data['events'][idx]
+        is_track = self.data['labels'][idx]
         return [{'gru_features': torch.tensor(sample_gru).squeeze(),
                 'coord_features': torch.tensor(found_hit).squeeze()},
-                sample_y.astype(int)]
+                is_track.astype(int)]
 
 

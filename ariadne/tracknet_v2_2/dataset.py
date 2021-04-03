@@ -6,7 +6,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from copy import deepcopy
 import gin
-from ariadne.tracknet_v2_1.dataset import TrackNetV21Dataset
+from ariadne.tracknet_v2_1.dataset import TrackNetV21Dataset, TrackNetClassifierDataset
 from ariadne.utils import weights_update, find_nearest_hit, load_data
 import warnings
 warnings.filterwarnings("ignore")
@@ -50,3 +50,26 @@ class TrackNetV22Dataset(TrackNetV21Dataset):
         track = np.concatenate([sample_inputs, temp_hit]).flatten()
         return [{'coord_features': torch.tensor(track).to(torch.float).detach()},
                 found_real_track_ending.to(torch.float32)]
+
+@gin.configurable
+class TrackNetV22ClassifierDataset(TrackNetClassifierDataset):
+    """TrackNET_v2_2 dataset without use of base TrackNetV2 pretrained model.
+    It reads previously filtered data.
+    It needs prepared data with model use (processor_with_model.py)
+
+    Input features for classifier are created using first n-1 (now 2)
+    coordinates of track-candidate and found hit.
+    """
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        sample_input = self.data['inputs'][idx]
+        sample_pred = self.data['preds'][idx].flatten()
+        sample_label = self.data['labels'][idx]
+        temp_hit = np.full((1, 3), 0.9)
+        temp_hit[0][1] = sample_pred[0]
+        temp_hit[0][2] = sample_pred[1]
+        track = np.concatenate([sample_input, temp_hit]).flatten()
+        return [{'coord_features': torch.tensor(track).to(torch.float).detach()},
+                torch.tensor(sample_label).to(torch.float32)]

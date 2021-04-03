@@ -21,7 +21,6 @@ class TrackNetV22Classifier(nn.Module):
             nn.Linear(9, 10),
             nn.ReLU(),
             nn.Linear(10, 1),
-            nn.Sigmoid()
         )
 
     def forward(self, coord_features):

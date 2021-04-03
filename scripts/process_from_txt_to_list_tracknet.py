@@ -16,7 +16,7 @@ import torch
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 from ariadne.parsing import parse_df
 from prepare import parse
-from ariadne.utils import brute_force_hits_two_first_stations
+from ariadne.utils import get_fake_tracks_from_two_first_stations
 
 from absl import flags
 from absl import app
@@ -74,7 +74,7 @@ def process_input_data_to_lists(file_name,
         second_station = df[df['station'] == 1][['r', 'phi', 'z', 'track']]
         second_station.columns = ['r_right', 'phi_right', 'z_right', 'track_right']
 
-        fake_tracks = brute_force_hits_two_first_stations(first_station, second_station)
+        fake_tracks = get_fake_tracks_from_two_first_stations(first_station, second_station)
         fake_tracks = fake_tracks.sample(n=int(fake_tracks.shape[0] / 10), random_state=1)
         for i, row in fake_tracks.iterrows():
             temp_data = np.zeros((2, 3))

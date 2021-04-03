@@ -31,7 +31,7 @@ class TrackNetClassifier(nn.Module):
         self.classifier = nn.Sequential(nn.Linear(60, 40),
                                         nn.ReLU(),
                                         nn.BatchNorm1d(40),
-                                        nn.Linear(40, num_classes))
+                                        nn.Linear(40, 1))
 
     def forward(self, gru_features, coord_features):
         """

@@ -34,9 +34,12 @@ class ValidProcessor(TrackNetV21Processor):
         super().__init__(
             output_dir=output_dir,
             data_df=data_df,
-            transforms=transforms)
+            transforms=transforms,
+            name_suffix=name_suffix,
+            n_times_oversampling=n_times_oversampling,
+            valid_size=valid_size)
         self.output_name = os.path.join(self.output_dir, f'test_{name_suffix}')
-        self.n_times_oversampling = n_times_oversampling
+        self.n_times_oversampling = 1
         self.valid_size = valid_size
         self.chunks = []
 
@@ -71,7 +74,6 @@ class ValidProcessor(TrackNetV21Processor):
         valid_data_event = np.concatenate(valid_data_event)
         valid_data_last_station = np.concatenate(valid_data_last_station)
         valid_data_last_station_event = np.concatenate(valid_data_last_station_event)
-
         np.savez(
             processed_data.output_name,
             x=valid_data_inputs,

@@ -1,3 +1,3 @@
 from . import model
 from . import dataset
-from . import loss
+from . import processor_with_model
