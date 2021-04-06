@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from copy import deepcopy
 import gin
 
+from ariadne.utils import load_data
 
 # Ignore warnings
 import warnings
@@ -47,11 +48,15 @@ class PreprocessingBESDataset(Dataset):
                 sample.loc[i, 'z+1'] = sample[i+1]['z']
         return {'x': {'inputs': sample[:2].values, 'input_lengths': 2}, 'y': y}
 
+
 @gin.configurable
 class TrackNetV2Dataset(Dataset):
-    """TrackNET_v2 dataset."""
+    """TrackNET_v2 dataset.
 
-    def __init__(self, input_dir, input_file='', use_index=False, n_samples=None):
+    Contains first k hits of tracks as x and final hit as y. Can be used for train/test of TrackNETv2.
+    """
+
+    def __init__(self, input_dir='', file_mask='', use_index=False, n_samples=None):
         """
         Args:
             input_dir (string): Path to files with data.
@@ -59,22 +64,8 @@ class TrackNetV2Dataset(Dataset):
             use_index (int)
 
         """
-        self.input_dir = os.path.expandvars(input_dir)
-        filename = os.path.join(self.input_dir, input_file)
-        
-        self.all_data = {}
-        with np.load(filename) as data:
-            for k in data.files:
-                self.all_data[k] = data[k]
+        self.data = load_data(input_dir, file_mask, n_samples)
         self.use_index = use_index
-        self.data = dict()
-        if n_samples is not None:
-            for key in self.all_data.keys():
-                n_samples = min((self.all_data[key].size, n_samples))
-                self.data[key] = self.all_data[key][:n_samples]
-        else:
-            for key in self.all_data.keys():
-                self.data[key] = self.all_data[key]
 
 
     def __len__(self):
@@ -83,10 +74,9 @@ class TrackNetV2Dataset(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        #print(self.data.keys())
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
-        sample_y = self.data['y'][idx][1:]
+        sample_y = self.data['y'][idx]
         sample_idx = idx
         if self.use_index:
             return {'inputs': sample_inputs, 'input_lengths': sample_len}, sample_y, sample_idx
@@ -95,7 +85,13 @@ class TrackNetV2Dataset(Dataset):
 
 @gin.configurable    
 class TrackNetV2ExplicitDataset(TrackNetV2Dataset):
-    """TrackNET_v2 dataset."""
+    """Explicit TrackNET_v2 dataset.
+
+    It contains not only coordinates of first k hits and ending of track,
+    but index of hit, momentum of track and is it real track or synthetic.
+
+    It can be used for classifier training or for testing.
+    """
 
     def __len__(self):
         return len(self.data['is_real'])
@@ -103,12 +99,11 @@ class TrackNetV2ExplicitDataset(TrackNetV2Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        #print(self.data.keys())
         sample_inputs = self.data['inputs'][idx]
         sample_len = self.data['input_lengths'][idx]
-        sample_y = self.data['y'][idx][1:]
-        sample_moment = self.data['moments'][idx]
+        sample_y = self.data['y'][idx]
+        sample_momentum = self.data['momentums'][idx]
         is_track = self.data['is_real'][idx]
         sample_idx = idx
         return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len},
-                'y': sample_y, 'index': sample_idx, 'moment': sample_moment, 'is_real_track': is_track}
+                'y': sample_y, 'index': sample_idx, 'momentum': sample_momentum, 'is_real_track': is_track}

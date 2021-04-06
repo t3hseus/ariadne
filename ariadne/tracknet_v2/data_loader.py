@@ -42,14 +42,12 @@ class TrackNetV2DataLoader(BaseDataLoader):
 def collate_fn(samples):
     """
     """
-    #print(samples)
     batch_size = len(samples)
     # Special handling of batch size 1
     # Get the matrix sizes in this batch
     from collections import defaultdict
     res = defaultdict(list)
     {res[key].append(sub[key]) for sub in samples for key in sub}
-    #print(res)
     samples = res
     inputs = samples['inputs']
     y = samples['y']

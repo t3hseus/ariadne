@@ -23,9 +23,13 @@ class TracknetDataChunk(DataChunk):
         super().__init__(df_chunk_data)
 
 class ProcessedTracknetData(ProcessedData):
-    def __init__(self, processed_data: List[ProcessedDataChunk]):
+    def __init__(self,
+                 output_name: str,
+                 processed_data: List[ProcessedDataChunk]
+                 ):
         super().__init__(processed_data)
         self.processed_data = processed_data
+        self.output_name = output_name
 
 class ProcessedTracknetDataChunk(ProcessedDataChunk):
     def __init__(self,
@@ -35,9 +39,8 @@ class ProcessedTracknetDataChunk(ProcessedDataChunk):
         self.processed_object = processed_object
         self.output_name = output_name
 
-
 @gin.configurable(denylist=['data_df'])
-class TrackNet_Processor(DataProcessor):
+class TrackNetProcessor(DataProcessor):
     def __init__(self,
                  output_dir: str,
                  data_df: pd.DataFrame,
@@ -67,7 +70,7 @@ class TrackNet_Processor(DataProcessor):
             return ProcessedTracknetDataChunk(None, '')
 
         chunk_id = int(chunk_df.event.values[0])
-        output_name = os.path.join(self.output_dir, f'tracknet{idx}_{chunk_id}')
+        output_name = f'{self.output_dir}/tracknet_{idx.replace(".txt", "")}'
         return ProcessedTracknetDataChunk(chunk_df, output_name)
 
 
@@ -83,7 +86,7 @@ class TrackNet_Processor(DataProcessor):
             grouped_df = df[df['track'] != -1].groupby('track')
             for i, data in grouped_df:
                 chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
-                chunk_data_y.append(data[['r', 'phi', 'z']].values[-1])
+                chunk_data_y.append(data[['phi', 'z']].values[-1])
                 chunk_data_len.append(2)
             chunk_data_x = np.stack(chunk_data_x, axis=0)
             chunk_data_y = np.stack(chunk_data_y, axis=0)
@@ -93,7 +96,7 @@ class TrackNet_Processor(DataProcessor):
                     'input_lengths': chunk_data_len},
                 'y': chunk_data_y}
             chunk.processed_object = chunk_data
-        return ProcessedTracknetData(chunks)
+        return ProcessedTracknetData(chunks[0].output_name,chunks)
 
 
     def save_on_disk(self,
@@ -111,8 +114,8 @@ class TrackNet_Processor(DataProcessor):
         all_data_y = np.concatenate(all_data_y).astype('float32')
         all_data_len = np.concatenate(all_data_len)
         np.savez(
-            self.output_name,
+            processed_data.output_name,
             inputs=all_data_inputs,
             input_lengths=all_data_len, y=all_data_y
         )
-        LOGGER.info(f'Saved to: {self.output_name}.npz')
+        LOGGER.info(f'Saved to: {processed_data.output_name}.npz')
