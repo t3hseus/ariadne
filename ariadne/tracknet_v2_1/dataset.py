@@ -89,13 +89,17 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
                  input_dir,
                  file_mask,
                  use_index=False,
-                 n_samples=None):
+                 n_samples=None,
+                 is_train=True):
         super().__init__(input_dir=input_dir,
                          file_mask=file_mask,
                          use_index=use_index,
                          n_samples=n_samples)
         self.use_index = use_index
+        self.is_train = is_train
         self.data = load_data(input_dir, file_mask, n_samples)
+        if self.is_train:
+            print(self.data['labels'])
 
     def __len__(self):
         return len(self.data['is_real'])
@@ -103,9 +107,11 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        sample_gru = self.data['gru'][idx]
+        sample_gru = self.data['grus'][idx]
         found_hit = self.data['preds'][idx]
         is_track = self.data['labels'][idx]
+        if self.is_train:
+            print(is_track)
         return [{'gru_features': torch.tensor(sample_gru).squeeze(),
                 'coord_features': torch.tensor(found_hit).squeeze()},
                 is_track.astype(int)]

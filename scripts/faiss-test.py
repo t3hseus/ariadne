@@ -30,9 +30,9 @@ gin.bind_parameter('TrackNETv2.conv_features', 32)
 gin.bind_parameter('TrackNETv2.rnn_type', 'gru')
 gin.bind_parameter('TrackNETv2.batch_first', True)
 
-model = weights_update(model=TrackNETv2(), checkpoint=torch.load('lightning_logs/TrackNETv2/version_48/epoch=56-step=195623.ckpt'))
+model = weights_update(model=TrackNETv2(), checkpoint=torch.load('lightning_logs/TrackNETv2/version_44/epoch=34-step=40144.ckpt'))
 model.to(DEVICE)
-class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('lightning_logs/TrackNetClassifier/version_141/epoch=0-step=122998.ckpt'))
+class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('lightning_logs/TrackNetClassifier/version_147/epoch=2-step=555650.ckpt'))
 class_model.to(DEVICE)
 use_classifier = True
 
