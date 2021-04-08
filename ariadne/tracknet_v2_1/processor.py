@@ -9,7 +9,7 @@ from tqdm import tqdm
 from ariadne.transformations import Compose, StandardScale, ToCylindrical, \
     ConstraintsNormalize, MinMaxScale, DropSpinningTracks, DropFakes, DropShort
 from ariadne.preprocessing import BaseTransformer
-from ariadne.utils import get_fake_tracks_from_two_first_stations
+from ariadne.utils import brute_force_hits_two_first_stations
 LOGGER = logging.getLogger('ariadne.prepare')
 
 

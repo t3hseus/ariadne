@@ -1,6 +1,6 @@
 import pandas as pd
 
-from utils.jit_cacher import cache_result_df
+from ariadne.jit_cacher import cache_result_df
 
 
 @cache_result_df(csv_path_key='file_path')

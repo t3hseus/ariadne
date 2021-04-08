@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
-from ariadne.utils import one_hot_embedding
+#from ariadne.jit import one_hot_embedding
 from torch.autograd import Variable
 from typing import Optional
 

@@ -29,8 +29,9 @@ def accuracy(preds, target):
     return metrics.accuracy(preds > 0.5, target, num_classes=2)
 
 
-
-
+@gin.configurable('point_net.unpack', allowlist=[])
+def unpack_pointnet_output(output):
+    return output[0]
 
 #v2=========
 

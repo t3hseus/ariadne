@@ -6,6 +6,7 @@ from . import tracknet_v2
 from . import tracknet_v2_1
 from . import tracknet_v2_2
 from . import graph_net
+from . import jit_cacher
 from . import point_net
 from . import external_configurables
 from . import metrics
