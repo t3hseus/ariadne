@@ -1,3 +1,4 @@
+import collections
 import logging
 import os
 from typing import Tuple, Iterable, Optional, List
@@ -14,6 +15,7 @@ from ariadne.preprocessing import (
     ProcessedDataChunk,
     ProcessedData
 )
+from ariadne.graph_net.graph_utils.graph_prepare_utils import to_pandas_graph_from_df
 
 LOGGER = logging.getLogger('ariadne.prepare')
 
@@ -27,10 +29,12 @@ class PointsDataChunk(DataChunk):
 class TransformedPointsDataChunk(ProcessedDataChunk):
     def __init__(self,
                  processed_object: Optional[Points],
-                 output_name: str):
+                 output_name: str,
+                 is_true_event: bool):
         super().__init__(processed_object)
         self.processed_object = processed_object
         self.output_name = output_name
+        self.is_true = is_true_event
 
 
 class ProcessedPointsData(ProcessedData):
@@ -39,7 +43,7 @@ class ProcessedPointsData(ProcessedData):
         self.processed_data = processed_data
 
 
-@gin.configurable()
+@gin.configurable
 class PointNet_Processor(DataProcessor):
     def __init__(self,
                  output_dir: str,
@@ -85,7 +89,6 @@ class PointNet_Processor(DataProcessor):
         LOGGER.info(f'\n==Collected {broken} broken events out of {total} events.==\n')
         save_points_new(processed_data.processed_data)
 
-
 @gin.configurable
 class PointNet_ProcessorBMN7(PointNet_Processor):
     def __init__(self,
@@ -103,28 +106,23 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
         self.coord_cols = coord_cols
         self.stats_cols = stats_cols
         self.det_indices = det_indices
+        self.available_det = [v[0] for v in self.det_indices]
         self._forward_fields = forward_fields
         self.maxis = {col: -1e7 for col in stats_cols}
         self.minis = {col: 1e7 for col in stats_cols}
         self.mean_hits = []
         self.mean_tracks = []
         self.mean_len_tracks = []
+        self.mean_fakes = []
+        self.mean_trues = []
+        self.mean_ratio = []
         self.with_random_sort = with_random_sort
 
     def preprocess_chunk(self,
                          chunk: PointsDataChunk,
                          idx: str) -> ProcessedDataChunk:
-        chunk_df = chunk.df_chunk_data
-
-        chunk_id = int(chunk_df.event.values[0])
-        output_name = os.path.join(self.output_dir, f'points_{idx}_{chunk_id}')
-
-        chunk_df = chunk_df[chunk_df.det.isin(self.det_indices)]
-        if len(self.det_indices) > 1:
-            chunk_df.loc[chunk_df.det == 1, 'station'] = chunk_df.loc[chunk_df.det == 1, 'station'].values + 3
-
-        if chunk_df.empty:
-            LOGGER.warning(f'\nPointNet_Processor empty event  {chunk_id}')
+        chunk_df, chunk_id, output_name = self.before_preprocess(chunk, idx)
+        if chunk_df is None:
             return TransformedPointsDataChunk(None, '')
 
         if not chunk_df[chunk_df.track < -1].empty:
@@ -141,16 +139,22 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
                 chunk_df.loc[chunk_df.track == tr_id] = copyied
                 track = chunk_df[chunk_df.track == tr_id]
 
-            if len(track) < 5:
+            if len(track) < 8:
                 chunk_df.loc[chunk_df.track == tr_id, 'track'] = -1
                 continue
 
             mean_lens.append(len(track))
 
-
         if len(mean_lens) > 0:
             self.mean_tracks.append(chunk_df[chunk_df.track != -1].track.nunique())
             self.mean_len_tracks.append(np.mean(mean_lens))
+
+        self.mean_fakes.append(len(chunk_df[chunk_df.track == -1]))
+        self.mean_trues.append(len(chunk_df[chunk_df.track != -1]))
+        if self.mean_trues[-1] > 0:
+            self.mean_ratio.append(self.mean_fakes[-1] / (1.0 * self.mean_trues[-1]))
+        else:
+            self.mean_ratio.append(1.0)
         # if chunk_df[chunk_df.track == -1].empty:
         #    LOGGER.info(f'\nPointNet_Processor got event with no fakes!\n for event {chunk_id}')
         #    return TransformedPointsDataChunk(None, '')
@@ -173,6 +177,23 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
         self.mean_hits.append(len(chunk_df))
         return TransformedPointsDataChunk(out, output_name)
 
+    def before_preprocess(self, chunk, idx):
+        chunk_df = chunk.df_chunk_data
+        chunk_id = int(chunk_df.event.values[0])
+        output_name = os.path.join(self.output_dir, f'points_{idx}_{chunk_id}')
+        chunk_df = chunk_df[chunk_df.det.isin(self.available_det)]
+        for i in range(1, len(self.det_indices)):
+            n_stations = self.det_indices[i - 1][1]
+            det_ind = self.det_indices[i][0]
+            chunk_df.loc[chunk_df.det == det_ind, 'station'] = chunk_df.loc[
+                                                                   chunk_df.det == det_ind, 'station'].values + n_stations
+
+        if chunk_df.empty:
+            LOGGER.warning(f'\nPointNet_Processor empty event  {chunk_id}')
+            return None, None, None
+
+        return chunk_df, chunk_id, output_name
+
     def forward_fields(self):
         return {col: self.__dict__[col] for col in self._forward_fields}
 
@@ -184,6 +205,9 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
         self.mean_hits.extend(params_dict['mean_hits'])
         self.mean_tracks.extend(params_dict['mean_tracks'])
         self.mean_len_tracks.extend(params_dict['mean_len_tracks'])
+        self.mean_fakes.extend(params_dict['mean_fakes'])
+        self.mean_trues.extend(params_dict['mean_trues'])
+        self.mean_ratio.extend(params_dict['mean_ratio'])
 
 
     def save_on_disk(self,
@@ -192,11 +216,84 @@ class PointNet_ProcessorBMN7(PointNet_Processor):
         for col in self.stats_cols:
             LOGGER.info(f'MAXIS {col}: {self.maxis[col]}')
             LOGGER.info(f'MINIS {col}: {self.minis[col]}')
-        LOGGER.info(f'Mean hits per event: {np.mean(self.mean_hits)}')
-        LOGGER.info(f'Mean tracks per event: {np.mean(self.mean_tracks)}')
-        LOGGER.info(f'Mean len_tracks per event: {np.mean(self.mean_len_tracks)}')
+        for field in self._forward_fields:
+            if field in self.__dict__ and isinstance(self.__dict__[field], collections.Sequence):
+                LOGGER.info(f'Mean {field} per event: {np.mean(self.__dict__[field])}')
         LOGGER.info('End\n===============\n')
         super(PointNet_ProcessorBMN7, self).save_on_disk(processed_data)
+
+@gin.configurable
+class PointNet_ProcessorCBM(PointNet_ProcessorBMN7):
+    def __init__(self,
+                 output_dir: str,
+                 coord_cols,
+                 stats_cols,
+                 det_indices,
+                 forward_fields,
+                 with_random_sort,
+                 with_balance,
+                 transforms: List[BaseTransformer] = None):
+        super().__init__(
+            coord_cols=coord_cols,
+            stats_cols=stats_cols,
+            det_indices=det_indices,
+            forward_fields=forward_fields,
+            with_random_sort=with_random_sort,
+            output_dir=output_dir,
+            transforms=transforms
+        )
+        self.with_balance = with_balance
+
+    def preprocess_chunk(self, chunk: PointsDataChunk, idx: str) -> ProcessedDataChunk:
+        chunk_df, chunk_id, output_name = self.before_preprocess(chunk, idx)
+        if chunk_df is None:
+            return TransformedPointsDataChunk(None, '', False)
+
+        for col in self.stats_cols:
+            self.maxis[col] = max(chunk_df[col].max(), self.maxis[col])
+            self.minis[col] = min(chunk_df[col].min(), self.minis[col])
+
+        #chunk_df = chunk_df.sample(frac=1).reset_index(drop=True)
+
+        out = chunk_df[self.coord_cols].values.T
+        is_true = chunk_df[['ntrack']].values[0] >= 2
+        out = Points(
+            X=out.astype(np.float32),
+            track=np.array([is_true]).astype(np.float32).squeeze(-1)
+        )
+        self.mean_hits.append(len(chunk_df))
+        return TransformedPointsDataChunk(out, output_name, is_true)
+
+
+    def forward_fields(self):
+        return super().forward_fields()
+
+    def reduce_fields(self, params_dict):
+        for col in self.stats_cols:
+            self.maxis[col] = max(self.maxis[col], params_dict['maxis'][col])
+            self.minis[col] = min(self.minis[col], params_dict['minis'][col])
+
+        self.mean_hits.extend(params_dict['mean_hits'])
+
+    def save_on_disk(self, processed_data: ProcessedPointsData):
+        if self.with_balance:
+            data_all = [data for data in processed_data.processed_data if data.is_true]
+            data_false = [data for data in processed_data.processed_data if not data.is_true and data.processed_object]
+            data_false = data_false[:len(data_all)]
+            data_all.extend(data_false)
+        else:
+            data_all = processed_data.processed_data
+
+        true = 0
+        false = 0
+        for data in data_all:
+            if data.is_true:
+                true += 1
+            else:
+                false += 1
+        LOGGER.info(f"After balancing got {true} true and {false} false events\n")
+
+        super().save_on_disk(ProcessedPointsData(data_all))
 
 
 @gin.configurable

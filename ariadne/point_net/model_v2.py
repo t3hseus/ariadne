@@ -111,11 +111,12 @@ class Transform(nn.Module):
                 nn.PReLU()
             )
             in_features = self.feature_transform.k
-            self.output_size += self.feature_transform.k
+            #self.output_size += self.feature_transform.k
         else:
+            pass
             # calculate the size of the output
             # cat([local_features, global_features])
-            self.output_size += input_features_dim
+            #self.output_size += input_features_dim
 
         self.top_layers = []
         for i, out_features in enumerate(top_layers):
@@ -170,53 +171,54 @@ class Transform(nn.Module):
 
         global_features = self.top_layers(x)
         # repeat global features for each local feature
-        global_features = global_features.repeat(local_features.size(-1), 1, 1).permute(1, 2, 0)
-        output = torch.cat([local_features, global_features], 1)
-        return output, input_transform_mtrx, feature_transform_mtrx
+        #global_features = global_features.repeat(local_features.size(-1), 1, 1).permute(1, 2, 0)
+        #output = torch.cat([local_features, global_features], 1)
+        return global_features, input_transform_mtrx, feature_transform_mtrx
 
 @gin.configurable
 class PointNet(nn.Module):
     def __init__(self,
                  transform,
-                 top_layers=(128, 64),
+                 fc_layers=(128, 64),
                  classes=2,
                  softmax_for_binary=False):
         super().__init__()
         assert transform is None or isinstance(transform, Transform)
-        assert len(top_layers) >= 1
         assert classes >= 2
         self.transform = transform
         # build graph
-        self.top_layers = []
+        features_layers = []
         in_features = self.transform.output_size
-        for i, out_features in enumerate(top_layers):
+
+        # linear blocks
+        for i, out_features in enumerate(fc_layers):
             linear_block = nn.Sequential(
-                nn.Conv1d(in_features, out_features, 1),
+                nn.Linear(in_features, out_features),
                 nn.BatchNorm1d(out_features),
                 nn.PReLU()
             )
-            self.top_layers.append((f'conv{i+1}', linear_block))
+            features_layers.append((f'fc{i + 1}', linear_block))
             in_features = out_features
 
-        self.top_layers = nn.Sequential(OrderedDict(self.top_layers))
-        # last classification layer
-        if classes == 2 and not softmax_for_binary:
-            # sigmoid + binary cross-entropy
-            self.classifier = nn.Conv1d(in_features, 1, 1)
-        else:
-            raise NotImplementedError # todo for multi classes remove output squeeze
-            # softmax + cross-entropy
-            self.classifier = nn.Conv1d(in_features, classes, 1)
+        self.features = nn.Sequential(OrderedDict(features_layers))
+        # # last classification layer
+        # if classes == 2 and not softmax_for_binary:
+        #     # sigmoid + binary cross-entropy
+        #     self.classifier = nn.Conv1d(in_features, 1, 1)
+        # else:
+        #     raise NotImplementedError # todo for multi classes remove output squeeze
+        #     # softmax + cross-entropy
+        #     self.classifier = nn.Conv1d(in_features, classes, 1)
 
     def forward(self, x):
         x, input_transform_mtrx, feature_transform_mtrx = self.transform(x)
-        x = self.top_layers(x)
-        output = self.classifier(x)
+        x = self.features(x)
+        #x = self.top_layers(x)
+        #output = self.classifier(x)
         # (bsz, classes, n_points) -> (bsz, n_points, classes)
-        output = output.transpose(2,1).contiguous()
+        #output = output.transpose(2,1).contiguous()
 
-        return output.squeeze(-1), input_transform_mtrx, feature_transform_mtrx
-
+        return x.squeeze(-1), input_transform_mtrx, feature_transform_mtrx
 
 if __name__ == '__main__':
     # remove this after merging

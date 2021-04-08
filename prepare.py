@@ -114,6 +114,8 @@ def proc(processor: DataProcessor, ignore_asserts, basename, data):
         res = processor.preprocess_chunk(chunk=data_chunk, idx=basename)
     except Exception:
         return [None, None, idx, Exception("".join(traceback.format_exception(*sys.exc_info())))]
+    except KeyboardInterrupt as ex:
+        return [None, None, idx, KeyboardInterrupt]
     return [res, processor.forward_fields(), idx, None]
 
 
@@ -150,6 +152,8 @@ def preprocess(
                             preprocessed_chunks.append(data)
                             forwarded_fields.append(forward_fields)
                         else:
+                            if ex is KeyboardInterrupt:
+                                raise KeyboardInterrupt
                             LOGGER.warning(f"Got exception from processor on idx={idx}. Exception info:")
                             LOGGER.warning(ex)
                             LOGGER.warning(f"End exception info\n")

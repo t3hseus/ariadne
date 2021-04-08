@@ -37,7 +37,7 @@ def accuracy(preds, target):
 @gin.configurable('point_net_v2.precision', allowlist=[])
 def precision_v2(all_preds, target):
     preds, _, _ = all_preds
-    return metrics.precision((preds > 0.5), target.int(), is_multiclass=False)
+    return metrics.precision((torch.sigmoid(preds) > 0.5), target.int(), is_multiclass=False)
 
 
 @gin.configurable('point_net_v2.recall', allowlist=[])

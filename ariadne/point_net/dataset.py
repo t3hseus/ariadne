@@ -1,6 +1,6 @@
 import logging
 from collections import OrderedDict
-from typing import Collection, Dict
+from typing import Collection, Dict, Sequence
 
 import gin
 
@@ -30,6 +30,8 @@ class ItemLengthGetter(object):
     def get_item_length(self, item_index):
         raise NotImplementedError
 
+    def get_class(self, item_index):
+        raise NotImplementedError
 
 @gin.configurable
 class PointsDatasetMemory(MemoryDataset, ItemLengthGetter):
@@ -55,6 +57,9 @@ class PointsDatasetMemory(MemoryDataset, ItemLengthGetter):
             item = load_points(self.filenames[item_index])
         return len(item.track)
 
+    def get_class(self, item_index):
+        return self.dataset[self.indices[item_index]].track[0] > 0
+
     def __getitem__(self, index):
         # uncomment to find bad events in the dataset:
         # print(index, self.filenames[index])
@@ -75,8 +80,10 @@ class SubsetWithItemLen(Subset, ItemLengthGetter):
         super(SubsetWithItemLen, self).__init__(dataset, indices)
 
     def get_item_length(self, item_index):
-        return len(self.dataset[self.indices[item_index]].track)
+        return len(self.dataset[self.indices[item_index]].X)
 
+    def get_class(self, item_index):
+        return self.dataset[self.indices[item_index]].track[0] > 0
 
 @gin.configurable(denylist=['data_source'])
 class BatchBucketSampler(Sampler):
@@ -97,6 +104,7 @@ class BatchBucketSampler(Sampler):
 
         self.indices = []
         self._build_buckets()
+        self._store_indices()
 
     def _build_buckets(self):
         logging.info("_build buckets:")
@@ -111,7 +119,6 @@ class BatchBucketSampler(Sampler):
             raise NotImplementedError
 
         logging.info("_build buckets end")
-        self._store_indices()
 
     def _store_indices(self):
         self.indices = [[]]
@@ -180,9 +187,9 @@ class BatchBucketSampler(Sampler):
 
 
 @gin.configurable('points_collate_fn')
-def collate_fn(points: Collection[Points]):
+def collate_fn(points: Sequence[Points]):
     batch_size = len(points)
-    n_feat = 3
+    n_feat = points[0].X.shape[0]
 
     n_dim = np.array([(p.X.shape[1]) for p in points])
     # print(n_dim)
@@ -197,6 +204,24 @@ def collate_fn(points: Collection[Points]):
 
     return {"x": torch.from_numpy(batch_inputs)}, torch.from_numpy(batch_targets)
 
+
+@gin.configurable('points_collate_fn_filter')
+def collate_fn_filter(points: Sequence[Points]):
+    batch_size = len(points)
+    n_feat = points[0].X.shape[0]
+
+    n_dim = np.array([(p.X.shape[1]) for p in points])
+    # print(n_dim)
+    max_dim = n_dim.max()
+    batch_inputs = np.zeros((batch_size, n_feat, max_dim), dtype=np.float32)
+    batch_targets = np.zeros((batch_size, 1), dtype=np.float32)
+
+    for i, p in enumerate(points):
+        batch_inputs[i, :, :n_dim[i]] = p.X
+
+        batch_targets[i, :] = p.track
+
+    return {"x": torch.from_numpy(batch_inputs)}, torch.from_numpy(batch_targets.squeeze(-1))
 
 @gin.configurable('points_dist_collate_fn')
 def collate_fn_dist(points: Collection[Points]):
