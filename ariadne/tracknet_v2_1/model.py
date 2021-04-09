@@ -28,10 +28,10 @@ class TrackNetClassifier(nn.Module):
             nn.ReLU(),
             nn.Linear(30, 30)
         )
-        self.classifier = nn.Sequential(nn.Linear(60, 20),
+        self.classifier = nn.Sequential(nn.Linear(60, 30),
                                         #nn.BatchNorm1d(20),
                                         nn.ReLU(),
-                                        nn.Linear(20, 1))
+                                        nn.Linear(30, 1))
 
     def forward(self, gru_features, coord_features):
         """

@@ -10,7 +10,7 @@ from scipy.interpolate import make_interp_spline, BSpline
 import glob
 import os
 
-def brute_force_hits_two_first_stations(df):
+def get_fake_tracks_from_two_first_stations(df):
     first_station = df[df['station'] == 0][['r', 'phi', 'z', 'track']]
     first_station.columns = ['r_left', 'phi_left', 'z_left', 'track_left']
     second_station = df[df['station'] == 1][['r', 'phi', 'z', 'track']]
@@ -20,8 +20,9 @@ def brute_force_hits_two_first_stations(df):
     df_fakes = df[(df['track_left'] == -1) & (df['track_right'] == -1)]
     df = df[(df['track_left'] != df['track_right'])]
     df = pd.concat([df, df_fakes], axis=0)
-    df = df.sample(frac=1).reset_index(drop=True)
-    return df.reset_index(drop=True)
+    df = df.sample(n=int(df.shape[0]), random_state=1).reset_index(drop=True)
+    temp_data = df[['r_left', 'phi_left', 'z_left', 'r_right', 'phi_right', 'z_right']].values.reshape((-1, 2, 3))
+    return temp_data
 
 def weights_update(model, checkpoint):
     model_dict = model.state_dict()
@@ -51,6 +52,7 @@ def load_data(input_dir, file_mask, n_samples):
     files = []
     data_merged = {}
     datafiles = glob.glob(f'{input_dir}/{file_mask}')
+    print( glob.glob(f'{input_dir}/*'))
     for f in datafiles:
         one_file_data = np.load(f, mmap_mode='r', allow_pickle=False)
         first_file_len = len(one_file_data[one_file_data.files[0]])
@@ -79,7 +81,26 @@ def find_nearest_hit_no_faiss(ellipses, last_station_hits, return_numpy=False):
         is_in_ellipse = is_in_ellipse.detach().cpu().numpy()
     return minimal, is_in_ellipse
 
-def find_nearest_hit(ellipses, last_station_hits):
+def find_nearest_hit(ellipses, last_station_hits, index=None, find_n=10):
+    #numpy, numpy -> numpy, numpy
+    if index is None:
+        index = faiss.IndexFlatL2(2)
+        index.train(last_station_hits.astype('float32'))
+        index.add(last_station_hits.astype('float32'))
+    #ellipses = torch_ellipses.detach().cpu().numpy()
+    centers = ellipses[:, :2]
+    find_n = min(find_n, len(last_station_hits))
+    _, i = index.search(np.ascontiguousarray(centers.astype('float32')), find_n)
+    found_hits = last_station_hits[i.flatten()]
+    found_hits = found_hits.reshape(-1, find_n, found_hits.shape[-1])
+    ellipses = np.expand_dims(ellipses, 2)
+    x_part = abs(found_hits[:, :, 0] - ellipses[:, 0].repeat(find_n, 1)) / ellipses[:, 2].repeat(find_n, 1)**2
+    y_part = abs(found_hits[:, :, 1] - ellipses[:, 1].repeat(find_n, 1)) / ellipses[:, 3].repeat(find_n, 1)**2
+    left_side = x_part + y_part
+    is_in_ellipse = left_side <= 1
+    return found_hits, is_in_ellipse
+
+def find_nearest_hit_old(ellipses, last_station_hits):
     #numpy, numpy -> numpy, numpy
     index = faiss.IndexFlatL2(2)
     index.train(last_station_hits.astype('float32'))
@@ -94,7 +115,6 @@ def find_nearest_hit(ellipses, last_station_hits):
     left_side = x_part + y_part
     is_in_ellipse = left_side <= 1
     return last_station_hits[i.flatten()], is_in_ellipse
-
 def get_diagram_arr_linspace(all_real_hits, found_hits, start, end, num, col):
     spac = np.linspace(start, end, num=num)
 
@@ -263,3 +283,14 @@ def draw_from_data(title,
     os.makedirs('../output', exist_ok=True)
     plt.savefig(f'../output/{model_name}_{title.lower().replace(" ", "_").replace(".","_")}.png', dpi=300)
     plt.show()
+
+def one_hot_embedding(labels, num_classes):
+    '''Embedding labels to one-hot form.
+    Args:
+      labels: (LongTensor) class labels, sized [N,].
+      num_classes: (int) number of classes.
+    Returns:
+      (tensor) encoded labels, sized [N,#classes].
+    '''
+    y = torch.eye(num_classes)  # [D,D]
+    return y[labels]            # [N,D]

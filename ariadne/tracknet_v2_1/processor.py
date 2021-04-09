@@ -111,6 +111,7 @@ class TrackNetV21Processor_new(DataProcessor):
             chunk_data_real = np.ones(len(chunk_data_x))
 
             fake_tracks = get_fake_tracks_from_two_first_stations(df)
+            print('fake', fake_tracks)
             fake_y = np.full((len(fake_tracks), 2), -2)
             fake_momentum = np.full((len(fake_tracks), 3), -2)
             fake_real = np.zeros(len(fake_tracks))
@@ -285,6 +286,7 @@ class TrackNetV21Processor(DataProcessor):
             chunk_data_real = np.ones(len(chunk_data_x))
 
             fake_tracks = get_fake_tracks_from_two_first_stations(df)
+            print('fake\n', fake_tracks)
             fake_y = np.full((len(fake_tracks), 2), -2)
             fake_momentum = np.full((len(fake_tracks), 3), -2)
             fake_real = np.zeros(len(fake_tracks))

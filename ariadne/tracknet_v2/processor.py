@@ -91,11 +91,12 @@ class TrackNetProcessor(DataProcessor):
             chunk_data_x = np.stack(chunk_data_x, axis=0)
             chunk_data_y = np.stack(chunk_data_y, axis=0)
             chunk_data = {
-                'x': {'inputs': chunk_data_x,
+                'x': {
+                    'inputs': chunk_data_x,
                     'input_lengths': chunk_data_len},
                 'y': chunk_data_y}
             chunk.processed_object = chunk_data
-        return ProcessedTracknetData(chunks[0].output_name, chunks)
+        return ProcessedTracknetData(chunks[0].output_name,chunks)
 
 
     def save_on_disk(self,

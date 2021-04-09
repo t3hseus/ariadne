@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from torch.nn import functional as F
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2_1.model import TrackNetClassifier
-from ariadne.utils import weights_update, find_nearest_hit, find_nearest_hit_no_faiss,\
+from ariadne.utils import weights_update, find_nearest_hit,find_nearest_hit_old, find_nearest_hit_no_faiss,\
     get_diagram_arr_linspace, draw_for_col, draw_from_data
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -30,9 +30,9 @@ gin.bind_parameter('TrackNETv2.conv_features', 32)
 gin.bind_parameter('TrackNETv2.rnn_type', 'gru')
 gin.bind_parameter('TrackNETv2.batch_first', True)
 
-model = weights_update(model=TrackNETv2(), checkpoint=torch.load('lightning_logs/TrackNETv2/version_44/epoch=34-step=40144.ckpt'))
+model = weights_update(model=TrackNETv2(), checkpoint=torch.load('lightning_logs/TrackNETv2/version_48/epoch=56-step=195623.ckpt'))
 model.to(DEVICE)
-class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('lightning_logs/TrackNetClassifier/version_147/epoch=2-step=555650.ckpt'))
+class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('lightning_logs/TrackNetClassifier/version_166/epoch=21-step=277375.ckpt'))
 class_model.to(DEVICE)
 use_classifier = True
 
@@ -80,7 +80,7 @@ def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, ba
         nearest_points[~is_point_in_ellipse] = -2.
         if use_classifier:
             pred_classes = class_model(last_gru_output[is_point_in_ellipse], nearest_points[is_point_in_ellipse])
-            pred_classes = (F.sigmoid(pred_classes) > 0.8).squeeze()
+            pred_classes = (F.sigmoid(pred_classes) > 0.6).squeeze()
         is_prediction_true = (batch_target == nearest_points)
         is_prediction_true = is_prediction_true.to(torch.int).sum(dim=1) / 2.0
         if use_classifier:
@@ -120,7 +120,7 @@ def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_fl
                                            return_gru_state=True)
         num_real_tracks = batch_real_flag.sum()
         t1 = time.time()
-        nearest_points, is_point_in_ellipse = find_nearest_hit(test_pred.detach().cpu().numpy(), all_last_y)
+        nearest_points, is_point_in_ellipse = find_nearest_hit_old(test_pred.detach().cpu().numpy(), all_last_y)
         t2 = time.time()
         #nearest_points = nearest_points.detach().cpu().numpy()
         #is_point_in_ellipse = is_point_in_ellipse.detach().cpu().numpy()
@@ -128,7 +128,7 @@ def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_fl
             pred_classes = class_model(last_gru_output[is_point_in_ellipse],
                                        torch.from_numpy(nearest_points[is_point_in_ellipse].astype('float')).to(DEVICE))
             confidence = deepcopy(F.sigmoid(pred_classes))
-            pred_classes = (F.sigmoid(pred_classes) > 0.85).squeeze().detach().cpu().numpy()
+            pred_classes = (F.sigmoid(pred_classes) > 0.6).squeeze().detach().cpu().numpy()
         is_prediction_true = np.logical_and(batch_target, nearest_points)
         is_prediction_true = is_prediction_true.all(1)
         if use_classifier:
@@ -197,8 +197,10 @@ for batch_event in tqdm(np.unique(events['events'])):
 
 real_tracks = deepcopy(result_df.loc[result_df['is_real_track'] == 1, ])
 from numpy import linalg as LA
-recall = real_tracks['found_right_point'].sum() / float(result_df['is_real_track'].sum())
+
 precision = result_df['found_right_point'].sum() / float(result_df['found'].sum())
+recall = real_tracks['found_right_point'].sum() / float(result_df['is_real_track'].sum())
+
 result_df['pt'] = LA.norm(result_df[['px','py']].values, axis=1)
 result_df['cos_t'] = (result_df[['pz']].values / LA.norm(result_df[['px', 'py', 'pz']].values, axis=1, keepdims=True))
 result_df['a_phi'] = np.arctan2(result_df[['px']].values, result_df[['py']].values)
