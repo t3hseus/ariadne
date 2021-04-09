@@ -32,21 +32,13 @@ gin.bind_parameter('TrackNETv2.batch_first', True)
 
 model = weights_update(model=TrackNETv2(), checkpoint=torch.load('lightning_logs/TrackNETv2/version_48/epoch=56-step=195623.ckpt'))
 model.to(DEVICE)
-class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('lightning_logs/TrackNetClassifier/version_141/epoch=0-step=122998.ckpt'))
+class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('lightning_logs/TrackNetClassifier/version_172/epoch=7-step=39.ckpt'))
 class_model.to(DEVICE)
 use_classifier = True
+draw_figures = False
 
-#events = np.load('../output/cgem_t_tracknet_valid/tracknet_all_3.txt.npz')
-#events = np.load('../output/cgem_t_tracknet_valid/tracknet_all_3.txt.npz')
-#all_last_station_coordinates = np.load('../output/cgem_t_tracknet_valid/tracknet_all_3.txt_last_station.npz')
-#all_last_station_coordinates = np.load('../output/cgem_t_tracknet_valid/tracknet_all_3.txt_last_station.npz')
-#last_station_hits = all_last_station_coordinates['hits']
-#ast_station_hits_events = all_last_station_coordinates['events']
-#all_last_station_coordinates = np.load('../output/cgem_t_tracknet_valid/tracknet_all_3.txt_last_station.npz')
-#events = np.load('../output/cgem_t_plain_valid_with_train_set_revision/tracknet_classifier_1.txt.npz')
-#all_last_station_coordinates = np.load('../output/cgem_t_plain_valid_with_train_set_revision/tracknet_classifier_1.txt_last_station.npz')
-events = np.load('output/cgem_t_plain_valid_with_train_set/tracknet_classifier_1.npz')
-all_last_station_coordinates = np.load('output/cgem_t_plain_valid_with_train_set/tracknet_classifier_1_last_station.npz')
+events = np.load('output/cgem_t_plain_valid_v48_valid/tracknet_all_1.npz')
+all_last_station_coordinates = np.load('output/cgem_t_plain_valid_v48_valid/tracknet_all_1_last_station.npz')
 
 last_station_hits = all_last_station_coordinates['hits']
 last_station_hits_events = all_last_station_coordinates['events']
@@ -59,7 +51,7 @@ def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, ba
     all_last_y = batch_last_station
     with torch.no_grad():
         temp_dict = {}
-        temp_df = pd.DataFrame(columns=['found', 'found_right_point', 'is_real_track','px', 'py','pz', 'p'])
+        temp_df = pd.DataFrame(columns=['found', 'found_right_point', 'is_real_track', 'px', 'py', 'pz', 'p'])
         if batch_input.ndim < 3:
             batch_input = np.expand_dims(batch_input, axis=0)
             batch_len = np.expand_dims(batch_len, axis=0)
@@ -73,7 +65,6 @@ def handle_event_to_df(batch_input, batch_len, batch_target, batch_real_flag, ba
                           input_lengths=torch.from_numpy(batch_len).to(DEVICE),
                           return_gru_state=True)
         batch_real_flag = torch.from_numpy(batch_real_flag).to(DEVICE)
-        num_real_tracks = batch_real_flag.sum()
         t1 = time.time()
         nearest_points, is_point_in_ellipse = find_nearest_hit_no_faiss(test_pred, all_last_y)
         t2 = time.time()
@@ -122,8 +113,6 @@ def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_fl
         t1 = time.time()
         nearest_points, is_point_in_ellipse = find_nearest_hit(test_pred.detach().cpu().numpy(), all_last_y)
         t2 = time.time()
-        #nearest_points = nearest_points.detach().cpu().numpy()
-        #is_point_in_ellipse = is_point_in_ellipse.detach().cpu().numpy()
         if use_classifier:
             pred_classes = class_model(last_gru_output[is_point_in_ellipse],
                                        torch.from_numpy(nearest_points[is_point_in_ellipse].astype('float')).to(DEVICE))
@@ -137,11 +126,6 @@ def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_fl
         else:
             found_points = is_point_in_ellipse
         found_right_points = found_points & (is_prediction_true == 1) & (batch_real_flag == 1)
-        found_wrong = found_points & ~found_right_points
-        print('found wrong (input):', batch_input[found_wrong])
-        print('found wrong (pred):', nearest_points[found_wrong])
-        print('confidence', confidence.squeeze())
-        print(is_point_in_ellipse)
         temp_dict['found'] = found_points
         temp_dict['found_right_point'] = found_right_points
         temp_dict['is_real_track'] = batch_real_flag
@@ -197,8 +181,8 @@ for batch_event in tqdm(np.unique(events['events'])):
 
 real_tracks = deepcopy(result_df.loc[result_df['is_real_track'] == 1, ])
 from numpy import linalg as LA
-recall = real_tracks['found_right_point'].sum() / float(result_df['is_real_track'].sum())
-precision = result_df['found_right_point'].sum() / float(result_df['found'].sum())
+recall = real_tracks['found_right_point'].sum() / (float(result_df['is_real_track'].sum()) + 1e-6)
+precision = result_df['found_right_point'].sum() / (float(result_df['found'].sum()) + 1e-6)
 result_df['pt'] = LA.norm(result_df[['px','py']].values, axis=1)
 result_df['cos_t'] = (result_df[['pz']].values / LA.norm(result_df[['px', 'py', 'pz']].values, axis=1, keepdims=True))
 result_df['a_phi'] = np.arctan2(result_df[['px']].values, result_df[['py']].values)
@@ -214,8 +198,8 @@ print(f'Total time: {all_time_no_faiss} sec')
 print(f'Total time per batch: {(all_time_no_faiss / num_events)} sec')
 
 real_tracks = deepcopy(result_df_faiss.loc[result_df_faiss['is_real_track'] == 1, ])
-recall = real_tracks['found_right_point'].sum() / float(len(real_tracks))
-precision = result_df_faiss['found_right_point'].sum() / float(result_df_faiss['found'].sum())
+recall = real_tracks['found_right_point'].sum() / (float(len(real_tracks)) + 1e-6)
+precision = result_df_faiss['found_right_point'].sum() / (float(result_df_faiss['found'].sum()) + 1e-6)
 
 print('\n ===> FAISS:')
 print('Test set results:')
@@ -236,22 +220,20 @@ result_df_faiss['a_phi'] = np.arctan2(result_df_faiss[['px']].values, result_df_
 
 true_tracks_result_df = result_df_faiss[result_df_faiss.is_real_track == 1]
 tracks_pred_true = true_tracks_result_df[true_tracks_result_df.found_right_point]
-tracks_real = true_tracks_result_df[(true_tracks_result_df.found_right_point == False)  |
-                                    (true_tracks_result_df.found == False)]
-#draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', 2000, 175)
-draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, style='plot')
-#draw_for_col(true_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', 2000, 175)
-draw_for_col(true_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot')
-#draw_for_col(true_tracks_result_df, tracks_pred_true, 'cos_t', '$cos_t$', 2000, 175)
-draw_for_col(true_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', num_events, 175, style='plot')
-times_mean = {k: np.mean(v) for k, v in times.items()}
-times_std = {k: np.std(v) for k, v in times.items()}
-draw_from_data(title="TrackNETv2.1 Mean Processing Time vs Multiplicity (ms)",
-               data_x=list(times_mean.keys()),
-               data_y=[v * 1000 for v in times_mean.values()],
-               data_y_err=[v * 1000 for v in times_std.values()],
-               axis_x="multiplicity",
-               mean_label='mean'
-               )
+tracks_real = true_tracks_result_df[(~true_tracks_result_df.found_right_point) |
+                                    (~true_tracks_result_df.found)]
+if draw_figures:
+    draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, style='plot')
+    draw_for_col(true_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot')
+    draw_for_col(true_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', num_events, 175, style='plot')
+    times_mean = {k: np.mean(v) for k, v in times.items()}
+    times_std = {k: np.std(v) for k, v in times.items()}
+    draw_from_data(title="TrackNETv2.1 Mean Processing Time vs Multiplicity (ms)",
+                   data_x=list(times_mean.keys()),
+                   data_y=[v * 1000 for v in times_mean.values()],
+                   data_y_err=[v * 1000 for v in times_std.values()],
+                   axis_x="multiplicity",
+                   mean_label='mean'
+                   )
 
 

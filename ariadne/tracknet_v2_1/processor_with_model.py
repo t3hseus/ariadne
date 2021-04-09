@@ -19,7 +19,7 @@ from ariadne.preprocessing import (
     ProcessedDataChunk,
     ProcessedData
 )
-from ariadne.utils import get_fake_tracks_from_two_first_stations, find_nearest_hit, weights_update
+from ariadne.utils import brute_force_hits_two_first_stations, find_nearest_hit, weights_update
 from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData, TracknetDataChunk
 
 LOGGER = logging.getLogger('ariadne.prepare')
@@ -78,31 +78,12 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
             df = chunk.processed_object
             grouped_df = df[df['track'] != -1].groupby('track')
             last_station = df[df['station'] > 1][['phi', 'z']].values
-            chunk_data_event_last_station = np.full(len(last_station), chunk.id)
             multiplicity = grouped_df.ngroups
             if multiplicity == 0:
                 LOGGER.warning(f'Multiplicity in chunk #{chunk.id} is 0! This chunk is skipped')
                 chunk.processed_object = None
                 continue
-            for i, data in grouped_df:
-                chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
-                chunk_data_y.append(data[['phi', 'z']].values[-1])
-                chunk_data_momentum.append(data[['px', 'py', 'pz']].values[-1])
-            chunk_data_x = np.stack(chunk_data_x, axis=0)
-            chunk_data_y = np.stack(chunk_data_y, axis=0)
-            chunk_data_momentum = np.stack(chunk_data_momentum, axis=0)
-            chunk_data_real = np.ones(len(chunk_data_x))
-
-            fake_tracks = get_fake_tracks_from_two_first_stations(df)
-            fake_y = np.full((len(fake_tracks), 2), -2)
-            fake_momentum = np.full((len(fake_tracks), 3), -2)
-            fake_real = np.zeros(len(fake_tracks))
-            chunk_data_x = np.concatenate((chunk_data_x, fake_tracks), axis=0)
-            chunk_data_y = np.concatenate((chunk_data_y, fake_y), axis=0)
-
-            chunk_data_momentum = np.concatenate((chunk_data_momentum, fake_momentum), axis=0)
-            chunk_data_real = np.concatenate((chunk_data_real, fake_real), axis=0)
-
+            chunk_data_x, chunk_data_y, chunk_data_real = brute_force_hits_two_first_stations(df)
             chunk_data_len = np.full(len(chunk_data_x), 2)
             chunk_data_event = np.full(len(chunk_data_x), chunk.id)
 
@@ -116,7 +97,6 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
             found_real_track_ending = is_close & chunk_data_real.astype(bool)
             chunk_data = {'x': {'gru': chunk_gru[in_ellipse], 'preds': nearest_hits[in_ellipse]},
                           'label': found_real_track_ending[in_ellipse],
-                          'momentum': chunk_data_momentum[in_ellipse],
                           'is_real': chunk_data_real[in_ellipse],
                           'event': chunk_data_event[in_ellipse],
                           'multiplicity': multiplicity}
@@ -173,7 +153,7 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
 
         np.savez(
             f'{processed_data.output_name}_train',
-            gru=train_data_grus,
+            grus=train_data_grus,
             preds=train_data_preds,
             labels=train_data_labels,  # predicted right point and point was real
             is_real=train_data_real,
@@ -181,7 +161,7 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
         )
         np.savez(
             f'{processed_data.output_name}_valid',
-            gru=valid_data_grus,
+            grus=valid_data_grus,
             preds=valid_data_preds,
             labels=valid_data_labels,
             is_real=valid_data_real,
