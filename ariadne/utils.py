@@ -10,18 +10,29 @@ from scipy.interpolate import make_interp_spline, BSpline
 import glob
 import os
 
-def brute_force_hits_two_first_stations(df):
-    first_station = df[df['station'] == 0][['r', 'phi', 'z', 'track']]
+def brute_force_hits_two_first_stations(df, return_momentum=False):
+    first_station = df[df['station'] == 0][['r', 'phi', 'z','track']]
     first_station.columns = ['r_left', 'phi_left', 'z_left', 'track_left']
     second_station = df[df['station'] == 1][['r', 'phi', 'z', 'track']]
     second_station.columns = ['r_right', 'phi_right', 'z_right', 'track_right']
+    temp_y = df[df['station'] > 1][['phi', 'z','track']]
+    if return_momentum:
+        temp_momentum = df[df['station'] > 1][['px', 'py', 'pz', 'track']]
     rows = itertools.product(first_station.iterrows(), second_station.iterrows())
     df = pd.DataFrame(left.append(right) for (_, left), (_, right) in rows)
-    df_fakes = df[(df['track_left'] == -1) & (df['track_right'] == -1)]
-    df = df[(df['track_left'] != df['track_right'])]
-    df = pd.concat([df, df_fakes], axis=0)
     df = df.sample(frac=1).reset_index(drop=True)
-    return df.reset_index(drop=True)
+    df_label = (df['track_left'] == df['track_right']) & (df['track_left'] != -1)
+    x = df[['r_left', 'phi_left', 'z_left', 'r_right', 'phi_right', 'z_right']].values.reshape((-1, 2, 3))
+    y = np.full((len(df_label), 2), -2.)
+    y[df_label == 1] = np.squeeze(np.array(list(map(lambda x: temp_y[temp_y['track'] == x][['phi', 'z']].values,
+                                              df[df_label == 1]['track_left']))), 1)
+    if return_momentum:
+        momentum = np.full((len(df_label), 3), -2.)
+        momentum[df_label == 1] = np.squeeze(
+            np.array(list(map(lambda x: temp_momentum[temp_momentum['track'] == x][['px', 'py', 'pz']].values,
+                              df[df_label == 1]['track_left']))), 1)
+        return x, y, momentum, df_label
+    return x, y, df_label
 
 def weights_update(model, checkpoint):
     model_dict = model.state_dict()

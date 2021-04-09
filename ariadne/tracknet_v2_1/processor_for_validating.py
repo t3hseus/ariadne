@@ -2,15 +2,13 @@ import logging
 import os
 from typing import List
 
-import gin
 import pandas as pd
 import numpy as np
-
-from ariadne.transformations import BaseTransformer
-from ariadne.tracknet_v2_1.processor import (
-    ProcessedTracknetData,
-    TrackNetV21Processor
-)
+import torch
+import gin
+from ariadne.preprocessing import BaseTransformer
+from ariadne.utils import brute_force_hits_two_first_stations, find_nearest_hit
+from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData
 
 LOGGER = logging.getLogger('ariadne.prepare')
 
@@ -42,6 +40,34 @@ class ValidProcessor(TrackNetV21Processor):
         self.n_times_oversampling = 1
         self.valid_size = valid_size
         self.chunks = []
+
+    def postprocess_chunks(self,
+                           chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
+        for chunk in chunks:
+            if chunk.processed_object is None:
+                continue
+            df = chunk.processed_object
+            grouped_df = df[df['track'] != -1].groupby('track')
+            last_station = df[df['station'] > 1][['phi', 'z']].values
+            chunk_data_event_last_station = np.full(len(last_station), chunk.id)
+            multiplicity = grouped_df.ngroups
+            if multiplicity == 0:
+                LOGGER.warning(f'Multiplicity in chunk #{chunk.id} is 0! This chunk is skipped')
+                chunk.processed_object = None
+                continue
+            x, y, momentum, real = brute_force_hits_two_first_stations(df, return_momentum=True)
+            chunk_data_len = np.full(len(x), 2)
+            chunk_data_event = np.full(len(x), chunk.id)
+            chunk_data = {'x': {'inputs': x, 'input_lengths': chunk_data_len},
+                          'y': y,
+                          'momentum': momentum,
+                          'is_real': real,
+                          'event': chunk_data_event,
+                          'multiplicity': multiplicity,
+                          'last_station': last_station,
+                          'last_station_event': chunk_data_event_last_station}
+            chunk.processed_object = chunk_data
+        return ProcessedTracknetData(chunks, chunks[0].output_name)
 
     def save_on_disk(self,
                      processed_data: ProcessedTracknetData):

@@ -20,7 +20,7 @@ from ariadne.tracknet_v2.processor import (
     ProcessedTracknetData,
     TrackNetProcessor
 )
-from ariadne.utils import get_fake_tracks_from_two_first_stations
+from ariadne.utils import  brute_force_hits_two_first_stations
 LOGGER = logging.getLogger('ariadne.prepare')
 
 class ProcessedTracknetDataChunk(ProcessedDataChunk):
@@ -73,37 +73,15 @@ class TrackNetV2ExplicitProcessor(TrackNetProcessor):
             chunk_data_momentum = []
             chunk_data_event = []
             df = chunk.processed_object
-            grouped_df = df[df['track'] != -1].groupby('track')
-            for i, data in grouped_df:
-                chunk_data_x.append(data[['r', 'phi', 'z']].values[:-1])
-                chunk_data_y.append(data[['phi', 'z']].values[-1])
-                chunk_data_len.append(2)
-                chunk_data_momentum.append(data[['px', 'py', 'pz']].values[0])
-                chunk_data_real.append(1)
-                chunk_data_event.append(chunk.id)
-            fake_tracks = get_fake_tracks_from_two_first_stations(df)
-            for i, row in tqdm(fake_tracks.iterrows()):
-                temp_data = np.zeros((2, 3))
-                temp_data[0, :] = row[['r_left', 'phi_left', 'z_left']].values
-                temp_data[1, :] = row[['r_right', 'phi_right', 'z_right']].values
-                chunk_data_x.append(temp_data)
-                chunk_data_y.append(chunk_data_y[0])
-                chunk_data_momentum.append(chunk_data_momentum[0])
-                chunk_data_real.append(0)
-                chunk_data_len.append(2)
-                chunk_data_event.append(chunk.id)
-            chunk_data_x = np.stack(chunk_data_x, axis=0)
-            chunk_data_y = np.stack(chunk_data_y, axis=0)
-            chunk_data_momentum = np.stack(chunk_data_momentum, axis=0)
-            chunk_data_real = np.stack(chunk_data_real, axis=0)
-            chunk_data_event = np.stack(chunk_data_event, axis=0)
+            x, y, real, momentum = brute_force_hits_two_first_stations(df, return_momentum=True)
+            chunk_data_len = np.full(len(x), 2)
+            chunk_data_event = np.full(len(x), chunk.id)
             chunk_data = {
-                'x': {
-                    'inputs': chunk_data_x,
+                'x': {'inputs': x,
                     'input_lengths': chunk_data_len},
-                'y': chunk_data_y,
-                'momentum': chunk_data_momentum,
-                'is_real': chunk_data_real,
+                'y': y,
+                'momentum': momentum,
+                'is_real': real,
                 'event': chunk_data_event
             }
             chunk.processed_object = chunk_data

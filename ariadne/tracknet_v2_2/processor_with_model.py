@@ -19,7 +19,7 @@ from ariadne.preprocessing import (
     ProcessedDataChunk,
     ProcessedData
 )
-from ariadne.utils import get_fake_tracks_from_two_first_stations, find_nearest_hit, weights_update
+from ariadne.utils import brute_force_hits_two_first_stations, find_nearest_hit, weights_update
 from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData, TracknetDataChunk
 
 LOGGER = logging.getLogger('ariadne.prepare')
@@ -93,7 +93,7 @@ class TrackNetV22ProcessorWithModel(TrackNetV21Processor):
             chunk_data_momentum = np.stack(chunk_data_momentum, axis=0)
             chunk_data_real = np.ones(len(chunk_data_x))
 
-            fake_tracks = get_fake_tracks_from_two_first_stations(df)
+            fake_tracks = brute_force_hits_two_first_stations(df)
             fake_y = np.full((len(fake_tracks), 2), -2)
             fake_momentum = np.full((len(fake_tracks), 3), -2)
             fake_real = np.zeros(len(fake_tracks))
