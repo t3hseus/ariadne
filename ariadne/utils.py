@@ -91,7 +91,26 @@ def find_nearest_hit_no_faiss(ellipses, last_station_hits, return_numpy=False):
         is_in_ellipse = is_in_ellipse.detach().cpu().numpy()
     return minimal, is_in_ellipse
 
-def find_nearest_hit(ellipses, last_station_hits):
+def find_nearest_hit(ellipses, last_station_hits, index=None, find_n=10):
+    #numpy, numpy -> numpy, numpy
+    if index is None:
+        index = faiss.IndexFlatL2(2)
+        index.train(last_station_hits.astype('float32'))
+        index.add(last_station_hits.astype('float32'))
+    #ellipses = torch_ellipses.detach().cpu().numpy()
+    centers = ellipses[:, :2]
+    find_n = min(find_n, len(last_station_hits))
+    _, i = index.search(np.ascontiguousarray(centers.astype('float32')), find_n)
+    found_hits = last_station_hits[i.flatten()]
+    found_hits = found_hits.reshape(-1, find_n, found_hits.shape[-1])
+    ellipses = np.expand_dims(ellipses, 2)
+    x_part = abs(found_hits[:, :, 0] - ellipses[:, 0].repeat(find_n, 1)) / ellipses[:, 2].repeat(find_n, 1)**2
+    y_part = abs(found_hits[:, :, 1] - ellipses[:, 1].repeat(find_n, 1)) / ellipses[:, 3].repeat(find_n, 1)**2
+    left_side = x_part + y_part
+    is_in_ellipse = left_side <= 1
+    return found_hits, is_in_ellipse
+
+def find_nearest_hit_old(ellipses, last_station_hits):
     #numpy, numpy -> numpy, numpy
     index = faiss.IndexFlatL2(2)
     index.train(last_station_hits.astype('float32'))
@@ -275,3 +294,14 @@ def draw_from_data(title,
     os.makedirs('../output', exist_ok=True)
     plt.savefig(f'../output/{model_name}_{title.lower().replace(" ", "_").replace(".","_")}.png', dpi=300)
     plt.show()
+
+def one_hot_embedding(labels, num_classes):
+    '''Embedding labels to one-hot form.
+    Args:
+      labels: (LongTensor) class labels, sized [N,].
+      num_classes: (int) number of classes.
+    Returns:
+      (tensor) encoded labels, sized [N,#classes].
+    '''
+    y = torch.eye(num_classes)  # [D,D]
+    return y[labels]            # [N,D]

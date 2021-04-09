@@ -18,20 +18,20 @@ class TrackNetClassifier(nn.Module):
     def __init__(self, gru_size=32, coord_size=2, num_classes=2):
         super().__init__()
         self.gru_feat_block = nn.Sequential(nn.Linear(gru_size*2, 30),
-                                       nn.BatchNorm1d(30),
+                                       #nn.BatchNorm1d(30),
                                        nn.ReLU(),
                                        nn.Linear(30, 30)
                                        )
         self.coord_feat_block = nn.Sequential(
             nn.Linear(coord_size, 30),
-            nn.BatchNorm1d(30),
+            #nn.BatchNorm1d(30),
             nn.ReLU(),
             nn.Linear(30, 30)
         )
-        self.classifier = nn.Sequential(nn.Linear(60, 40),
+        self.classifier = nn.Sequential(nn.Linear(60, 30),
+                                        #nn.BatchNorm1d(20),
                                         nn.ReLU(),
-                                        nn.BatchNorm1d(40),
-                                        nn.Linear(40, 1))
+                                        nn.Linear(30, 1))
 
     def forward(self, gru_features, coord_features):
         """

@@ -89,13 +89,17 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
                  input_dir,
                  file_mask,
                  use_index=False,
-                 n_samples=None):
+                 n_samples=None,
+                 is_train=True):
         super().__init__(input_dir=input_dir,
                          file_mask=file_mask,
                          use_index=use_index,
                          n_samples=n_samples)
         self.use_index = use_index
+        self.is_train = is_train
         self.data = load_data(input_dir, file_mask, n_samples)
+        if self.is_train:
+            print(self.data['labels'])
 
     def __len__(self):
         return len(self.data['is_real'])
