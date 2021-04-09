@@ -103,7 +103,7 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        sample_gru = self.data['gru'][idx]
+        sample_gru = self.data['grus'][idx]
         found_hit = self.data['preds'][idx]
         is_track = self.data['labels'][idx]
         return [{'gru_features': torch.tensor(sample_gru).squeeze(),

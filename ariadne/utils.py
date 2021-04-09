@@ -26,13 +26,14 @@ def brute_force_hits_two_first_stations(df, return_momentum=False):
     y = np.full((len(df_label), 2), -2.)
     y[df_label == 1] = np.squeeze(np.array(list(map(lambda x: temp_y[temp_y['track'] == x][['phi', 'z']].values,
                                               df[df_label == 1]['track_left']))), 1)
-    if return_momentum:
-        momentum = np.full((len(df_label), 3), -2.)
-        momentum[df_label == 1] = np.squeeze(
+    if not return_momentum:
+        return x, y, df_label
+    momentum = np.full((len(df_label), 3), -2.)
+    momentum[df_label == 1] = np.squeeze(
             np.array(list(map(lambda x: temp_momentum[temp_momentum['track'] == x][['px', 'py', 'pz']].values,
                               df[df_label == 1]['track_left']))), 1)
-        return x, y, momentum, df_label
-    return x, y, df_label
+    return x, y, momentum, df_label
+
 
 def weights_update(model, checkpoint):
     model_dict = model.state_dict()
