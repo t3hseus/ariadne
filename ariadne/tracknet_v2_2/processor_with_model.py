@@ -93,12 +93,35 @@ class TrackNetV22ProcessorWithModel(TrackNetV21Processor):
                                                       return_gru_state=True)
             nearest_hits, in_ellipse = find_nearest_hit(chunk_prediction.detach().cpu().numpy(),
                                                         np.ascontiguousarray(last_station))
-            is_close = np.all(np.isclose(nearest_hits, chunk_data_y), axis=1)
-            found_real_track_ending = is_close & chunk_data_real.astype(bool)
-            chunk_data = {'x': {'inputs': chunk_data_x[in_ellipse], 'preds': nearest_hits[in_ellipse]},
-                          'label': found_real_track_ending[in_ellipse],
-                          'is_real': chunk_data_real[in_ellipse],
-                          'event': chunk_data_event[in_ellipse],
+            is_close = np.all(
+                np.isclose(nearest_hits, np.expand_dims(chunk_data_y, 1).repeat(nearest_hits.shape[1], axis=1)),
+                axis=-1)
+            found_real_track_ending = is_close & np.expand_dims(chunk_data_real.astype(bool), 1).repeat(
+                is_close.shape[1], axis=1)
+            is_close = np.all(
+                np.isclose(nearest_hits, np.expand_dims(chunk_data_y, 1).repeat(nearest_hits.shape[1], 1)), -1)
+            to_use = found_real_track_ending | in_ellipse
+            chunk_data_x = np.expand_dims(chunk_data_x, 1).repeat(nearest_hits.shape[1], 1)
+            nearest_hits = nearest_hits.reshape(-1, nearest_hits.shape[-1])
+            nothing_for_real_track = ~np.any(to_use, axis=-1) & (
+                        chunk_data_real > 0.5)  # if real track has nothing in ellipse or real last point is too far for faiss
+            # chunk_gru_to_add = chunk_gru[nothing_for_real_track]
+            chunk_data_y_to_add = chunk_data_y[nothing_for_real_track]
+            to_use = to_use.reshape(-1)
+            found_real_track_ending  = found_real_track_ending.reshape(-1)
+
+            chunk_data_x = chunk_data_x.reshape(-1, chunk_data_x.shape[-2], chunk_data_x.shape[-1])
+            print(chunk_data_x.shape)
+            # chunk_gru = np.concatenate((chunk_gru, chunk_gru_to_add), axis=0)
+            # nearest_hits = np.concatenate((nearest_hits, chunk_data_y_to_add), axis=0)
+            # label = np.concatenate((is_close, np.ones(chunk_data_y_to_add.shape[0])), axis=0)
+            # to_use = np.concatenate((to_use, np.ones(chunk_data_y_to_add.shape[0])), axis=0)
+            # chunk_data_event = np.concatenate((chunk_data_event, np.full(chunk_data_y_to_add.shape[0], chunk_data_event[0])), axis=0)
+            chunk_data_len = np.full(len(nearest_hits), 2)
+            chunk_data_event = np.full(len(nearest_hits), chunk.id)
+            chunk_data = {'x': {'inputs': chunk_data_x[to_use], 'preds': nearest_hits[to_use]},
+                          'label': found_real_track_ending[to_use],
+                          'event': chunk_data_event[to_use],
                           'multiplicity': multiplicity}
             chunk.processed_object = chunk_data
         return ProcessedTracknetData(chunks, chunks[0].output_name)
@@ -109,13 +132,11 @@ class TrackNetV22ProcessorWithModel(TrackNetV21Processor):
         train_data_preds = []
         train_data_inputs = []
         train_data_labels = []
-        train_data_real = []
         train_data_events = []
 
         valid_data_preds = []
         valid_data_inputs = []
         valid_data_labels = []
-        valid_data_real = []
         valid_data_events = []
 
         train_chunks = np.random.choice(self.chunks, int(len(self.chunks) * (1-self.valid_size)), replace=False)
@@ -126,28 +147,25 @@ class TrackNetV22ProcessorWithModel(TrackNetV21Processor):
                 initial_len = len(data_chunk.processed_object['label'])
                 multiplicity = data_chunk.processed_object['multiplicity']
                 max_len = int(multiplicity + (initial_len / self.n_times_oversampling))
-                train_data_inputs.append(data_chunk.processed_object['x']['inputs'][0:max_len])
-                train_data_preds.append(data_chunk.processed_object['x']['preds'][0:max_len])
-                train_data_labels.append(data_chunk.processed_object['label'][0:max_len])
-                train_data_real.append(data_chunk.processed_object['is_real'][0:max_len])
-                train_data_events.append(data_chunk.processed_object['event'][0:max_len])
+                to_use = data_chunk.processed_object['label'] | (np.arange(initial_len) < max_len)
+                train_data_inputs.append(data_chunk.processed_object['x']['inputs'][to_use])
+                train_data_preds.append(data_chunk.processed_object['x']['preds'][to_use])
+                train_data_labels.append(data_chunk.processed_object['label'][to_use])
+                train_data_events.append(data_chunk.processed_object['event'][to_use])
             else:
                 valid_data_inputs.append(data_chunk.processed_object['x']['inputs'])
                 valid_data_preds.append(data_chunk.processed_object['x']['preds'])
                 valid_data_labels.append(data_chunk.processed_object['label'])
-                valid_data_real.append(data_chunk.processed_object['is_real'])
                 valid_data_events.append(data_chunk.processed_object['event'])
 
         train_data_inputs = np.concatenate(train_data_inputs)
         train_data_preds = np.concatenate(train_data_preds)
         train_data_labels = np.concatenate(train_data_labels)
-        train_data_real = np.concatenate(train_data_real)
         train_data_events = np.concatenate(train_data_events)
 
         valid_data_inputs = np.concatenate(valid_data_inputs)
         valid_data_preds = np.concatenate(valid_data_preds)
         valid_data_labels = np.concatenate(valid_data_labels)
-        valid_data_real = np.concatenate(valid_data_real)
         valid_data_events = np.concatenate(valid_data_events)
 
         np.savez(
@@ -155,7 +173,6 @@ class TrackNetV22ProcessorWithModel(TrackNetV21Processor):
             inputs=train_data_inputs,
             preds=train_data_preds,
             labels=train_data_labels,  # predicted right point and point was real
-            is_real=train_data_real,
             events=train_data_events
         )
         np.savez(
@@ -163,7 +180,6 @@ class TrackNetV22ProcessorWithModel(TrackNetV21Processor):
             inputs=valid_data_inputs,
             preds=valid_data_preds,
             labels=valid_data_labels,
-            is_real=valid_data_real,
             events=valid_data_events
         )
         LOGGER.info(f'Saved train hits to: {processed_data.output_name}_train.npz')

@@ -93,19 +93,17 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
                                                       return_gru_state=True)
             nearest_hits, in_ellipse = find_nearest_hit(chunk_prediction.detach().cpu().numpy(),
                                                         np.ascontiguousarray(last_station))
-            is_close = np.all(np.isclose(nearest_hits, chunk_data_y), axis=1)
-            found_real_track_ending = is_close & chunk_data_real.astype(bool)
+            is_close = np.all(np.isclose(nearest_hits, np.expand_dims(chunk_data_y, 1).repeat(nearest_hits.shape[1], axis=1)), axis=-1)
+            found_real_track_ending = is_close & np.expand_dims(chunk_data_real.astype(bool), 1).repeat(is_close.shape[1], axis=1)
             is_close = np.all(np.isclose(nearest_hits, np.expand_dims(chunk_data_y, 1).repeat(nearest_hits.shape[1], 1)), -1)
-            to_use = is_close | in_ellipse
+            to_use = found_real_track_ending | in_ellipse
             chunk_gru = np.expand_dims(chunk_gru.detach().cpu().numpy(), 1).repeat(nearest_hits.shape[1], 1)
-
             nearest_hits = nearest_hits.reshape(-1, nearest_hits.shape[-1])
-
             nothing_for_real_track = ~np.any(to_use, axis=-1) & (chunk_data_real > 0.5) # if real track has nothing in ellipse or real last point is too far for faiss
             #chunk_gru_to_add = chunk_gru[nothing_for_real_track]
             chunk_data_y_to_add = chunk_data_y[nothing_for_real_track]
             to_use = to_use.reshape(-1)
-            is_close = is_close.reshape(-1)
+            found_real_track_ending = is_close.reshape(-1)
             chunk_gru = chunk_gru.reshape(-1, chunk_gru.shape[-2], chunk_gru.shape[-1])
             #chunk_gru = np.concatenate((chunk_gru, chunk_gru_to_add), axis=0)
             #nearest_hits = np.concatenate((nearest_hits, chunk_data_y_to_add), axis=0)
@@ -142,10 +140,12 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
                 initial_len = len(data_chunk.processed_object['label'])
                 multiplicity = data_chunk.processed_object['multiplicity']
                 max_len = int(multiplicity + (initial_len / self.n_times_oversampling))
-                train_data_inputs.append(data_chunk.processed_object['x']['grus'][0:max_len])
-                train_data_preds.append(data_chunk.processed_object['x']['preds'][0:max_len])
-                train_data_labels.append(data_chunk.processed_object['label'][0:max_len])
-                train_data_events.append(data_chunk.processed_object['event'][0:max_len])
+                to_use = data_chunk.processed_object['label'] | (np.arange(initial_len) < max_len)
+
+                train_data_inputs.append(data_chunk.processed_object['x']['grus'][to_use])
+                train_data_preds.append(data_chunk.processed_object['x']['preds'][to_use])
+                train_data_labels.append(data_chunk.processed_object['label'][to_use])
+                train_data_events.append(data_chunk.processed_object['event'][to_use])
             else:
                 valid_data_inputs.append(data_chunk.processed_object['x']['grus'])
                 valid_data_preds.append(data_chunk.processed_object['x']['preds'])

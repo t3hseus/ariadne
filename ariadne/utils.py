@@ -15,7 +15,7 @@ def brute_force_hits_two_first_stations(df, return_momentum=False):
     first_station.columns = ['r_left', 'phi_left', 'z_left', 'track_left']
     second_station = df[df['station'] == 1][['r', 'phi', 'z', 'track']]
     second_station.columns = ['r_right', 'phi_right', 'z_right', 'track_right']
-    temp_y = df[df['station'] > 1][['phi', 'z','track']]
+    temp_y = df[df['station'] > 1][['phi', 'z', 'track']]
     if return_momentum:
         temp_momentum = df[df['station'] > 1][['px', 'py', 'pz', 'track']]
     rows = itertools.product(first_station.iterrows(), second_station.iterrows())
