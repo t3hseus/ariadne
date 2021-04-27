@@ -48,7 +48,7 @@ class TrackNetV21Dataset(TrackNetV2Dataset):
         self.last_station_events = torch.from_numpy(last_station_events)
 
     def __len__(self):
-        return len(self.data['is_real'])
+        return len(self.data['labels'])
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
@@ -99,10 +99,10 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
         self.is_train = is_train
         self.data = load_data(input_dir, file_mask, n_samples)
         if self.is_train:
-            print(self.data['labels'])
+            print(self.data['labels'][0:10])
 
     def __len__(self):
-        return len(self.data['is_real'])
+        return len(self.data['labels'])
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
