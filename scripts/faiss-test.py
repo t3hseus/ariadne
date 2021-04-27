@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from torch.nn import functional as F
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2_1.model import TrackNetClassifier
-from ariadne.utils import weights_update, find_nearest_hit,find_nearest_hit_old, find_nearest_hit_no_faiss,\
+from ariadne.utils import weights_update, find_nearest_hit, find_nearest_hit_old, find_nearest_hit_no_faiss,\
     get_diagram_arr_linspace, draw_for_col, draw_from_data
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -32,13 +32,13 @@ gin.bind_parameter('TrackNETv2.batch_first', True)
 
 model = weights_update(model=TrackNETv2(), checkpoint=torch.load('lightning_logs/TrackNETv2/version_48/epoch=56-step=195623.ckpt'))
 model.to(DEVICE)
-class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('lightning_logs/TrackNetClassifier/version_166/epoch=21-step=277375.ckpt'))
+class_model = weights_update(model=TrackNetClassifier(), checkpoint=torch.load('lightning_logs/TrackNetClassifier/version_180/epoch=35-step=468251.ckpt'))
 class_model.to(DEVICE)
 use_classifier = True
-draw_figures = False
+draw_figures = True
 
-events = np.load('output/cgem_t_plain_valid_v48_valid/tracknet_all_1.npz')
-all_last_station_coordinates = np.load('output/cgem_t_plain_valid_v48_valid/tracknet_all_1_last_station.npz')
+events = np.load('output/cgem_t_plain_valid_v48_valid/tracknet_all_3.npz')
+all_last_station_coordinates = np.load('output/cgem_t_plain_valid_v48_valid/tracknet_all_3_last_station.npz')
 
 last_station_hits = all_last_station_coordinates['hits']
 last_station_hits_events = all_last_station_coordinates['events']
@@ -176,7 +176,7 @@ for batch_event in tqdm(np.unique(events['events'])):
     times[int(batch_labels.sum())].append(total_elapsed_faiss)
     result_df = pd.concat([result_df, df], axis=0)
     result_df_faiss = pd.concat([result_df_faiss, df_faiss], axis=0)
-    if num_events == 700:
+    if num_events == 1000:
         break
 
 real_tracks = deepcopy(result_df.loc[result_df['is_real_track'] == 1, ])
@@ -187,6 +187,7 @@ recall = real_tracks['found_right_point'].sum() / float(result_df['is_real_track
 result_df['pt'] = LA.norm(result_df[['px','py']].values, axis=1)
 result_df['cos_t'] = (result_df[['pz']].values / LA.norm(result_df[['px', 'py', 'pz']].values, axis=1, keepdims=True))
 result_df['a_phi'] = np.arctan2(result_df[['px']].values, result_df[['py']].values)
+print(f'Results on {num_events} events:')
 print('\n ===> NO FAISS:')
 print('Test set results:')
 print(f'Precision: {precision}')
@@ -220,6 +221,7 @@ result_df_faiss['a_phi'] = np.arctan2(result_df_faiss[['px']].values, result_df_
 
 
 true_tracks_result_df = result_df_faiss[result_df_faiss.is_real_track == 1]
+found_tracks_result_df = result_df_faiss[result_df_faiss.found == 1]
 tracks_pred_true = true_tracks_result_df[true_tracks_result_df.found_right_point]
 tracks_real = true_tracks_result_df[(~true_tracks_result_df.found_right_point) |
                                     (~true_tracks_result_df.found)]
@@ -227,6 +229,9 @@ if draw_figures:
     draw_for_col(true_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, style='plot')
     draw_for_col(true_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot')
     draw_for_col(true_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', num_events, 175, style='plot')
+    draw_for_col(found_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, metric='recall', style='plot')
+    draw_for_col(found_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot', metric='recall')
+    draw_for_col(found_tracks_result_df, tracks_pred_true, 'cos_t', '$cos_t$', num_events, 175, style='plot', metric='recall')
     times_mean = {k: np.mean(v) for k, v in times.items()}
     times_std = {k: np.std(v) for k, v in times.items()}
     draw_from_data(title="TrackNETv2.1 Mean Processing Time vs Multiplicity (ms)",

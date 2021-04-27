@@ -28,20 +28,19 @@ class TrackNetCrossEntropyLoss(nn.BCEWithLogitsLoss):
 
 
 @gin.configurable()
-class FocalLoss(nn.Module):
-    def __init__(self, alpha=1, gamma=2, logits=True, reduce=True):
-        super(FocalLoss, self).__init__()
+class FocalLoss(TrackNetCrossEntropyLoss):
+    def __init__(self, alpha=1, gamma=2, logits=True, reduce=True, weight=None, size_average=None, pos_weight=None):
         self.alpha = alpha
         self.gamma = gamma
         self.logits = logits
         self.reduce = reduce
+        super().__init__(weight=weight,
+                         size_average=size_average,
+                         reduction='none',
+                         pos_weight=pos_weight)
 
     def forward(self, inputs, targets):
-        targets = targets.float().unsqueeze(-1)
-        if self.logits:
-            BCE_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduce=False)
-        else:
-            BCE_loss = F.binary_cross_entropy(inputs, targets, reduce=False)
+        BCE_loss = super().forward(inputs, targets)
         pt = torch.exp(-BCE_loss)
         F_loss = self.alpha * (1-pt)**self.gamma * BCE_loss
         if self.reduce:

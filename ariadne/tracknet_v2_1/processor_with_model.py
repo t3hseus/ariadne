@@ -96,6 +96,7 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
             is_close = np.all(np.isclose(nearest_hits, np.expand_dims(chunk_data_y, 1).repeat(nearest_hits.shape[1], axis=1)), axis=-1)
             found_real_track_ending = is_close & np.expand_dims(chunk_data_real.astype(bool), 1).repeat(is_close.shape[1], axis=1)
             is_close = np.all(np.isclose(nearest_hits, np.expand_dims(chunk_data_y, 1).repeat(nearest_hits.shape[1], 1)), -1)
+    
             to_use = found_real_track_ending | in_ellipse
             chunk_gru = np.expand_dims(chunk_gru.detach().cpu().numpy(), 1).repeat(nearest_hits.shape[1], 1)
             nearest_hits = nearest_hits.reshape(-1, nearest_hits.shape[-1])
@@ -113,7 +114,7 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
             chunk_data_len = np.full(len(nearest_hits), 2)
             chunk_data_event = np.full(len(nearest_hits), chunk.id)
             chunk_data = {'x': {'grus': chunk_gru[to_use], 'preds': nearest_hits[to_use]},
-                          'label': is_close[to_use],
+                          'label': found_real_track_ending[to_use],
                           'event': chunk_data_event[to_use],
                           'multiplicity': multiplicity}
             chunk.processed_object = chunk_data

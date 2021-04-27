@@ -151,11 +151,11 @@ def draw_for_col(tracks_real,
                  n_ticks=150,
                  n_boxes=10,
                  model_name='',
+                 metric='efficiency',
                  style='boxplot'):
-
+    print(metric)
     start = tracks_real[tracks_real[col] > -np.inf][col].min()
     end = tracks_real[tracks_real[col] < np.inf][col].max()
-
     initial, spac = get_diagram_arr_linspace(tracks_real, tracks_pred_true, start, end, n_ticks, col)
     # mean line
     # find number of ticks until no nans present
@@ -176,7 +176,7 @@ def draw_for_col(tracks_real,
             stds[interval] = np.std(values_in_interval)
             positions[interval] = np.mean(pos_in_interval)
             first = second
-        draw_from_data(title=f'{model_name} track efficiency vs {col_pretty} ({total_events} events)',
+        draw_from_data(title=f'{model_name} track {metric} vs {col_pretty} ({total_events} events)',
                        data_x=list(positions.values()),
                        data_y=list(means.values()),
                        data_y_err=list(stds.values()),
@@ -193,11 +193,11 @@ def draw_for_col(tracks_real,
         maxX = end
         plt.figure(figsize=(8, 7))
         plt.subplot(111)
-        plt.ylabel('Track efficiency', fontsize=12)
+        plt.ylabel(f'Track {metric}', fontsize=12)
         plt.xlabel(col_pretty, fontsize=12)
         # plt.axis([0, maxX, 0, 1.005])
         plt.plot(spac, initial, alpha=0.8, lw=0.8)
-        plt.title(f'{model_name} track efficiency vs {col_pretty} ({total_events} events)', fontsize=14)
+        plt.title(f'{model_name} track {metric} vs {col_pretty} ({total_events} events)', fontsize=14)
         plt.plot(xnew, power_smooth, ls='--', label='mean', lw=2.5)
         plt.xticks(np.linspace(start, maxX, 8))
         plt.yticks(np.linspace(0, 1, 9))
@@ -206,7 +206,7 @@ def draw_for_col(tracks_real,
         plt.tight_layout()
         plt.rcParams['savefig.facecolor'] = 'white'
         os.makedirs('../output', exist_ok=True)
-        plt.savefig(f'../output/{model_name}_img_track_eff_{col}_ev{total_events}_t{n_ticks}.png', dpi=300)
+        plt.savefig(f'../output/{model_name}_img_track_{metric}_{col}_ev{total_events}_t{n_ticks}.png', dpi=300)
         plt.show()
     else:
         raise NotImplementedError(f"Style of plotting '{style}' is not supported yet")
