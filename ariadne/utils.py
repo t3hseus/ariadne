@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline, BSpline
 import glob
 import os
+import random
+import logging
 
 def brute_force_hits_two_first_stations(df, return_momentum=False):
     first_station = df[df['station'] == 0][['r', 'phi', 'z','track']]
@@ -34,7 +36,6 @@ def brute_force_hits_two_first_stations(df, return_momentum=False):
                               df[df_label == 1]['track_left']))), 1)
     return x, y, momentum, df_label
 
-
 def weights_update(model, checkpoint):
     model_dict = model.state_dict()
     pretrained_dict = checkpoint['state_dict']
@@ -52,12 +53,16 @@ def weights_update(model, checkpoint):
     model.eval()
     return model
 
-def load_data(input_dir, file_mask, n_samples):
+def load_data(input_dir, file_mask, n_samples=None):
     '''Function to load input data for tracknet-like models training.
     Helps load prepared input of tracknet or classiier (like inputs,
     input_lengths, labels etc) or last station hits stored somewhere
     as npz-file (with info about positions and events).
 
+    Arguments:
+        input_dir (string): directory with files
+        file_mask (string): mask to be applied to (f.e. *.npz)
+        n_samples (int, None by default): Maximum number of samples to be loaded
     '''
     flag = 0
     files = []
@@ -77,9 +82,28 @@ def load_data(input_dir, file_mask, n_samples):
     if n_samples is None:
         n_samples = len(data_merged[files[0]])
     else:
+        assert isinstance(n_samples, int), 'n_samples must be int or None'
         n_samples = min(n_samples, len(data_merged[files[0]]))
     return {key: item[:n_samples] for key, item in data_merged.items()}
 
+def get_checkpoint_path(model_dir, version='latest', checkpoint='latest'):
+    '''Function to get checkpoint of model in given directory.
+    If it is needed to use not specific, but newest version of model, it can bee found automatically
+    Arguments:
+        model_dir (str): directory with model checkpoints
+        version (str, 'latest' by default): name of directory with needed checkpoint.
+                                           If 'latest', directory with maximum change time will be used
+        checkpoint (str, 'latest' by default): name of checkpoint (with .ckpt).
+                                           If 'latest', checkpoint with maximum change time will be used
+    '''
+
+    if version == 'latest':
+        list_of_files = glob.glob(f"{model_dir}/*")
+        version = max(list_of_files, key=os.path.getmtime).split('/')[-1]
+    if checkpoint == 'latest':
+        list_of_files = glob.glob(f"{model_dir}/{version}/*.ckpt")
+        checkpoint = max(list_of_files, key=os.path.getmtime).split('/')[-1]
+    return f'{model_dir}/{version}/{checkpoint}'
 
 def find_nearest_hit_no_faiss(ellipses, last_station_hits, return_numpy=False):
     centers = ellipses[:, :2]
@@ -127,21 +151,21 @@ def find_nearest_hit_old(ellipses, last_station_hits):
     return last_station_hits[i.flatten()], is_in_ellipse
 
 def get_diagram_arr_linspace(all_real_hits, found_hits, start, end, num, col):
-    spac = np.linspace(start, end, num=num)
+    spac = np.linspace(start, end, num=num)  # точки по х для диаграммы
 
     arr = []
 
-    for i in range(len(spac) - 1):
-        beg = spac[i]
-        end = spac[i + 1]
-        elems_real = all_real_hits[(all_real_hits[col] > beg) & (all_real_hits[col] < end)]
-        elems_pred = found_hits[(found_hits[col] > beg) & (found_hits[col] < end)]
-        if elems_real.empty:
+    for i in range(len(spac) - 1): # для каждой точки
+        beg = spac[i]  # начальная точка отрезка
+        end = spac[i + 1]  # конечная точка отрезка
+        elems_real = all_real_hits[(all_real_hits[col] > beg) & (all_real_hits[col] < end)] # все настоящие точки, попавшие в отрезок
+        elems_pred = found_hits[(found_hits[col] > beg) & (found_hits[col] < end)] # все найденные точки, попавшие в отрезок
+        if elems_real.empty: # есл иничего не попало
             arr.append(np.NaN)
             continue
-        arr.append(len(elems_pred) / len(elems_real))
+        arr.append(len(elems_pred) / len(elems_real))  # добавляем пропорцию
 
-    return arr, spac[:-1]
+    return arr, spac[:-1]  # значения и точки, где будет рисоваться линия
 
 def draw_for_col(tracks_real,
                  tracks_pred_true,
@@ -152,16 +176,20 @@ def draw_for_col(tracks_real,
                  n_boxes=10,
                  model_name='',
                  metric='efficiency',
-                 style='boxplot'):
-    print(metric)
-    start = tracks_real[tracks_real[col] > -np.inf][col].min()
-    end = tracks_real[tracks_real[col] < np.inf][col].max()
-    initial, spac = get_diagram_arr_linspace(tracks_real, tracks_pred_true, start, end, n_ticks, col)
+                 style='boxplot',
+                 verbose=True):
+    if verbose:
+        LOGGER = logging.getLogger('ariadne.speed_measure')
+        LOGGER.info(f'Plotting results for metric {metric} vs {col}')
+    start = tracks_real[tracks_real[col] > -np.inf][col].min()  # берем минимальную точку по х
+    end = tracks_real[tracks_real[col] < np.inf][col].max()  # берем максимальную точку по х
+
+    initial_values, initial_ticks = get_diagram_arr_linspace(tracks_real, tracks_pred_true, start, end, n_ticks, col)  # значения и точки (х,у)
     # mean line
     # find number of ticks until no nans present
 
     if style == 'boxplot':
-        interval_size = len(initial) / n_boxes
+        interval_size = len(initial_values) / n_boxes
         subarrays = {}
         positions = {}
         means = {}
@@ -170,8 +198,8 @@ def draw_for_col(tracks_real,
         #get_boxes
         for interval in range(n_boxes):
             second = int(first + interval_size)
-            values_in_interval = initial[first:min(second, len(initial))]
-            pos_in_interval = spac[first:min(second, len(initial))]
+            values_in_interval = initial_values[first:min(second, len(initial_values))]
+            pos_in_interval = initial_ticks[first:min(second, len(initial_values))]
             means[interval] = np.mean(values_in_interval)
             stds[interval] = np.std(values_in_interval)
             positions[interval] = np.mean(pos_in_interval)
@@ -182,32 +210,36 @@ def draw_for_col(tracks_real,
                        data_y_err=list(stds.values()),
                        axis_x=col_pretty)
     elif style=='plot':
-        second = np.array([np.nan])
-        count_start = n_ticks // 5
-        while np.isnan(second).any():
-            second, spac2 = get_diagram_arr_linspace(tracks_real, tracks_pred_true, start, end, count_start, col)
-            count_start = count_start - count_start // 2
-        xnew = np.linspace(spac2.min(), spac2.max(), count_start)
-        spl = make_interp_spline(spac2, second, k=3)  # type: BSpline
-        power_smooth = spl(xnew)
-        maxX = end
-        plt.figure(figsize=(8, 7))
-        plt.subplot(111)
-        plt.ylabel(f'Track {metric}', fontsize=12)
-        plt.xlabel(col_pretty, fontsize=12)
-        # plt.axis([0, maxX, 0, 1.005])
-        plt.plot(spac, initial, alpha=0.8, lw=0.8)
-        plt.title(f'{model_name} track {metric} vs {col_pretty} ({total_events} events)', fontsize=14)
-        plt.plot(xnew, power_smooth, ls='--', label='mean', lw=2.5)
-        plt.xticks(np.linspace(start, maxX, 8))
-        plt.yticks(np.linspace(0, 1, 9))
-        plt.legend(loc=0)
-        plt.grid()
-        plt.tight_layout()
-        plt.rcParams['savefig.facecolor'] = 'white'
-        os.makedirs('../output', exist_ok=True)
-        plt.savefig(f'../output/{model_name}_img_track_{metric}_{col}_ev{total_events}_t{n_ticks}.png', dpi=300)
-        plt.show()
+            interp_values = np.array([np.nan])
+            ticks_count = n_ticks // 5
+            while np.isnan(interp_values).any(): # пока во всех бинах не будет хоть один реальный пример, ищем бины все больше и больше
+                interp_values, interp_ticks = get_diagram_arr_linspace(tracks_real, tracks_pred_true, start, end, ticks_count, col)  # более грубые оценки ........ -> .... -> ..,
+                ticks_count = ticks_count - ticks_count // 2
+            new_ticks = np.linspace(interp_ticks.min(), interp_ticks.max(), ticks_count) #сохраняем х для результата
+            try:  # делаем интерполяцию - получаем боее плавное представление
+                spl = make_interp_spline(interp_ticks, interp_values, k=3)  # type: BSpline
+                power_smooth = spl(new_ticks)
+            except:
+                spl = make_interp_spline(interp_ticks, interp_values, k=0)  # type: BSpline
+                power_smooth = spl(new_ticks)
+            maxX = end
+            plt.figure(figsize=(8, 7))
+            plt.subplot(111)
+            plt.ylabel(f'Track {metric}', fontsize=12)
+            plt.xlabel(col_pretty, fontsize=12)
+            # plt.axis([0, maxX, 0, 1.005])
+            plt.plot(initial_ticks, initial_values, alpha=0.8, lw=0.8) # оригинальные значения
+            plt.title(f'{model_name} track {metric} vs {col_pretty} ({total_events} events)', fontsize=14)
+            plt.plot(new_ticks, power_smooth, ls='--', label='mean', lw=2.5)  # после интерполяции
+            plt.xticks(np.linspace(start, maxX, 8))
+            plt.yticks(np.linspace(0, 1, 9))
+            plt.legend(loc=0)
+            plt.grid()
+            plt.tight_layout()
+            plt.rcParams['savefig.facecolor'] = 'white'
+            os.makedirs('../output', exist_ok=True)
+            plt.savefig(f'../output/{model_name}_img_track_{metric}_{col}_ev{total_events}_t{n_ticks}.png', dpi=300)
+            plt.show()
     else:
         raise NotImplementedError(f"Style of plotting '{style}' is not supported yet")
 
@@ -305,3 +337,11 @@ def one_hot_embedding(labels, num_classes):
     '''
     y = torch.eye(num_classes)  # [D,D]
     return y[labels]            # [N,D]
+
+def init_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False

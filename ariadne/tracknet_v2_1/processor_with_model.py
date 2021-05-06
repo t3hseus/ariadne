@@ -19,7 +19,7 @@ from ariadne.preprocessing import (
     ProcessedDataChunk,
     ProcessedData
 )
-from ariadne.utils import brute_force_hits_two_first_stations, find_nearest_hit, weights_update
+from ariadne.utils import brute_force_hits_two_first_stations, find_nearest_hit, weights_update, init_seed
 from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData, TracknetDataChunk
 
 LOGGER = logging.getLogger('ariadne.prepare')
@@ -69,6 +69,7 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
 
     def postprocess_chunks(self,
                            chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
+        init_seed(42)
         for chunk in chunks:
             if chunk.processed_object is None:
                 continue

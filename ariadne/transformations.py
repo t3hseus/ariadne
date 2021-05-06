@@ -14,7 +14,7 @@ from sklearn.preprocessing import (
 LOGGER = logging.getLogger('ariadne.transforms')
 
 class Compose:
-    """Composes several transforms together.
+    """Composes several transforms together. Mostly copied from torchvision.
     Args:
         transforms (list of ``Transform`` objects): list of
             transforms to compose.
@@ -185,12 +185,14 @@ class BaseCoordConverter(BaseTransformer):
          convert_function(function or method pd.DataFrame -> iterable of pd.Series): Function, which
          convertes data, returned value must be iterable with pd.Series values (list etc)
          drop_old (boolean, False by default): If True, old columns are discarded from data
-         from_columns (list or tuple, ['x', 'y', 'z'] by default): list of original features
-         to_columns (list or tuple, ['r', 'phi'] by default): list of features to convert to
+         from_columns (list or tuple of length 3, ['x', 'y', 'z'] by default): list of original features
+         to_columns (list or tuple of length 3, ['r', 'phi', 'z'] by default): list of features to convert to
     """
 
     def __init__(self, convert_function, drop_old=False, from_columns=('x', 'y','z'),
                  to_columns=('r', 'phi', 'z'), postfix='general_convert'):
+        assert len(from_columns) == 3, 'To convert coordinates, you need 3 old columns'
+        assert len(to_columns) == 3, 'To convert coordinates, you need 3 new columns'
         super().__init__(drop_old=drop_old, columns=to_columns)
         self.convert_function = convert_function
         self.range_ = {}
@@ -239,8 +241,11 @@ class BaseCoordConverter(BaseTransformer):
 @gin.configurable
 class PreserveOriginal:
     """Preserves original state of given columns.
+    May be needed to use original state of column
+    in future transforms or tests
+
     # Args:
-         columns (list or tuple, ['x', 'y', 'z'] by default): Columns to keep
+         columns (list or tuple, None by default): Columns to keep state of.
     """
 
     def __init__(self, columns=None):
@@ -271,7 +276,7 @@ class StandardScale(BaseScaler):
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         with_mean (boolean, True by default): If True, center the data before scaling
         with_std (boolean, True by default): If True, scale the data to unit variance (or equivalently, unit standard deviation).
-        columns (list or tuple of length 3): Columns to Standardize
+        columns (list or tuple, ('x', 'y', 'z') by default): Columns to Standardize
     """
 
     def __init__(self, drop_old=True, with_mean=True, with_std=True, columns=('x', 'y', 'z')):
@@ -294,7 +299,7 @@ class MinMaxScale(BaseScaler):
      # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         feature_range (Tuple (min,max), default (0,1)): Desired range of transformed data.
-        columns (list or tuple of length 3): Columns to Standardize
+        columns (list or tuple, ('x', 'y', 'z') by default): Columns to Standardize
     """
 
     def __init__(self, drop_old=True, feature_range=(0, 1), columns=('x', 'y', 'z')):
@@ -322,7 +327,7 @@ class Normalize(BaseScaler):
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         norm (‘l1’, ‘l2’, or ‘max’ (‘l2’ by default)): The norm to use to normalize each non zero sample.
                               If norm=’max’ is used, values will be rescaled by the maximum of the absolute values.
-        columns (list or tuple of length 3): Columns to Standardize
+        columns (list or tuple, ('x', 'y', 'z') by default): Columns to Standardize
     """
 
     def __init__(self, drop_old=True, norm='l2', columns=('x', 'y', 'z')):
@@ -343,7 +348,7 @@ class ConstraintsNormalize(BaseTransformer):
     Each station can have its own constraints or global constrains.
       Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
-        columns (list or tuple of length 3): Columns to scale
+        columns (list or tuple, ('x', 'y', 'z') by default): Columns to scale
         margin (number, positive): margin applied to stations (min = min-margin, max=max+margin)
         constraints (dict, None by deault) If None, constraints are computed using dataset statistics.
         use_global_constraints (boolean, True by default) If True, all data is scaled using given global constraints.
@@ -351,7 +356,8 @@ class ConstraintsNormalize(BaseTransformer):
     If use_global_constraints is True and constraints is not None, constraints must be {column:(min,max)},
     else it must be {station: {column:(min,max)}}.
 
-    Station keys must be in dataset.
+    Station keys for constraints must be in dataset. Number of constraints for each column must be 2.
+    Number of constraints must be the same as number of columns
     """
 
     def __init__(self, drop_old=True, columns=('x', 'y', 'z'), margin=1e-3, use_global_constraints=True,
@@ -543,8 +549,9 @@ class ToCylindrical(BaseCoordConverter):
 
        # Args:
            drop_old (boolean, False by default): If True, old coordinate features are deleted from data
-           cart_columns (list or tuple,  ['x', 'y'] by default ): columns of x and y in cartesian coordiates
-           polar_columns = (list or tuple, ['r','phi'] by default):  columns of r and phi in cylindrical coordiates
+           cart_columns (list or tuple of length 3,  ['x', 'y', 'z'] by default ): columns of x, y and z in cartesian coordiates
+           polar_columns = (list or tuple of length 3, ['r','phi', 'z'] by default):  columns of r and phi (and redundant z) in cylindrical coordinates
+       New "z" column (same value for each station) will be r for cylindrical chamber.
     """
 
     def __init__(self, drop_old=False, cart_columns=('x', 'y', 'z'), polar_columns=('r', 'phi', 'z'), postfix='before_cyl'):
@@ -567,11 +574,12 @@ class ToCylindrical(BaseCoordConverter):
 @gin.configurable
 class ToCartesian(BaseCoordConverter):
     """Converts coordinates to cartesian. Formula is: y = r * cos(phi), x = r * sin(phi).
-    Note that always resulting columns are x,y,z.
+    Note that always resulting columns are x,y,z. z column after convertion has same values as before.
       # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
-        cart_columns (list or tuple,  ['x', 'y'] by default ): columns of x and y in cartesian coordiates
-        polar_columns = (list or tuple, ['r','phi'] by default):  columns of r and phi in cylindrical coordiates
+        cart_columns (list or tuple of length 3,  ['x', 'y', 'z'] by default ): columns of x and y in cartesian coordiates
+        polar_columns = (list or tuple of length 3, ['r','phi','z'] by default):  columns of r and phi in cylindrical coordiates
+
     """
 
     def __init__(self, drop_old=True, cart_columns=('x', 'y', 'z'), polar_columns=('r', 'phi', 'z')):
@@ -596,7 +604,7 @@ class ToCartesian(BaseCoordConverter):
 @gin.configurable
 class ToBuckets(BaseTransformer):
     """Data may contains from tracks with varying lengths.
-    To prepare a train dataset in a proper way, we have to
+    To prepare-hydra-wombat a train dataset in a proper way, we have to
     split data on so-called buckets. Each bucket includes
     tracks based on their length, as we can't predict the
     6'th point of the track with length 4, but we can predict

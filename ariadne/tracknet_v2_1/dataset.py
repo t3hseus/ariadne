@@ -41,7 +41,7 @@ class TrackNetV21Dataset(TrackNetV2Dataset):
         self.model.eval()
         self.use_index = use_index
         self.data = load_data(input_dir, file_mask, n_samples)
-        all_last_station_data = load_data(input_dir, last_station_file_mask, n_samples)
+        all_last_station_data = load_data(input_dir, last_station_file_mask, None)
         last_station_hits = all_last_station_data['hits']
         last_station_events = all_last_station_data['events']
         self.last_station_hits = torch.from_numpy(last_station_hits)

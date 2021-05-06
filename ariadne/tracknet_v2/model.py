@@ -53,7 +53,14 @@ class TrackNETv2(nn.Module):
         # BxTxC -> BxCxT
         inputs = inputs.transpose(1, 2).float()
         input_lengths = input_lengths.int().cpu()
-        x = self.conv(inputs)
+        if self.input_features > inputs.shape[1]:
+            temp = torch.zeros(inputs.shape[0], 1, inputs.shape[2], device=inputs.device)
+            temp[:, 0, :-1] = inputs[:, 0, 1:]
+            temp[:, 0, -1] = 0.96
+            new_inputs = torch.cat((inputs, temp), 1)
+            x = self.conv(new_inputs)
+        else:
+            x = self.conv(inputs)
         # BxCxT -> BxTxC
         x = x.transpose(1, 2)
         # Pack padded batch of sequences for RNN module

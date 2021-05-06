@@ -10,13 +10,13 @@ from ariadne.preprocessing import BaseTransformer
 from ariadne.utils import brute_force_hits_two_first_stations, find_nearest_hit
 from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData
 
-LOGGER = logging.getLogger('ariadne.prepare')
+LOGGER = logging.getLogger('ariadne.prepare-hydra-wombat')
 
 @gin.configurable(denylist=['data_df'])
 class ValidProcessor(TrackNetV21Processor):
     """This processor prepares data for validating of Classifier and TrackNetV2.
        Only input data is saved, so it is needed to use TrackNetV2 and Classifier simultaneously or use only TrackNetV2.
-       To prepare data, cartesian product is used, and real tracks are marked as True, synthetic as False.
+       To prepare-hydra-wombat data, cartesian product is used, and real tracks are marked as True, synthetic as False.
        Some additional data for analysis is saved too (momentum of particle, event).
 
        Validating needs to be done event-by-event, so to validate models, it is needed to group prepared data event-wise.
