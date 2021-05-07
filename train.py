@@ -65,7 +65,8 @@ def experiment(model,
     tb_logger = TensorBoardLogger(log_dir, name=model.__name__)
     setup_logger(tb_logger.log_dir)
 
-
+    with open(os.path.join(tb_logger.log_dir, "train_config.cfg"), "w") as f:
+        f.write(gin.config_str())
     LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
 
     # for reproducibility

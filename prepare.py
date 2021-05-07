@@ -13,7 +13,7 @@ import numpy as np
 from absl import flags
 from absl import app
 from tqdm import tqdm
-
+from pytorch_lightning import seed_everything
 from ariadne.preprocessing import DataProcessor
 from ariadne.parsing import parse_df
 
@@ -99,13 +99,16 @@ def parse(input_file_mask,
 def preprocess(
         target_processor: DataProcessor.__class__,
         output_dir: str,
-        ignore_asserts: bool
+        ignore_asserts: bool,
+        random_seed=None,
 ):
     os.makedirs(output_dir, exist_ok=True)
     setup_logger(output_dir, target_processor.__name__)
 
     LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
-
+    if random_seed is not None:
+        LOGGER.info('Setting random seed to %d', random_seed)
+        seed_everything(random_seed)
     for data_df, basename in parse():
         LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
         processor: DataProcessor = target_processor(data_df=data_df,

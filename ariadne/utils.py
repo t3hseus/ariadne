@@ -177,10 +177,11 @@ def draw_for_col(tracks_real,
                  model_name='',
                  metric='efficiency',
                  style='boxplot',
-                 verbose=True):
+                 verbose=True,
+                 logger='ariadne.test'):
     if verbose:
-        LOGGER = logging.getLogger('ariadne.speed_measure')
-        LOGGER.info(f'Plotting results for metric {metric} vs {col}')
+        LOGGER = logging.getLogger(logger)
+        LOGGER.info(f'Plotting results for metric {metric} vs {col} ==>')
     start = tracks_real[tracks_real[col] > -np.inf][col].min()  # берем минимальную точку по х
     end = tracks_real[tracks_real[col] < np.inf][col].max()  # берем максимальную точку по х
 
@@ -242,6 +243,35 @@ def draw_for_col(tracks_real,
             plt.show()
     else:
         raise NotImplementedError(f"Style of plotting '{style}' is not supported yet")
+    if verbose:
+        LOGGER = logging.getLogger(logger)
+        LOGGER.info(f'Plotted successful')
+
+def draw_treshold_plots(title,
+                        data_x,
+                        data_y_dict,
+                        axis_x=None,
+                        axis_y=None,
+                        model_name='tracknet',
+                        total_events=100,
+                        **kwargs):
+    plt.figure(figsize=(8, 7))
+    ax = plt.subplot(111)
+
+    plt.title(title, fontsize=14)
+    plt.ylabel(f'Value of metrics', fontsize=12)
+    plt.xlabel('Treshold value for classifier output', fontsize=12)
+    for metric_name, data_y in data_y_dict.items():
+        plt.plot(data_x, data_y, alpha=0.8, lw=1.3, label=metric_name)  # оригинальные значения
+    plt.xticks(np.linspace(data_x.min(), data_x.max(), 10))
+    plt.yticks(np.linspace(0, 1, 9))
+    plt.legend(loc=0)
+    plt.grid()
+    plt.tight_layout()
+    plt.rcParams['savefig.facecolor'] = 'white'
+    os.makedirs('../output', exist_ok=True)
+    plt.savefig(f'../output/{model_name}_metrics_vs_treshold_ev{total_events}_n_tr{len(data_x)}.png', dpi=300)
+    plt.show()
 
 def boxplot_style_data(bp):
     for box in bp['boxes']:

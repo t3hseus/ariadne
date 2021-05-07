@@ -22,7 +22,7 @@ from torch.nn import functional as F
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2_1.model import TrackNetClassifier
 from ariadne.utils import weights_update, find_nearest_hit, find_nearest_hit_old, find_nearest_hit_no_faiss,\
-    get_diagram_arr_linspace, draw_for_col, draw_from_data, get_checkpoint_path, load_data
+    get_diagram_arr_linspace, draw_for_col, draw_from_data, get_checkpoint_path, load_data, draw_treshold_plots
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 
 LOGGER = logging.getLogger('ariadne.test')
@@ -50,7 +50,12 @@ def faiss_test(tracknet_ckpt_path_dict,
                tracknet_input_features=3,
                tracknet_conv_features=32,
                use_classifier=True,
-               draw_figures=True):
+               draw_figures=True,
+               plot_treshold=True,
+               treshold_min=0.5,
+               treshold_max=0.95,
+               treshold_step=0.05
+               ):
     path_to_tracknet_ckpt = get_checkpoint_path(**tracknet_ckpt_path_dict)
     path_to_classifier_ckpt = get_checkpoint_path(**classifier_ckpt_path_dict)
 
@@ -73,7 +78,13 @@ def faiss_test(tracknet_ckpt_path_dict,
     all_tracks_df = pd.DataFrame(columns=['event', 'track', 'hit_0_id', 'hit_1_id', 'hit_2_id', 'px', 'py', 'pz', 'pred'])
     reco_df = all_tracks_df.copy()
 
-    def handle_event_to_df_faiss(batch_input, batch_len, batch_target, batch_real_flag, batch_last_station, batch_momentum):
+    def handle_event_to_df_faiss(batch_input,
+                                 batch_len,
+                                 batch_target,
+                                 batch_real_flag,
+                                 batch_last_station,
+                                 batch_momentum,
+                                 treshold=0.5):
         t0 = time.time()
         all_last_y = batch_last_station.astype('float32')
         with torch.no_grad():
@@ -97,7 +108,7 @@ def faiss_test(tracknet_ckpt_path_dict,
                 pred_classes = class_model(last_gru_output[is_point_in_ellipse],
                                            torch.from_numpy(nearest_points[is_point_in_ellipse].astype('float')).to(DEVICE))
                 confidence = deepcopy(F.sigmoid(pred_classes))
-                pred_classes = (F.sigmoid(pred_classes) > 0.6).squeeze().detach().cpu().numpy()
+                pred_classes = (F.sigmoid(pred_classes) > treshold).squeeze().detach().cpu().numpy()
             is_prediction_true = np.logical_and(batch_target, nearest_points)
             is_prediction_true = is_prediction_true.all(1)
             if use_classifier:
@@ -125,70 +136,90 @@ def faiss_test(tracknet_ckpt_path_dict,
     search_time_no_faiss = 0
     search_time_faiss = 0
     times = {i: [] for i in range(1, 20)}
-    num_events = 0
-    for batch_event in tqdm(np.unique(events['events'])):
-        num_events += 1
-        batch_x = events['x'][events['events'] == batch_event]
-        batch_len = events['len'][events['events'] == batch_event]
-        batch_y = events['y'][events['events'] == batch_event]
-        batch_labels = events['is_real'][events['events'] == batch_event]
-        batch_momentums = events['momentums'][events['events'] == batch_event]
-        last_station_data = last_station_hits[last_station_hits_events == batch_event]
-        df_faiss, elapsed_time_faiss, total_elapsed_faiss = handle_event_to_df_faiss(batch_x,
-                                                                                     batch_len,
-                                                                                     batch_y,
-                                                                                     batch_labels,
-                                                                                     last_station_data,
-                                                                                     batch_momentums)
-        #print('\n df_faiss \n', df_faiss[['found', 'found_right_point', 'is_real_track']])
-        search_time_faiss += elapsed_time_faiss
-        all_time_faiss += total_elapsed_faiss
-        times[int(batch_labels.sum())].append(total_elapsed_faiss)
-        result_df_faiss = pd.concat([result_df_faiss, df_faiss], axis=0)
-        if num_events == max_num_events:
-            break
 
-    real_tracks = deepcopy(result_df_faiss.loc[result_df_faiss['is_real_track'] == 1, ])
-    recall = result_df_faiss['found_right_point'].sum() / (result_df_faiss['is_real_track'].sum() + 1e-6)
-    precision = result_df_faiss['found_right_point'].sum() / (float(result_df_faiss['found'].sum()) + 1e-6)
+    num_tresholds = int((treshold_max - treshold_min) / treshold_step)
+    tresholds = np.linspace(treshold_min, treshold_max, num_tresholds)
 
-    LOGGER.info('\n ===> FAISS: \n'
-                'Test set results: \n'
-                f'Precision: {precision} \n' 
-                f'Recall:    {recall} \n' 
-                f'{"-"*10} '
-                f'\nSearch time: {search_time_faiss} sec \n'
-                f'Search time per batch: {(search_time_faiss / num_events)} sec \n'
-                f'{"-"*10} '
-                f'Total time: {all_time_faiss} sec \n'
-                ""f'Total time per batch: {(all_time_faiss/num_events)} sec')
+    metrics = {'precision': [], 'recall': []}
+    treshold = treshold_min
+    for i in tqdm(range(num_tresholds)):
+        num_events = 0
+        for batch_event in np.unique(events['events'])[:max_num_events]:
+            num_events += 1
+            batch_x = events['x'][events['events'] == batch_event]
+            batch_len = events['len'][events['events'] == batch_event]
+            batch_y = events['y'][events['events'] == batch_event]
+            batch_labels = events['is_real'][events['events'] == batch_event]
+            batch_momentums = events['momentums'][events['events'] == batch_event]
+            last_station_data = last_station_hits[last_station_hits_events == batch_event]
+            df_faiss, elapsed_time_faiss, total_elapsed_faiss = handle_event_to_df_faiss(batch_x,
+                                                                                         batch_len,
+                                                                                         batch_y,
+                                                                                         batch_labels,
+                                                                                         last_station_data,
+                                                                                         batch_momentums,
+                                                                                         treshold=treshold)
+            #print('\n df_faiss \n', df_faiss[['found', 'found_right_point', 'is_real_track']])
+            search_time_faiss += elapsed_time_faiss
+            all_time_faiss += total_elapsed_faiss
+            times[int(batch_labels.sum())].append(total_elapsed_faiss)
+            result_df_faiss = pd.concat([result_df_faiss, df_faiss], axis=0)
 
-    result_df_faiss['pt'] = LA.norm(result_df_faiss[['px','py']].values, axis=1)
-    result_df_faiss['cos_t'] = (result_df_faiss[['pz']].values /
-                                LA.norm(result_df_faiss[['px', 'py', 'pz']].values, axis=1, keepdims=True))
-    result_df_faiss['a_phi'] = np.arctan2(result_df_faiss[['px']].values, result_df_faiss[['py']].values)
+        real_tracks = deepcopy(result_df_faiss.loc[result_df_faiss['is_real_track'] == 1, ])
+        recall = result_df_faiss['found_right_point'].sum() / (result_df_faiss['is_real_track'].sum() + 1e-6)
+        precision = result_df_faiss['found_right_point'].sum() / (float(result_df_faiss['found'].sum()) + 1e-6)
+        metrics['precision'].append(precision)
+        metrics['recall'].append(recall)
+
+        LOGGER.info('\n ===> FAISS: \n'
+                    'Test set results: \n'
+                    f'------> Treshold: {treshold}, {num_events} events\n'
+                    f'Precision: {precision} \n' 
+                    f'Recall:    {recall} \n' 
+                    f'{"-"*10} '
+                    f'\nSearch time: {search_time_faiss} sec \n'
+                    f'Search time per batch: {(search_time_faiss / num_events)} sec \n'
+                    f'{"-"*10} '
+                    f'Total time: {all_time_faiss} sec \n'
+                    ""f'Total time per batch: {(all_time_faiss/num_events)} sec')
+
+        result_df_faiss['pt'] = LA.norm(result_df_faiss[['px','py']].values, axis=1)
+        result_df_faiss['cos_t'] = (result_df_faiss[['pz']].values /
+                                    LA.norm(result_df_faiss[['px', 'py', 'pz']].values, axis=1, keepdims=True))
+        result_df_faiss['a_phi'] = np.arctan2(result_df_faiss[['px']].values, result_df_faiss[['py']].values)
 
 
-    real_tracks_result_df = result_df_faiss[result_df_faiss['is_real_track'].astype('int') == 1]
-    found_tracks_result_df = result_df_faiss[result_df_faiss['found'].astype('int') == 1]
-    tracks_pred_true = result_df_faiss[result_df_faiss['found_right_point'].astype('int') == 1]
+        real_tracks_result_df = result_df_faiss[result_df_faiss['is_real_track'].astype('int') == 1]
+        found_tracks_result_df = result_df_faiss[result_df_faiss['found'].astype('int') == 1]
+        tracks_pred_true = result_df_faiss[result_df_faiss['found_right_point'].astype('int') == 1]
 
-    if draw_figures:
-        draw_for_col(real_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, style='plot')
-        draw_for_col(real_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot')
-        draw_for_col(real_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', num_events, 175, style='plot')
-        draw_for_col(found_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, metric='precision', style='plot')
-        draw_for_col(found_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot', metric='precision')
-        draw_for_col(found_tracks_result_df, tracks_pred_true, 'cos_t', '$cos_t$', num_events, 175, style='plot', metric='precision')
-        times_mean = {k: np.mean(v) for k, v in times.items()}
-        times_std = {k: np.std(v) for k, v in times.items()}
-        draw_from_data(title="TrackNETv2.1 Mean Processing Time vs Multiplicity (ms)",
-                       data_x=list(times_mean.keys()),
-                       data_y=[v * 1000 for v in times_mean.values()],
-                       data_y_err=[v * 1000 for v in times_std.values()],
-                       axis_x="multiplicity",
-                       mean_label='mean'
-                       )
+        if draw_figures:
+            draw_for_col(real_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, style='plot')
+            draw_for_col(real_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot')
+            draw_for_col(real_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', num_events, 175, style='plot')
+            draw_for_col(found_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, metric='precision', style='plot')
+            draw_for_col(found_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot', metric='precision')
+            draw_for_col(found_tracks_result_df, tracks_pred_true, 'cos_t', '$cos_t$', num_events, 175, style='plot', metric='precision')
+            times_mean = {k: np.mean(v) for k, v in times.items()}
+            times_std = {k: np.std(v) for k, v in times.items()}
+            draw_from_data(title=f"TrackNETv2.1 Mean Processing Time vs Multiplicity (ms), treshold {treshold}",
+                           data_x=list(times_mean.keys()),
+                           data_y=[v * 1000 for v in times_mean.values()],
+                           data_y_err=[v * 1000 for v in times_std.values()],
+                           axis_x="multiplicity",
+                           mean_label='mean'
+                           )
+        treshold += treshold_step
+
+    if use_classifier and plot_treshold:
+        draw_treshold_plots(title=f"TrackNETv2.1 Metric values vs Treshold, {max_num_events} events per value",
+                            data_x=tresholds,
+                            data_y_dict=metrics,
+                            model_name='tracknet_v2_1',
+                            total_events=max_num_events)
+    if not use_classifier and plot_treshold:
+        LOGGER.warning('You can apply treshold only on classifier logits, not TrackNETv2. Skipping plotting')
+        
 
 
 def main(argv):

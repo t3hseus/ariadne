@@ -42,7 +42,7 @@ class ProcessedTracknetData(ProcessedData):
 @gin.configurable(denylist=['data_df'])
 class TrackNetV21Processor(DataProcessor):
     """This processor prepares data for classifier and TrackNet.
-       Only input data is saved, so it is needed to use TrackNetV2 and Classifier simultaneously.
+       Only input data is saved, so it is needed to use TrackNetV2 and TrackNetClassifier simultaneously.
        To prepare data, cartesian product is used, and real tracks are marked as True, synthetic as False.
        Some additional data for analysis is saved too (momentum of particle, event)"""
     def __init__(self,

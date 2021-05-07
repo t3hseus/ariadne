@@ -14,8 +14,8 @@ LOGGER = logging.getLogger('ariadne.prepare-hydra-wombat')
 
 @gin.configurable(denylist=['data_df'])
 class ValidProcessor(TrackNetV21Processor):
-    """This processor prepares data for validating of Classifier and TrackNetV2.
-       Only input data is saved, so it is needed to use TrackNetV2 and Classifier simultaneously or use only TrackNetV2.
+    """This processor prepares data for validating of TrackNetClassifier and TrackNetV2.
+       Only input data is saved, so it is needed to use TrackNetV2 and TrackNetClassifier simultaneously or use only TrackNetV2.
        To prepare-hydra-wombat data, cartesian product is used, and real tracks are marked as True, synthetic as False.
        Some additional data for analysis is saved too (momentum of particle, event).
 
