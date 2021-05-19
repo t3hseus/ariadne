@@ -13,19 +13,24 @@ import random
 import logging
 
 def brute_force_hits_two_first_stations(df, return_momentum=False):
-    first_station = df[df['station'] == 0][['r', 'phi', 'z','track']]
-    first_station.columns = ['r_left', 'phi_left', 'z_left', 'track_left']
-    second_station = df[df['station'] == 1][['r', 'phi', 'z', 'track']]
-    second_station.columns = ['r_right', 'phi_right', 'z_right', 'track_right']
+    first_station = df[df['station'] == 0][['r', 'phi', 'z','px', 'py', 'pz', 'track']]
+    first_station.columns = ['r_left', 'phi_left', 'z_left', 'px_left', 'py_left', 'pz_left', 'track_left']
+    second_station = df[df['station'] == 1][['r', 'phi', 'z', 'px', 'py', 'pz', 'track']]
+    second_station.columns = ['r_right', 'phi_right', 'z_right',  'px_right', 'py_right', 'pz_right', 'track_right']
     temp_y = df[df['station'] > 1][['phi', 'z', 'track']]
-    if return_momentum:
-        temp_momentum = df[df['station'] > 1][['px', 'py', 'pz', 'track']]
     rows = itertools.product(first_station.iterrows(), second_station.iterrows())
     df = pd.DataFrame(left.append(right) for (_, left), (_, right) in rows)
     df = df.sample(frac=1).reset_index(drop=True)
     df_label = (df['track_left'] == df['track_right']) & (df['track_left'] != -1)
+
     x = df[['r_left', 'phi_left', 'z_left', 'r_right', 'phi_right', 'z_right']].values.reshape((-1, 2, 3))
     y = np.full((len(df_label), 2), -2.)
+    if return_momentum:
+        df_all_fake = (df['track_left'] == df['track_right']) & (df['track_left'] == -1)
+        df_first_fake = (df['track_left'] == -1) & (df['track_right'] != -1)
+        temp_momentum = df[['px_left', 'py_left', 'pz_left']]
+        temp_momentum.loc[df_first_fake, ['px_left', 'py_left', 'pz_left']] = 0.
+        temp_momentum.loc[df_all_fake, ['px_left', 'py_left', 'pz_left']] = df[['px_right', 'py_right', 'pz_right']]
     y[df_label == 1] = np.squeeze(np.array(list(map(lambda x: temp_y[temp_y['track'] == x][['phi', 'z']].values,
                                               df[df_label == 1]['track_left']))), 1)
     if not return_momentum:
@@ -86,24 +91,28 @@ def load_data(input_dir, file_mask, n_samples=None):
         n_samples = min(n_samples, len(data_merged[files[0]]))
     return {key: item[:n_samples] for key, item in data_merged.items()}
 
-def get_checkpoint_path(model_dir, version='latest', checkpoint='latest'):
+
+def get_checkpoint_path(model_dir, version=None, checkpoint='latest'):
     '''Function to get checkpoint of model in given directory.
     If it is needed to use not specific, but newest version of model, it can bee found automatically
     Arguments:
         model_dir (str): directory with model checkpoints
-        version (str, 'latest' by default): name of directory with needed checkpoint.
+        version (str, None by default): name of directory with needed checkpoint.
                                            If 'latest', directory with maximum change time will be used
+                                           If None, only model_dir and checkpoint will be used
         checkpoint (str, 'latest' by default): name of checkpoint (with .ckpt).
                                            If 'latest', checkpoint with maximum change time will be used
     '''
 
-    if version == 'latest':
-        list_of_files = glob.glob(f"{model_dir}/*")
-        version = max(list_of_files, key=os.path.getmtime).split('/')[-1]
+    if version is not None:
+        if version == 'latest':
+            list_of_files = glob.glob(f"{model_dir}/*")
+            version = max(list_of_files, key=os.path.getmtime).split('/')[-1]
+        model_dir = model_dir+'/'+version
     if checkpoint == 'latest':
-        list_of_files = glob.glob(f"{model_dir}/{version}/*.ckpt")
+        list_of_files = glob.glob(f"{model_dir}/*.ckpt")
         checkpoint = max(list_of_files, key=os.path.getmtime).split('/')[-1]
-    return f'{model_dir}/{version}/{checkpoint}'
+    return f'{model_dir}/{checkpoint}'
 
 def find_nearest_hit_no_faiss(ellipses, last_station_hits, return_numpy=False):
     centers = ellipses[:, :2]

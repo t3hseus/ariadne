@@ -18,11 +18,16 @@ class TrackNetCrossEntropyLoss(nn.BCEWithLogitsLoss):
             weight = torch.tensor(weight)
         if pos_weight:
             pos_weight = torch.tensor(pos_weight)
+        else:
+            pos_weight = torch.tensor(1.)
 
         super().__init__(weight=weight,
                      size_average=size_average,
                      reduction=reduction,
                      pos_weight=pos_weight)
+        self.register_buffer('weight', weight)
+        self.register_buffer('pos_weight', pos_weight)
+
     def forward(self, input, target):
         return super().forward(input, target.unsqueeze(-1).float())
 
@@ -38,6 +43,11 @@ class FocalLoss(TrackNetCrossEntropyLoss):
                          size_average=size_average,
                          reduction='none',
                          pos_weight=pos_weight)
+        if pos_weight:
+            pos_weight = torch.tensor(pos_weight)
+        else:
+            pos_weight = torch.tensor(1.)
+        self.register_buffer('pos_weight', pos_weight)
 
     def forward(self, inputs, targets):
         BCE_loss = super().forward(inputs, targets)

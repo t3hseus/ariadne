@@ -20,6 +20,12 @@ class EventWiseSplitDataLoader(BaseDataLoader):
         self.train_data = train_dataset(n_samples=max_size)
         self.val_data = valid_dataset(n_samples=max_size)
 
+    def get_num_train_events(self):
+        return self.train_data.get_num_events()
+
+    def get_num_val_events(self):
+        return self.val_data.get_num_events()
+
     def get_val_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.val_data,

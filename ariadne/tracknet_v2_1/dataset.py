@@ -1,14 +1,9 @@
 from __future__ import print_function, division
-import os
 import torch
-import pandas as pd
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
-from copy import deepcopy
 import gin
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2.dataset import TrackNetV2Dataset
-from ariadne.tracknet_v2.metrics import point_in_ellipse
 from ariadne.utils import weights_update, find_nearest_hit, load_data
 import warnings
 warnings.filterwarnings("ignore")
@@ -103,6 +98,9 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
 
     def __len__(self):
         return len(self.data['labels'])
+
+    def get_num_events(self):
+        return len(np.unique(self.data['events']))
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
