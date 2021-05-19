@@ -374,9 +374,6 @@ class ToBucketsTestCase(unittest.TestCase):
              'phi': list(np.random.rand(len(events))),
              'z': list(np.random.rand(len(events))),
              })
-        log = logging.getLogger("TestLogger")
-        log.info(f'\n {self.data}')
-
         result = self.transformer(self.data)
         #log.info(f'\n {result}')
         #log.info(np.in1d(result[3], result[4]))
@@ -408,8 +405,6 @@ class ToBucketsTestCase(unittest.TestCase):
              'z': list(np.random.rand(len(events))),
              })
         log = logging.getLogger("TestLogger")
-        log.info(f'\n {self.data}')
-
         result = self.transformer(self.data)
         #log.info(f'\n {result}')
         #log.info(np.in1d(result[3], result[4]))
@@ -418,6 +413,23 @@ class ToBucketsTestCase(unittest.TestCase):
         self.assertEqual(any(np.in1d(result[3]['index'], result[4]['index'])), False)
         self.assertEqual(len(result[4]), 6*4)
         self.assertEqual(len(result[3]), 6*3)
+
+    def test_transform_bes(self):
+        data = pd.DataFrame({'r': [1., 0.5, 0.1, 0.2, 0.8, 0.6],
+                              'phi': [3., 0.5, 2., 0.2, 1.1, -0.5],
+                              'z': [0.1, 0.2, 0.33, 0.1, 0.2, 0.2],
+                              'track': [1, 1, 1, 2, 2, 2],
+                              'station': [1, 2, 3, 1, 2, 2],
+                              'event': [0, 0, 0, 0, 0, 0]})
+        self._init_transformer(flat=False)
+        result = self.transformer(data)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(len(result[3]), 2*3)
+        self._init_transformer(flat=True)
+        result = self.transformer(data)
+        self.assertEqual(len(result), 6)
+        self.assertEqual(all(result['bucket'] == 3), True)
+
 '''
 class ToBucketsTestCase(unittest.TestCase):
     def _init_transformer(self, flat=True, keep_fakes=True):

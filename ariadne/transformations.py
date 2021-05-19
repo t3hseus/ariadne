@@ -641,7 +641,6 @@ class ToBuckets(BaseTransformer):
             if flat is True, returns dataframe with specific column, else dict with bucket dataframes
         """
         # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        data = self.drop_fakes(df)
         df['index'] = df.index
         rs = np.random.RandomState(self.random_state)
         groupby = df.groupby([self.event_column, self.track_column])
