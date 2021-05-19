@@ -622,13 +622,15 @@ class ToBuckets(BaseTransformer):
 
     """
 
-    def __init__(self, flat=True, shuffle=False, random_state=42,
-                 event_col='event', track_col='track'):
+    def __init__(self, flat=True, shuffle=False, max_stations=None, random_state=42,
+                 event_col='event', track_col='track', keep_fakes=False, max_bucket_size=None):
         super().__init__(event_col=event_col, track_col=track_col)
         self.flat = flat
         self.shuffle = shuffle
         self.random_state = random_state
-
+        self.max_num_stations=max_stations
+        self.keep_fakes = keep_fakes
+        self.max_bucket_size = max_bucket_size
 
     def __call__(self, df):
         """
@@ -640,26 +642,35 @@ class ToBuckets(BaseTransformer):
         """
         # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
         data = self.drop_fakes(df)
+        df['index'] = df.index
         rs = np.random.RandomState(self.random_state)
-        groupby = df.groupby([self.event_col, self.track_col])
-        maxlen = groupby.size().max()
-        n_stations_min = groupby.size().min()
+        groupby = df.groupby([self.event_column, self.track_column])
+        if self.max_num_stations is None:
+            maxlen = groupby.size().max()
+
+        else:
+            maxlen = min(groupby.size().max(), self.max_num_stations)
+        minlen = groupby.size().min()
         subbuckets = {}
         res = {}
         val_cnt = groupby.size().unique()  # get all unique track lens (in BES3 all are 3)
         for length in val_cnt:
             this_len = groupby.filter(lambda x: x.shape[0] == length)
-            bucket_index = list(df.loc[df.index.isin(this_len.index)].index)
+            this_len_groups = this_len.groupby([self.event_column, self.track_column])
+            bucket_index = np.stack(list(this_len_groups['index'].agg(lambda x: list(x.values))), axis=0)
             subbuckets[length] = bucket_index
         # approximate size of the each bucket
         bsize = len(df) // (maxlen - 2)
-        # set index
-        k = maxlen
+        if self.max_bucket_size is not None:
+            bsize = min(bsize, self.max_bucket_size)
         buckets = {i: [] for i in subbuckets.keys()}
         # reverse loop until two points
         for n_points in range(maxlen, 2, -1):
             # while bucket is not full
+            k = n_points
             while len(buckets[n_points]) < bsize:
+                if k not in subbuckets.keys() or k < n_points or  k > maxlen:
+                    break
                 if self.shuffle:
                     rs.shuffle(subbuckets[k])
                 # if we can't extract all data from subbucket
@@ -667,28 +678,28 @@ class ToBuckets(BaseTransformer):
                 if len(buckets[n_points]) + len(subbuckets[k]) > bsize:
                     n_extract = bsize - len(buckets[n_points])
                     # extract n_extract samples
-                    buckets[n_points].extend(subbuckets[k][:n_extract])
+                    buckets[n_points].extend(subbuckets[k][:n_extract, :n_points])
                     # remove them from original subbucket
                     subbuckets[k] = subbuckets[k][n_extract:]
                 else:
-                    buckets[n_points].extend(subbuckets[k])
+                    buckets[n_points].extend(subbuckets[k][:, :n_points])
                     # remove all data from the original list
                     subbuckets[k] = []
-                    # decrement index
-                    k -= 1
+                    # increment index
+                k += 1
+                if all([len(subbuckets[i]) == 0 for i in range(n_points, maxlen+1)]):
+                    break
+            if all([len(subbuckets[i]) == 0 for i in range(minlen, maxlen)]):
+                break
+        buckets = {k: np.concatenate(i) for k,i in buckets.items()}
         self.buckets_ = buckets
         if self.flat is True:
             res = df.copy()
             res['bucket'] = 0
             for i, bucket in buckets.items():
                 res.loc[bucket, 'bucket'] = i
-            if self.keep_fakes:
-                self.fakes.loc[:, 'bucket'] = -1
-                res = super().add_fakes(data)
         else:
             res = {i: df.loc[bucket] for i, bucket in buckets.items()}
-            if self.keep_fakes:
-                res[-1] = self.fakes
         return res
 
     def get_bucket_index(self):
