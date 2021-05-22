@@ -3,6 +3,7 @@ from . import transformations
 from . import preprocessing
 from . import parsing
 from . import tracknet_v2
+from . import tracknet_v2_bmn
 from . import tracknet_v2_1
 from . import tracknet_v2_2
 from . import graph_net

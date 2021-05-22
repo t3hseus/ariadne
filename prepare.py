@@ -76,8 +76,7 @@ def parse(input_file_mask,
                                              'correctly. Got: %r with type %r ' % (
                                              events_quantity, type(events_quantity))
     event_idxs, parse_all = parse_single_arr_arg(events_quantity)
-    LOGGER.info("[Parse]: matched following files:")
-    LOGGER.info("[Parse]: %r" % files_list)
+    LOGGER.info(f"[Parse]: matched {len(files_list)} files:")
     for idx, elem in enumerate(files_list):
         LOGGER.info("[Parse]: started parsing CSV #%d (%s):" % (idx, elem))
         parsed_df = parse_df(elem, **csv_params)

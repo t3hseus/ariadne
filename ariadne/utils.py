@@ -83,7 +83,8 @@ def load_data(input_dir, file_mask, n_samples=None):
             data_merged = dict(one_file_data.items())
             flag = 1
         else:
-            data_merged = {k: np.concatenate((data_merged[k], i), 0) for k, i in one_file_data.items()}
+            for k, i in one_file_data.items():
+                data_merged[k] = np.concatenate((data_merged[k], i), 0)
     if n_samples is None:
         n_samples = len(data_merged[files[0]])
     else:
@@ -125,6 +126,7 @@ def find_nearest_hit_no_faiss(ellipses, last_station_hits, return_numpy=False):
     return minimal, is_in_ellipse
 
 def find_nearest_hit(ellipses, last_station_hits, index=None, find_n=10):
+    """ Function to end-to-end find nearest_hits on one plane (2-DIM)! Used for BES now (maybe outdated)"""
     #numpy, numpy -> numpy, numpy
     if index is None:
         index = faiss.IndexFlatL2(2)
@@ -142,6 +144,65 @@ def find_nearest_hit(ellipses, last_station_hits, index=None, find_n=10):
     left_side = x_part + y_part
     is_in_ellipse = left_side <= 1
     return found_hits, is_in_ellipse
+
+def store_in_index(event_hits, index=None, num_components=3):
+    """Function to create faiss.IndexFlatL2 or add hits to it.
+    Args:
+        event_hits (np.ndarray of shape (N,num_components)): array with N hits to store in faiss index of event
+        index ( faiss.IndexFlatL2 index or None): if None, new index is created, else hits are added to it
+        num_components (int, 3 by default): number of dimentions in event space
+    """
+    #numpy -> numpy
+    if index is None:
+        index = faiss.IndexFlatL2(num_components)
+        index.train(event_hits.astype('float32'))
+    index.add(event_hits.astype('float32'))
+    return index
+
+def search_in_index(centers, index, find_n=100):
+    """Function to search in index for nearest hits in 3d-space
+    Args:
+        centers (np.array of shape (*,3): centers for which nearest hits are needed
+        index (faiss.IndexFlatL2 or other): some index with stored information about hits
+        find_n (int, 100 by default): n_hits to find. If less hits were found, redundant positions contain -1
+    Returns:
+        numpy.ndarray with hits positions in original array
+    """
+    assert centers.shape[1] == 3, 'index is 3-dimentional, please add z-coordinate to centers'
+    _, i = index.search(np.ascontiguousarray(centers.astype('float32')), find_n)
+    return i
+
+def filter_hits_in_ellipse(ellipse, nearest_hits, z_last=True, filter_station=True):
+    """Function to get hits, which are in given ellipse.
+    Space is 3-dimentional, so either first component of ellipce must be z-coordinate or third.
+    Ellipse semiaxises must include x- and y-axis.
+    Arguments:
+        ellipse (np.array of size 5): predicted index with z-component like
+                                      (x,y,z, x-semiaxis, y_semiaxis) or (z, x,y, x-semiaxis, y_semiaxis)
+        nearest_hits (np.array of shape (n_hits, 3) or only 3): some hits in 3-dim space
+        z_last (bool): If True, first component of vector is interpreted as z, if other, third.
+        filter_station (bool): if True, only hits with same z-coordinate are considered, else all hits
+    Returns:
+        numpy.ndarry with filtered hits, all of them in given ellipse, sorted by increasing of distance
+    """
+    assert nearest_hits.shape[1] == 3, "index is 3-dimentional, please add z-coordinate to centers"
+    if nearest_hits.ndim < 2:
+        nearest_hits = np.expand_dims(nearest_hits, 0)
+    assert ellipse.shape[-1] == 5, "index is 3-dimentional, you need to provide z-coordinate (z_c, x_c, y_c, x_r, y_r) or (x_c, y_c, z_c, x_r, y_r)"
+    ellipses = np.expand_dims(ellipse, -1)
+    if filter_station:
+        nearest_hits = nearest_hits[nearest_hits[:, 2] == ellipse[3]] if z_last else nearest_hits[nearest_hits[:, 0] == ellipse[0]]
+    find_n = len(nearest_hits)
+    if z_last:
+        x_part = abs(nearest_hits[:, 0] - ellipses[0].repeat(find_n)) / ellipses[-2].repeat(find_n) ** 2
+        y_part = abs(nearest_hits[:, 1] - ellipses[1].repeat(find_n)) / ellipses[-1].repeat(find_n) ** 2
+    else:
+        x_part = abs(nearest_hits[:, 1] - ellipses[1].repeat(find_n)) / ellipses[-2].repeat(find_n) ** 2
+        y_part = abs(nearest_hits[:, 2] - ellipses[2].repeat(find_n)) / ellipses[-1].repeat(find_n) ** 2
+    left_side = x_part + y_part
+    is_in_ellipse = left_side <= 1
+    return nearest_hits[is_in_ellipse, :]
+
 
 def find_nearest_hit_old(ellipses, last_station_hits):
     #numpy, numpy -> numpy, numpy

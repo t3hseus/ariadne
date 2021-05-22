@@ -14,7 +14,7 @@ from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from ariadne.lightning import TrainModel
-from ariadne.utils import get_checkpoint_path
+from ariadne.utils import get_checkpoint_path, weights_update
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
@@ -70,7 +70,7 @@ def experiment(model,
     with open(os.path.join(tb_logger.log_dir, "train_config.cfg"), "w") as f:
         f.write(gin.config_str())
 
-    LOGGER.info(f"Log directory {tb_logger.log_dir}")
+
     LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
 
     # for reproducibility
@@ -98,6 +98,8 @@ def experiment(model,
     if hasattr(model.data_loader, "get_num_train_events") and hasattr(model.data_loader, "get_num_val_events"):
         LOGGER.info(f"Number events for training {model.data_loader.get_num_train_events()}")
         LOGGER.info(f"Number events for validation {model.data_loader.get_num_val_events()}")
+
+    LOGGER.info(f"Log directory {tb_logger.log_dir}")
     # configure trainer
     trainer_kwargs = {
         'max_epochs': epochs,
@@ -125,8 +127,13 @@ def experiment(model,
         # TODO: use torch.nn.functional.binary_cross_entropy_with_logits which is safe to autocast
         trainer_kwargs['precision'] = 16
         trainer_kwargs['amp_level'] = '02'
+    try:
+        trainer = Trainer(resume_from_checkpoint=resume_from_checkpoint, **trainer_kwargs)
+    except: #if one of keys is not in checkpoint etc
+        model.model = weights_update(model=model.model,
+                           checkpoint=torch.load(resume_from_checkpoint))
+        trainer = Trainer(resume_from_checkpoint=None, **trainer_kwargs)
 
-    trainer = Trainer(resume_from_checkpoint=resume_from_checkpoint, **trainer_kwargs)
     trainer.fit(model=model)
 
 
