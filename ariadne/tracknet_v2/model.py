@@ -49,7 +49,7 @@ class TrackNETv2(nn.Module):
             nn.Softplus()
         )
 
-    def forward(self, inputs, input_lengths, return_gru_state=False, *args):
+    def forward(self, inputs, input_lengths, return_gru_states=False):
         # BxTxC -> BxCxT
         inputs = inputs.transpose(1, 2).float()
         input_lengths = input_lengths.int().cpu()
@@ -58,16 +58,15 @@ class TrackNETv2(nn.Module):
         x = x.transpose(1, 2)
         # Pack padded batch of sequences for RNN module
         packed = torch.nn.utils.rnn.pack_padded_sequence(
-        x, input_lengths, enforce_sorted=True, batch_first=True)
+        x, input_lengths, enforce_sorted=False, batch_first=True)
         # forward pass trough rnn
         x, _ = self.rnn(packed)
         # unpack padding
-        x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
-        last_gru_output = x
+        gru_outs, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
         # get result using only the output on the last timestep
-        xy_coords = self.xy_coords(x[:, -1])
-        r1_r2 = self.r1_r2(x[:, -1])
-        if return_gru_state:
-            return torch.squeeze(torch.cat([xy_coords, r1_r2], dim=1), dim=1), last_gru_output
-        else:
-            return torch.squeeze(torch.cat([xy_coords, r1_r2], dim=1), dim=1)
+        xy_coords = self.xy_coords(gru_outs)
+        r1_r2 = self.r1_r2(gru_outs)
+        outputs = torch.cat([xy_coords, r1_r2], dim=-1)
+        if return_gru_states:
+            return outputs, gru_outs
+        return outputs
