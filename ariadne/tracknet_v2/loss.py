@@ -75,7 +75,9 @@ class TrackNetLoss(nn.Module):
         self.point_in_ellipse_loss = PointInEllipseLoss()
         self.ellipse_square_loss = EllipseSquareLoss()
 
-    def forward(self, preds, target, mask=None):
+    def forward(self, preds, target):
+        # unpack target = (target, mask)
+        target, mask = target
         points_in_ellipse = self.point_in_ellipse_loss(preds, target)
         ellipses_square = self.ellipse_square_loss(preds)
         loss = self.alpha * points_in_ellipse + (1 - self.alpha) * ellipses_square

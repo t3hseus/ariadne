@@ -97,12 +97,13 @@ class TrackNetLossTest(TestCase):
             (8 ** 0.5) * 0.5 + 0.5
         ])
         expected_output = torch.repeat_interleave(expected_output, timesteps).view(n_examples, timesteps)
+        mask = None
 
         for i in range(preds.size(0)):
-            output = loss_func(preds[i:i+1], target[i:i+1])
+            output = loss_func(preds[i:i+1], (target[i:i+1], mask))
             torch.testing.assert_allclose(output, expected_output[i].mean())
 
-        output = loss_func(preds, target)
+        output = loss_func(preds, (target, mask))
         torch.testing.assert_allclose(output, expected_output.mean())
 
         # test with mask
@@ -123,7 +124,7 @@ class TrackNetLossTest(TestCase):
         # ]
         preds[:, 1:-1] = preds[:, 0, :]
         # calculate output
-        output = loss_func(preds, target, mask)
+        output = loss_func(preds, (target, mask))
         torch.testing.assert_allclose(output, expected_result)
 
 
