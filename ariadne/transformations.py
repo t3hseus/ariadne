@@ -714,7 +714,8 @@ class ToBuckets(BaseTransformer):
         subbuckets = {}
         res = {}
         val_cnt = groupby.size().unique()  # get all unique track lens (in BES3 all are 3)
-        val_cnt = range(minlen, maxlen+1)
+        val_cnt = range(minlen, max(maxlen+1, val_cnt.max()))
+        print(val_cnt)
         for length in val_cnt:
             this_len = groupby.filter(lambda x: x.shape[0] == length)
             if len(this_len) > 0:
@@ -723,13 +724,17 @@ class ToBuckets(BaseTransformer):
             else:
                 bucket_index = []
             subbuckets[length] = bucket_index
+        print(subbuckets)
         # approximate size of the each bucket
-        bsize = len(df) // (maxlen - 2)
+        bsize = len(df) // (self.max_num_stations - 2)
+        print(bsize)
         if self.max_bucket_size is not None:
             bsize = min(bsize, self.max_bucket_size)
-        buckets = {i: [] for i in subbuckets.keys()}
+        buckets = {i: [] for i in range(3, self.max_num_stations+1)}
+        print(buckets)
         # reverse loop until two points
         for n_points in range(self.max_num_stations, minlen-1, -1):
+            print(n_points, maxlen)
             # while bucket is not full
             k = n_points
             if n_points not in buckets.keys():
@@ -745,8 +750,10 @@ class ToBuckets(BaseTransformer):
                     n_extract = bsize - len(buckets[n_points])
                     # extract n_extract samples
                     buckets[n_points].extend(subbuckets[k][:n_extract, :n_points])
+                    print(buckets[n_points])
                     # remove them from original subbucket
                     subbuckets[k] = subbuckets[k][n_extract:]
+                    print(subbuckets)
                 else:
                     if len(subbuckets[k]) == 0:
                         k += 1
@@ -756,10 +763,24 @@ class ToBuckets(BaseTransformer):
                     subbuckets[k] = []
                     # increment index
                 k += 1
+                print(buckets)
                 if all([len(subbuckets[i]) == 0 for i in range(n_points, maxlen+1) if i in subbuckets.keys()]):
                     break
+
             if all([len(subbuckets[i]) == 0 for i in subbuckets.keys()]):
                 break
+        #append unappended items
+        for i, k in subbuckets.items():
+            if len(k) > 0:
+                try:
+                    append_len = int(len(k)/(i-2))
+                    begin = 0
+                    for j in range(i-1, min(list(buckets.keys()))-1, -1):
+                        print(k[begin:begin+append_len])
+                        buckets[j].extend(k[begin:begin+append_len, :j])
+                        begin = begin+append_len
+                except:
+                    print('alert!')
         buckets = {k: np.concatenate(i) for k, i in buckets.items() if len(i) > 0}
         self.buckets_ = buckets
         if self.flat is True:

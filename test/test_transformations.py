@@ -392,8 +392,8 @@ class ComposeTestCase(unittest.TestCase):
 
 class ToBucketsTestCase(unittest.TestCase):
 
-    def _init_transformer(self, flat=True, shuffle=False, max_stations=None, max_bucket_size=None ):
-        self.transformer = ToBuckets(flat=flat, shuffle=shuffle, max_stations=max_stations, max_bucket_size=max_bucket_size)
+    def _init_transformer(self, flat=True, shuffle=False, max_stations=None, max_bucket_size=None, keep_fakes=True):
+        self.transformer = ToBuckets(flat=flat, shuffle=shuffle, max_stations=max_stations, max_bucket_size=max_bucket_size, keep_fakes=keep_fakes)
 
     def setUp(self):
         self.data = pd.DataFrame({'r': [1., 0.5, 0.1, 0.2, 0.1, 0.2, 0.8, 0.6, 0.2,0.8, 0.6, 0.2,0.2, 0.2, 0.1,0.2, 0.1,0.2, 0.2, 0.1],
@@ -555,6 +555,38 @@ class ToBucketsTestCase(unittest.TestCase):
         self.assertEqual(len(result[4]), 6*4)
         self.assertEqual(5 in result.keys(), False)
 
+    def test_transform_with_longer_bucket_and_bucket_size_and_maxlen_flat(self):
+        self._init_transformer(flat=True, max_bucket_size=6, max_stations=4)
+        track_list = []
+        station_list = []
+        event_list = []
+        num_tracks = [2, 3, 10]
+        for num, i in enumerate(range(3, 6)):
+            for track in range(num_tracks[num]):
+                track_list.append(np.full(i, i*1000+track))
+                event_list.append(np.zeros(i))
+                station_list.append(np.arange(1, i+1))
+        events = list(np.concatenate(event_list))
+        self.data = pd.DataFrame(
+            {
+             'track': list(np.concatenate(track_list)),
+             'station': list(np.concatenate(station_list)),
+             'event': events,
+             'r': list(np.random.rand(len(events))),
+             'phi': list(np.random.rand(len(events))),
+             'z': list(np.random.rand(len(events))),
+             })
+        log = logging.getLogger("TestLogger")
+        result = self.transformer(self.data)
+        #log.info(f'\n {result}')
+        #log.info(np.in1d(result[3], result[4]))
+        #log.info(result[4])
+        #log.info(result[3])
+        self.assertEqual(any(np.in1d(result[result['bucket']==3]['index'], result[result['bucket']==4]['index'])), False)
+        self.assertEqual(len(result[result['bucket']==3]), 6*3)
+        self.assertEqual(len(result[result['bucket']==4]), 6*4)
+        self.assertEqual(5 in result['bucket'], False)
+
     def test_transform_bes(self):
         data = pd.DataFrame({'r': [1., 0.5, 0.1, 0.2, 0.8, 0.6],
                               'phi': [3., 0.5, 2., 0.2, 1.1, -0.5],
@@ -562,7 +594,7 @@ class ToBucketsTestCase(unittest.TestCase):
                               'track': [1, 1, 1, 2, 2, 2],
                               'station': [1, 2, 3, 1, 2, 2],
                               'event': [0, 0, 0, 0, 0, 0]})
-        self._init_transformer(flat=False)
+        self._init_transformer(flat=False, keep_fakes=False)
         result = self.transformer(data)
         self.assertEqual(len(result), 1)
         self.assertEqual(len(result[3]), 2*3)

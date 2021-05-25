@@ -41,6 +41,35 @@ def brute_force_hits_two_first_stations(df, return_momentum=False):
                               df[df_label == 1]['track_left']))), 1)
     return x, y, momentum, df_label
 
+def brute_force_hits_two_first_stations_cart(df, return_momentum=False):
+    first_station = df[df['station'] == 0][['z', 'x', 'y','px', 'py', 'pz', 'track']]
+    first_station.columns = ['z_left', 'x_left', 'y_left', 'px_left', 'py_left', 'pz_left', 'track_left']
+    second_station = df[df['station'] == 1][['z', 'x', 'y', 'px', 'py', 'pz', 'track']]
+    second_station.columns = ['z_right', 'x_right', 'y_right',  'px_right', 'py_right', 'pz_right', 'track_right']
+    temp_y = df[df['station'] == 2][['x', 'y', 'track']]
+    rows = itertools.product(first_station.iterrows(), second_station.iterrows())
+    df = pd.DataFrame(left.append(right) for (_, left), (_, right) in rows)
+    df = df.sample(frac=1).reset_index(drop=True)
+    df_label = (df['track_left'] == df['track_right']) & (df['track_left'] != -1)
+
+    x = df[['z_left', 'x_left', 'y_left', 'z_right', 'x_right', 'y_right']].values.reshape((-1, 2, 3))
+    y = np.full((len(df_label), 2), -2.)
+    if return_momentum:
+        df_all_fake = (df['track_left'] == df['track_right']) & (df['track_left'] == -1)
+        df_first_fake = (df['track_left'] == -1) & (df['track_right'] != -1)
+        temp_momentum = df[['px_left', 'py_left', 'pz_left']]
+        temp_momentum.loc[df_first_fake, ['px_left', 'py_left', 'pz_left']] = 0.
+        temp_momentum.loc[df_all_fake, ['px_left', 'py_left', 'pz_left']] = df[['px_right', 'py_right', 'pz_right']]
+    y[df_label == 1] = np.squeeze(np.array(list(map(lambda x: temp_y[temp_y['track'] == x][['x', 'y']].values,
+                                              df[df_label == 1]['track_left']))), 1)
+    if not return_momentum:
+        return x, y, df_label
+    momentum = np.full((len(df_label), 3), -2.)
+    momentum[df_label == 1] = np.squeeze(
+            np.array(list(map(lambda x: temp_momentum[temp_momentum['track'] == x][['px', 'py', 'pz']].values,
+                              df[df_label == 1]['track_left']))), 1)
+    return x, y, momentum, df_label
+
 def weights_update(model, checkpoint):
     model_dict = model.state_dict()
     pretrained_dict = checkpoint['state_dict']
@@ -190,9 +219,8 @@ def filter_hits_in_ellipse(ellipse, nearest_hits, z_last=True, filter_station=Tr
         nearest_hits = np.expand_dims(nearest_hits, 0)
     assert ellipse.shape[-1] == 5, "index is 3-dimentional, you need to provide z-coordinate (z_c, x_c, y_c, x_r, y_r) or (x_c, y_c, z_c, x_r, y_r)"
     ellipses = np.expand_dims(ellipse, -1)
-    if filter_station:
-        nearest_hits = nearest_hits[nearest_hits[:, 2] == ellipse[3]] if z_last else nearest_hits[nearest_hits[:, 0] == ellipse[0]]
     find_n = len(nearest_hits)
+    is_this_station = np.ones(len(nearest_hits))
     if z_last:
         x_part = abs(nearest_hits[:, 0] - ellipses[0].repeat(find_n)) / ellipses[-2].repeat(find_n) ** 2
         y_part = abs(nearest_hits[:, 1] - ellipses[1].repeat(find_n)) / ellipses[-1].repeat(find_n) ** 2
@@ -201,8 +229,55 @@ def filter_hits_in_ellipse(ellipse, nearest_hits, z_last=True, filter_station=Tr
         y_part = abs(nearest_hits[:, 2] - ellipses[2].repeat(find_n)) / ellipses[-1].repeat(find_n) ** 2
     left_side = x_part + y_part
     is_in_ellipse = left_side <= 1
-    return nearest_hits[is_in_ellipse, :]
+    return nearest_hits[is_in_ellipse, :], is_in_ellipse
 
+def get_extreme_points(xcenter,
+                       ycenter,
+                       width,
+                       height):
+    # width dependent measurements
+    half_width = width / 2
+    left = xcenter - half_width
+    right = xcenter + half_width
+    # height dependent measurements
+    half_height = height / 2
+    bottom = ycenter - half_height
+    top = ycenter + half_height
+    return (left, right, bottom, top)
+
+def is_ellipse_intersects_module(ellipse_params,
+                                 module_params):
+    # calculate top, bottom, left, right
+    ellipse_bounds = get_extreme_points(*ellipse_params)
+    module_bounds = get_extreme_points(*module_params)
+    # check conditions
+    if ellipse_bounds[0] > module_bounds[1]:
+        # ellipse left > rectangle rigth
+        return False
+
+    if ellipse_bounds[1] < module_bounds[0]:
+        # ellipse rigth < rectangle left
+        return False
+
+    if ellipse_bounds[2] > module_bounds[3]:
+        # ellipse bottom > rectangle top
+        return False
+
+    if ellipse_bounds[3] < module_bounds[2]:
+        # ellipse top < rectangle bottom
+        return False
+
+    return True
+
+def is_ellipse_intersects_station(ellipse_params,
+                                  station_params):
+    module_intersections = []
+    for module in station_params:
+        ellipse_in_module = is_ellipse_intersects_module(
+            ellipse_params, module)
+        # add to the list
+        module_intersections.append(ellipse_in_module)
+    return any(module_intersections)
 
 def find_nearest_hit_old(ellipses, last_station_hits):
     #numpy, numpy -> numpy, numpy

@@ -17,9 +17,11 @@ class TrackNETv2(nn.Module):
                  input_features=4,
                  conv_features=32,
                  rnn_type='gru',
-                 batch_first=True):
+                 batch_first=True,
+                 z_values=None):
         super().__init__()
         self.input_features = input_features
+        self.z_values=z_values
         rnn_type = rnn_type.upper()
         if rnn_type not in ALLOWED_RNN_TYPES:
             raise ValueError(f'RNN type {rnn_type} is not supported. '
@@ -60,7 +62,10 @@ class TrackNETv2(nn.Module):
         if self.input_features > inputs.shape[1]:
             temp = torch.zeros(ordered_inputs.shape[0], 1, ordered_inputs.shape[2], device=ordered_inputs.device)
             temp[:, 0, :-1] = ordered_inputs[:, 0, 1:]
-            temp[:, 0, -1] = 1.
+            if self.z_values is not None:
+                temp[:, 0, -1] = self.z_values[len(temp)]
+            else:
+                temp[:, 0, -1] = 1.0
             new_inputs = torch.cat((ordered_inputs, temp), 1)
             x = self.conv(new_inputs)
         else:

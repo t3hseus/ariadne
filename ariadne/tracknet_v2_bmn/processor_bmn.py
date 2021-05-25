@@ -80,6 +80,7 @@ class TrackNetBMNProcessor(TrackNetProcessor):
                 chunk_data_x.append(x_data)
                 chunk_data_y.append(data[['x', 'y']].values[-1])
                 chunk_data_len.append(len(x_values))
+
             if len(chunk_data_x) == 0 or len(chunk_data_y) == 0:
                 LOGGER.info(f'Chunk is empty! Skipping')
                 chunk.processed_object = None
