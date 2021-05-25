@@ -42,18 +42,18 @@ def brute_force_hits_two_first_stations(df, return_momentum=False):
     return x, y, momentum, df_label
 
 def brute_force_hits_two_first_stations_cart(df, return_momentum=False):
-    first_station = df[df['station'] == 0][['z', 'x', 'y','px', 'py', 'pz', 'track']]
-    first_station.columns = ['z_left', 'x_left', 'y_left', 'px_left', 'py_left', 'pz_left', 'track_left']
-    second_station = df[df['station'] == 1][['z', 'x', 'y', 'px', 'py', 'pz', 'track']]
-    second_station.columns = ['z_right', 'x_right', 'y_right',  'px_right', 'py_right', 'pz_right', 'track_right']
+    first_station = df[df['station'] == 0][['x', 'y', 'z', 'px', 'py', 'pz', 'track']]
+    first_station.columns = [ 'x_left', 'y_left', 'z_left', 'px_left', 'py_left', 'pz_left', 'track_left']
+    second_station = df[df['station'] == 1][['x', 'y', 'z', 'px', 'py', 'pz', 'track']]
+    second_station.columns = ['x_right', 'y_right', 'z_right',  'px_right', 'py_right', 'pz_right', 'track_right']
     temp_y = df[df['station'] == 2][['x', 'y', 'track']]
     rows = itertools.product(first_station.iterrows(), second_station.iterrows())
     df = pd.DataFrame(left.append(right) for (_, left), (_, right) in rows)
     df = df.sample(frac=1).reset_index(drop=True)
     df_label = (df['track_left'] == df['track_right']) & (df['track_left'] != -1)
-
-    x = df[['z_left', 'x_left', 'y_left', 'z_right', 'x_right', 'y_right']].values.reshape((-1, 2, 3))
+    x = df[['x_left', 'y_left', 'z_left', 'x_right', 'y_right', 'z_right']].values.reshape((-1, 2, 3))
     y = np.full((len(df_label), 2), -2.)
+
     if return_momentum:
         df_all_fake = (df['track_left'] == df['track_right']) & (df['track_left'] == -1)
         df_first_fake = (df['track_left'] == -1) & (df['track_right'] != -1)
@@ -168,8 +168,8 @@ def find_nearest_hit(ellipses, last_station_hits, index=None, find_n=10):
     found_hits = last_station_hits[i.flatten()]
     found_hits = found_hits.reshape(-1, find_n, found_hits.shape[-1])
     ellipses = np.expand_dims(ellipses, 2)
-    x_part = abs(found_hits[:, :, 0] - ellipses[:, 0].repeat(find_n, 1)) / ellipses[:, 2].repeat(find_n, 1)**2
-    y_part = abs(found_hits[:, :, 1] - ellipses[:, 1].repeat(find_n, 1)) / ellipses[:, 3].repeat(find_n, 1)**2
+    x_part = (found_hits[:, :, 0] - ellipses[:, 0].repeat(find_n, 1))**2 / ellipses[:, 2].repeat(find_n, 1)**2
+    y_part = (found_hits[:, :, 1] - ellipses[:, 1].repeat(find_n, 1))**2 / ellipses[:, 3].repeat(find_n, 1)**2
     left_side = x_part + y_part
     is_in_ellipse = left_side <= 1
     return found_hits, is_in_ellipse
@@ -201,7 +201,7 @@ def search_in_index(centers, index, find_n=100):
     _, i = index.search(np.ascontiguousarray(centers.astype('float32')), find_n)
     return i
 
-def filter_hits_in_ellipse(ellipse, nearest_hits, z_last=True, filter_station=True):
+def filter_hits_in_ellipse(ellipse, nearest_hits, z_last=True, filter_station=True, find_n=10):
     """Function to get hits, which are in given ellipse.
     Space is 3-dimentional, so either first component of ellipce must be z-coordinate or third.
     Ellipse semiaxises must include x- and y-axis.
@@ -218,18 +218,52 @@ def filter_hits_in_ellipse(ellipse, nearest_hits, z_last=True, filter_station=Tr
     if nearest_hits.ndim < 2:
         nearest_hits = np.expand_dims(nearest_hits, 0)
     assert ellipse.shape[-1] == 5, "index is 3-dimentional, you need to provide z-coordinate (z_c, x_c, y_c, x_r, y_r) or (x_c, y_c, z_c, x_r, y_r)"
-    ellipses = np.expand_dims(ellipse, -1)
-    find_n = len(nearest_hits)
-    is_this_station = np.ones(len(nearest_hits))
+    ellipses = np.expand_dims(ellipse, 2)
+    found_hits = nearest_hits.reshape(-1, find_n, nearest_hits.shape[-1])
     if z_last:
-        x_part = abs(nearest_hits[:, 0] - ellipses[0].repeat(find_n)) / ellipses[-2].repeat(find_n) ** 2
-        y_part = abs(nearest_hits[:, 1] - ellipses[1].repeat(find_n)) / ellipses[-1].repeat(find_n) ** 2
+        x_part = (nearest_hits[:, 0] - ellipses[0].repeat(find_n)) ** 2 / ellipses[3].repeat(find_n) ** 2
+        y_part = (nearest_hits[:, 1] - ellipses[1].repeat(find_n)) ** 2 / ellipses[4].repeat(find_n) ** 2
     else:
-        x_part = abs(nearest_hits[:, 1] - ellipses[1].repeat(find_n)) / ellipses[-2].repeat(find_n) ** 2
-        y_part = abs(nearest_hits[:, 2] - ellipses[2].repeat(find_n)) / ellipses[-1].repeat(find_n) ** 2
+
+        x_part = (found_hits[:, :, 1] - ellipses[:, 1].repeat(find_n, 1)) ** 2 / ellipses[:, -2].repeat(find_n, 1) ** 2
+        y_part = (found_hits[:, :, 2] - ellipses[:, 2].repeat(find_n, 1)) ** 2 / ellipses[:, -1].repeat(find_n, 1) ** 2
     left_side = x_part + y_part
     is_in_ellipse = left_side <= 1
     return nearest_hits[is_in_ellipse, :], is_in_ellipse
+
+def filter_hits_in_ellipses(ellipses, nearest_hits, hits_index, z_last=True, filter_station=True, find_n=10):
+    """Function to get hits, which are in given ellipse.
+    Space is 3-dimentional, so either first component of ellipce must be z-coordinate or third.
+    Ellipse semiaxises must include x- and y-axis.
+    Arguments:
+        ellipse (np.array of size 5): predicted index with z-component like
+                                      (x,y,z, x-semiaxis, y_semiaxis) or (z, x,y, x-semiaxis, y_semiaxis)
+        nearest_hits (np.array of shape (n_hits, 3) or only 3): some hits in 3-dim space
+        z_last (bool): If True, first component of vector is interpreted as z, if other, third.
+        filter_station (bool): if True, only hits with same z-coordinate are considered, else all hits
+    Returns:
+        numpy.ndarry with filtered hits, all of them in given ellipse, sorted by increasing of distance
+    """
+    assert nearest_hits.shape[-1] == 3, "index is 3-dimentional, please add z-coordinate to centers"
+    if nearest_hits.ndim < 2:
+        nearest_hits = np.expand_dims(nearest_hits, 0)
+    if nearest_hits.ndim < 3:
+        nearest_hits = np.expand_dims(nearest_hits, 0)
+    assert ellipses.shape[-1] == 5, "index is 3-dimentional, you need to provide z-coordinate (z_c, x_c, y_c, x_r, y_r) or (x_c, y_c, z_c, x_r, y_r)"
+    #ellipses = np.expand_dims(ellipses, -1)
+    #find_n = len(nearest_hits)
+    ellipses = np.expand_dims(ellipses, 2)
+    #found_hits = nearest_hits.reshape(-1, find_n, nearest_hits.shape[-1])
+    if z_last:
+        x_part = (nearest_hits[:, :, 0] - ellipses[:,0].repeat(find_n,1)) ** 2 / ellipses[:,3].repeat(find_n,1) ** 2
+        y_part = (nearest_hits[:, :, 1] - ellipses[:,1].repeat(find_n,1)) ** 2 / ellipses[:,4].repeat(find_n,1) ** 2
+    else:
+        x_part = (nearest_hits[:, :, 1] - ellipses[:, 1].repeat(find_n, 1)) ** 2 / ellipses[:, -2].repeat(find_n, 1) ** 2
+        y_part = (nearest_hits[:, :, 2] - ellipses[:, 2].repeat(find_n, 1)) ** 2 / ellipses[:, -1].repeat(find_n, 1) ** 2
+    left_side = x_part + y_part
+    is_in_ellipse = left_side <= 1
+    is_in_ellipse *= hits_index != -1
+    return nearest_hits, is_in_ellipse
 
 def get_extreme_points(xcenter,
                        ycenter,
@@ -289,8 +323,8 @@ def find_nearest_hit_old(ellipses, last_station_hits):
     centers = ellipses[:, :2]
     _, i = index.search(np.ascontiguousarray(centers.astype('float32')), 1)
     found_hits = last_station_hits[i.flatten()]
-    x_part = abs(found_hits[:, 0] - ellipses[:, 0]).flatten() / ellipses[:, 2].flatten()**2
-    y_part = abs(found_hits[:, 1] - ellipses[:, 1]).flatten() / ellipses[:, 3].flatten()**2
+    x_part = (found_hits[:, 0] - ellipses[:, 0]).flatten()**2 / ellipses[:, 2].flatten()**2
+    y_part = (found_hits[:, 1] - ellipses[:, 1]).flatten()**2 / ellipses[:, 3].flatten()**2
     left_side = x_part + y_part
     is_in_ellipse = left_side <= 1
     return last_station_hits[i.flatten()], is_in_ellipse

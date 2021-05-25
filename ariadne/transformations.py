@@ -437,16 +437,18 @@ class ConstraintsNormalize(BaseTransformer):
             x_norm, y_norm, z_norm = self.normalize(data, global_constrains)
             data = super().transform_data(data, [x_norm, y_norm, z_norm])
         else:
-            assert all([station in data['station'].unique() for station in
-                        self.constraints.keys()]), "Some station keys in constraints are not presented in data. Keys: " \
-                                                   f"{data['station'].unique()}; data keys: {self.constraints.keys()}"
+            ##assert all([station in data['station'].unique() for station in
+             #           self.constraints.keys()]), "Some station keys in constraints are not presented in data. Keys: " \
+            #                                       f"{data['station'].unique()}; data keys: {self.constraints.keys()}"
 
-            for station in self.constraints.keys():
+            for station in list(data['station'].unique()):
+                #print(data['station'].unique())
                 group = data.loc[data['station'] == station,]
                 x_norm, y_norm, z_norm = self.normalize(group, self.constraints[station])
                 data.loc[data['station'] == station, :] = \
                     self.transform_data_by_group(data['station'] == station, data,
-                                                 [x_norm, y_norm, z_norm])
+                                                     [x_norm, y_norm, z_norm])
+
         return data
 
     def transform_data_by_group(self, grouping, data, normed):

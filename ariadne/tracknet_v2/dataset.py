@@ -168,6 +168,6 @@ class TrackNetV2DatasetWithMask(Dataset):
         mask[:self._mask_first_n_steps] = False
 
         if self.use_index:
-            return input_dict, (target, mask), sample_idx
+            return input_dict, (target, mask), idx
         # else
         return input_dict, (target, mask)
