@@ -73,7 +73,7 @@ class TrackNetV2ExplicitProcessor(TrackNetProcessor):
             chunk_data_momentum = []
             chunk_data_event = []
             df = chunk.processed_object
-            x, y, real, momentum = brute_force_hits_two_first_stations(df, return_momentum=True)
+            x, y, momentum, real = brute_force_hits_two_first_stations(df, return_momentum=True)
             chunk_data_len = np.full(len(x), 2)
             chunk_data_event = np.full(len(x), chunk.id)
             chunk_data = {

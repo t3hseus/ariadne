@@ -17,11 +17,9 @@ class TrackNETv2(nn.Module):
                  input_features=4,
                  conv_features=32,
                  rnn_type='gru',
-                 batch_first=True,
-                 z_values=None):
+                 batch_first=True):
         super().__init__()
         self.input_features = input_features
-        self.z_values=z_values
         rnn_type = rnn_type.upper()
         if rnn_type not in ALLOWED_RNN_TYPES:
             raise ValueError(f'RNN type {rnn_type} is not supported. '
@@ -51,50 +49,24 @@ class TrackNETv2(nn.Module):
             nn.Softplus()
         )
 
-    def forward(self, inputs, input_lengths, return_gru_state=False, *args):
+    def forward(self, inputs, input_lengths, return_gru_states=False):
         # BxTxC -> BxCxT
         inputs = inputs.transpose(1, 2).float()
         input_lengths = input_lengths.int().cpu()
-        ordered_lengths, ord_index = torch.sort(input_lengths, descending=True)
-        ord_index = ord_index.to(inputs.device)
-        ordered_inputs = torch.index_select(inputs, 0, ord_index)
-        assert torch.all(inputs == torch.index_select(ordered_inputs, 0, ord_index.argsort(0))), 'Wrong sorting'
-        if self.input_features > inputs.shape[1]:
-            temp = torch.zeros(ordered_inputs.shape[0], 1, ordered_inputs.shape[2], device=ordered_inputs.device)
-            temp[:, 0, :-1] = ordered_inputs[:, 0, 1:]
-            if self.z_values is not None:
-                temp[:, 0, -1] = self.z_values[len(temp)]
-            else:
-                temp[:, 0, -1] = 1.0
-            new_inputs = torch.cat((ordered_inputs, temp), 1)
-            x = self.conv(new_inputs)
-        else:
-            x = self.conv(ordered_inputs)
+        x = self.conv(inputs)
         # BxCxT -> BxTxC
         x = x.transpose(1, 2)
         # Pack padded batch of sequences for RNN module
         packed = torch.nn.utils.rnn.pack_padded_sequence(
-        x, ordered_lengths, enforce_sorted=True, batch_first=True)
+        x, input_lengths, enforce_sorted=False, batch_first=True)
         # forward pass trough rnn
         x, _ = self.rnn(packed)
         # unpack padding
-        x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
-        x = torch.index_select(x, 0, ord_index.argsort(0))
-        last_nonzero = torch.index_select(ordered_lengths, 0, ord_index.argsort(0).to(ordered_lengths.device)).to(torch.long).to(x.device) - 1
-        assert torch.all(input_lengths == torch.index_select(ordered_lengths, 0, ord_index.argsort(0).to(ordered_lengths.device))), 'Wrong unsorting of lengths'
-       # mask = torch.not_equal(x, 0)
-        #result = torch.masked_select(x, mask)
-        #result = result.view(x.size(0), -1, x.size(2))
-        #print(result[:2, -1])
-        last_nonzero = last_nonzero.unsqueeze(-1)
-        indices = last_nonzero.repeat(1, x.shape[-1]).unsqueeze(1)
-        x = x.gather(1, indices)
-        #print(x[:2])
-        last_gru_output = x
+        gru_outs, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
         # get result using only the output on the last timestep
-        xy_coords = self.xy_coords(x)
-        r1_r2 = self.r1_r2(x)
-        if return_gru_state:
-            return torch.squeeze(torch.cat([xy_coords, r1_r2], dim=-1), dim=1), last_gru_output
-        else:
-            return torch.squeeze(torch.cat([xy_coords, r1_r2], dim=-1), dim=1)
+        xy_coords = self.xy_coords(gru_outs)
+        r1_r2 = self.r1_r2(gru_outs)
+        outputs = torch.cat([xy_coords, r1_r2], dim=-1)
+        if return_gru_states:
+            return outputs, gru_outs
+        return outputs

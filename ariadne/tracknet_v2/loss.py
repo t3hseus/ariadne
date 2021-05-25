@@ -9,8 +9,8 @@ class PointInEllipseLoss(nn.Module):
     is far from the center of the predicted ellipse
 
     # Arguments
-        preds: output of the model (x, y, r1, r2)
-        targets: loss targets (x_true, y_true)
+        preds: output of the model (x, y, r1, r2) with shape [batch, timesteps, 4]
+        targets: loss targets (x_true, y_true) with shape [batch, timesteps, 2]
     """
     def __init__(self):
         super(PointInEllipseLoss, self).__init__()
@@ -21,16 +21,16 @@ class PointInEllipseLoss(nn.Module):
                             'the prediction and target must be equal. '
                             f'{preds.size(0) != target.size(0)}')
 
-        if preds.size(1) != 4:
+        if preds.size(2) != 4:
             raise ValueError('Prediction must be 4-dimensional (x, y, r1, r2), '
-                             f'but got preds.shape[1] = {preds.size(1)}')
+                             f'but got preds.shape[2] = {preds.size(2)}')
 
-        if target.size(1) != 2:
+        if target.size(2) != 2:
             raise ValueError('Target must be 2-dimensional (x, y), '
-                             f'but got target.shape[1] = {target.size(1)}')
+                             f'but got target.shape[2] = {target.size(2)}')
 
-        x_coord_loss = (preds[:, 0] - target[:, 0]) / preds[:, 2]
-        y_coord_loss = (preds[:, 1] - target[:, 1]) / preds[:, 3]
+        x_coord_loss = (preds[:, :, 0] - target[:, :, 0]) / preds[:, :, 2]
+        y_coord_loss = (preds[:, :, 1] - target[:, :, 1]) / preds[:, :, 3]
         squared_loss = torch.pow(x_coord_loss, 2) + torch.pow(y_coord_loss, 2)
         return torch.sqrt(squared_loss)
 
@@ -41,16 +41,17 @@ class EllipseSquareLoss(nn.Module):
 
     # Arguments
         preds: output of the model (x, y, r1, r2)
+            with shape [batch, timesteps, 4]
     """
     def __init__(self):
         super(EllipseSquareLoss, self).__init__()
 
     def forward(self, preds):
-        if preds.size(1) != 4:
+        if preds.size(2) != 4:
             raise ValueError('Prediction must be 4-dimensional (x, y, r1, r2), '
-                             f'but got preds.shape[1] = {preds.size(1)}')
+                             f'but got preds.shape[1] = {preds.size(2)}')
 
-        return preds[:, 2] * preds[:, 3]
+        return preds[:, :, 2] * preds[:, :, 3]
 
 
 @gin.configurable
@@ -75,7 +76,11 @@ class TrackNetLoss(nn.Module):
         self.ellipse_square_loss = EllipseSquareLoss()
 
     def forward(self, preds, target):
+        # unpack target = (target, mask)
+        target, mask = target
         points_in_ellipse = self.point_in_ellipse_loss(preds, target)
         ellipses_square = self.ellipse_square_loss(preds)
         loss = self.alpha * points_in_ellipse + (1 - self.alpha) * ellipses_square
-        return torch.mean(loss).float()
+        if mask is not None:
+            return loss.masked_select(mask).mean().float()
+        return loss.mean().float()

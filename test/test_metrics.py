@@ -21,12 +21,13 @@ from ariadne.metrics import (
 
 class EllipseAreaTest(TestCase):
     def test_incorrect_shape(self):
-        preds = torch.zeros((2, 3))
+        preds = torch.zeros((1, 2, 3))
         with self.assertRaisesRegex(ValueError, '4-dimensional'):
-            ellipse_area(preds)
+            ellipse_area(preds, (None, None))
 
     def test_output(self):
-        preds = torch.tensor([
+        preds = torch.empty(2, 3, 4)
+        preds[:] = torch.tensor([
             [0., 0., 1., 1.],
             [0., 0., 0.5, 0.5],
             [0., 0., 0., 100.]
@@ -35,47 +36,55 @@ class EllipseAreaTest(TestCase):
             math.pi,
             0.25 * math.pi,
             0.
-        ])
+        ]).repeat(2).view(2, 3)
 
         for i in range(preds.size(0)):
-            output = ellipse_area(preds[i:i+1])
-            torch.testing.assert_allclose(output, expected_output[i])
+            output = ellipse_area(preds[:, i:i+1], (None, None))
+            torch.testing.assert_allclose(output, expected_output[:, i].mean())
 
-        output = ellipse_area(preds)
+        output = ellipse_area(preds, (None, None))
         torch.testing.assert_allclose(output, expected_output.mean())
+
+        # test with mask
+        mask = torch.ones(2, 3).bool()
+        mask[:, 0] = False
+        output = ellipse_area(preds, (None, mask))
+        torch.testing.assert_allclose(output, expected_output[:, 1:].mean())
 
 
 class PointInEllipseTest(TestCase):
     def test_incorrect_shape(self):
-        target = torch.zeros((2, 2))
-        preds = torch.zeros((2, 3))
+        target = torch.zeros((2, 3, 2))
+        preds = torch.zeros((2, 3, 3))
         with self.assertRaisesRegex(ValueError, 'Prediction must be 4-dimensional'):
             point_in_ellipse(preds, target)
 
-        target = torch.zeros((2, 3))
-        preds = torch.zeros((2, 4))
+        target = torch.zeros((2, 3, 3))
+        preds = torch.zeros((2, 3, 4))
         with self.assertRaisesRegex(ValueError, 'Target must be 2-dimensional'):
             point_in_ellipse(preds, target)
 
-        target = torch.zeros((2, 2))
-        preds = torch.zeros((3, 4))
+        target = torch.zeros((2, 1, 2))
+        preds = torch.zeros((3, 1, 4))
         with self.assertRaisesRegex(ValueError, 'Shape mismatch! Number of samples'):
             point_in_ellipse(preds, target)
 
     def test_output(self):
-        preds = torch.tensor([
+        preds = torch.empty(2, 5, 4)
+        preds[:] = torch.tensor([
             [0., 0., 1., 1.],
             [0., -1., 1., 1.],
             [-1., 0., 1., 1.],
             [-0.5, -0.5, 1., 1.],
             [-1., -1., 1., 1.]
         ])
-        target = torch.zeros((len(preds), 2))
-        expected_output = [1, 1, 1, 1, 0]
+        target = torch.zeros((2, preds.shape[1], 2))
+        expected_output = [[1, 1, 1, 1, 0], [1, 1, 1, 1, 0]]
         output = point_in_ellipse(preds, target)
-        self.assertListEqual(output, expected_output)
+        self.assertListEqual(output.tolist(), expected_output)
 
 
+@unittest.skip("no way of currently testing this")
 class CalcMetricsTest(TestCase):
     def _create_model(self):
         """Dummy model. Takes last x, y

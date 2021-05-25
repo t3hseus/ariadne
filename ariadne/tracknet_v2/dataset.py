@@ -83,7 +83,7 @@ class TrackNetV2Dataset(Dataset):
         else:
             return {'inputs': sample_inputs, 'input_lengths': sample_len}, sample_y
 
-@gin.configurable    
+@gin.configurable
 class TrackNetV2ExplicitDataset(TrackNetV2Dataset):
     """Explicit TrackNET_v2 dataset.
 
@@ -107,3 +107,67 @@ class TrackNetV2ExplicitDataset(TrackNetV2Dataset):
         sample_idx = idx
         return {'x': {'inputs': sample_inputs, 'input_lengths': sample_len},
                 'y': sample_y, 'index': sample_idx, 'momentum': sample_momentum, 'is_real_track': is_track}
+
+
+
+@gin.configurable
+class TrackNetV2DatasetWithMask(Dataset):
+    """TrackNET_v2 dataset.
+
+    Returns a pairs of dict and tuple:
+    {'inputs': inputs, 'input_lengths': input_lengths}, (target, mask)
+    inputs = track[:-1] # except the last timestep
+    target = track[1:] # except the first timestep
+
+    """
+    def __init__(self,
+                 data_path,
+                 min_track_len=3,
+                 add_next_z_feat=False,
+                 use_index=False,
+                 n_samples=None):
+        """
+        Args:
+            data_path (string): Path to file with tracks.
+            min_track_len (int): From which hit start to track prediction
+            add_next_z_feat (bool): additional feature to the data (x, y, z) -> (x, y, z, z+1)
+            n_samples (int): Maximum number of samples, optional
+            use_index (bool): whether or not return index of track
+
+        """
+        self.tracks = np.load(data_path, allow_pickle=True)
+        if n_samples is not None:
+            self.tracks = self.tracks[:n_samples]
+        self.add_next_z_feat = add_next_z_feat
+        self.use_index = use_index
+        assert min_track_len > 2, "Track cannot be less than three hits"
+        self.min_track_len = min_track_len
+        self._mask_first_n_steps = self.min_track_len - 2
+
+    def __len__(self):
+        return len(self.tracks)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        # except last timestep and (x, y, z) coords
+        input_sample = self.tracks[idx][:-1, :3]
+        input_dict = {
+            'inputs': input_sample,
+            'input_lengths': len(input_sample)
+        }
+        # except first timestep and only x and y coords
+        target = self.tracks[idx][1:, :2]
+        if self.add_next_z_feat:
+            input_dict['inputs'] = np.hstack([
+                input_sample,
+                self.tracks[idx][1:, 2:3]
+            ])
+
+        mask = np.ones(input_dict['input_lengths']).astype(np.bool)
+        mask[:self._mask_first_n_steps] = False
+
+        if self.use_index:
+            return input_dict, (target, mask), sample_idx
+        # else
+        return input_dict, (target, mask)
