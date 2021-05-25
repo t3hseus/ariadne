@@ -120,10 +120,16 @@ class TrackNetV2DatasetWithMask(Dataset):
     target = track[1:] # except the first timestep
 
     """
-    def __init__(self, data_path, add_next_z_feat=False, use_index=False, n_samples=None):
+    def __init__(self,
+                 data_path,
+                 min_track_len=3,
+                 add_next_z_feat=False,
+                 use_index=False,
+                 n_samples=None):
         """
         Args:
             data_path (string): Path to file with tracks.
+            min_track_len (int): From which hit start to track prediction
             add_next_z_feat (bool): additional feature to the data (x, y, z) -> (x, y, z, z+1)
             n_samples (int): Maximum number of samples, optional
             use_index (bool): whether or not return index of track
@@ -134,6 +140,9 @@ class TrackNetV2DatasetWithMask(Dataset):
             self.tracks = self.tracks[:n_samples]
         self.add_next_z_feat = add_next_z_feat
         self.use_index = use_index
+        assert min_track_len > 2, "Track cannot be less than three hits"
+        self.min_track_len = min_track_len
+        self._mask_first_n_steps = self.min_track_len - 2
 
     def __len__(self):
         return len(self.tracks)
@@ -156,6 +165,7 @@ class TrackNetV2DatasetWithMask(Dataset):
             ])
 
         mask = np.ones(input_dict['input_lengths']).astype(np.bool)
+        mask[:self._mask_first_n_steps] = False
 
         if self.use_index:
             return input_dict, (target, mask), sample_idx

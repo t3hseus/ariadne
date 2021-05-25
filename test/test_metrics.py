@@ -54,17 +54,17 @@ class EllipseAreaTest(TestCase):
 
 class PointInEllipseTest(TestCase):
     def test_incorrect_shape(self):
-        target = (torch.zeros((2, 3, 2)), None)
+        target = torch.zeros((2, 3, 2))
         preds = torch.zeros((2, 3, 3))
         with self.assertRaisesRegex(ValueError, 'Prediction must be 4-dimensional'):
             point_in_ellipse(preds, target)
 
-        target = (torch.zeros((2, 3, 3)), None)
+        target = torch.zeros((2, 3, 3))
         preds = torch.zeros((2, 3, 4))
         with self.assertRaisesRegex(ValueError, 'Target must be 2-dimensional'):
             point_in_ellipse(preds, target)
 
-        target = (torch.zeros((2, 1, 2)), None)
+        target = torch.zeros((2, 1, 2))
         preds = torch.zeros((3, 1, 4))
         with self.assertRaisesRegex(ValueError, 'Shape mismatch! Number of samples'):
             point_in_ellipse(preds, target)
@@ -80,16 +80,8 @@ class PointInEllipseTest(TestCase):
         ])
         target = torch.zeros((2, preds.shape[1], 2))
         expected_output = [[1, 1, 1, 1, 0], [1, 1, 1, 1, 0]]
-        output = point_in_ellipse(preds, (target, None))
+        output = point_in_ellipse(preds, target)
         self.assertListEqual(output.tolist(), expected_output)
-
-        # test with mask
-        mask = torch.tensor([
-            [True, False, False, False, True],
-            [True, False, False, False, True]
-        ])
-        output = point_in_ellipse(preds, (target, mask))
-        self.assertListEqual(output.tolist(), [[1, 0], [1, 0]])
 
 
 @unittest.skip("no way of currently testing this")

@@ -29,8 +29,6 @@ def point_in_ellipse(preds, target):
     is located in the predicted circle
     1 - if yes, 0 - otherwise
     """
-    # unpack target = (target, mask)
-    target, mask = target
     if preds.size(0) != target.size(0):
         raise ValueError('Shape mismatch! Number of samples in '
                         'the prediction and target must be equal. '
@@ -50,11 +48,8 @@ def point_in_ellipse(preds, target):
     y_part = y_dist / torch.pow(preds[:, :, 3], 2)
     # left size of equation x_part + y_part = 1
     left_side = x_part + y_part
-    result = left_side <= 1
-    if mask is not None:
-        result_shape = result.shape
-        return result.masked_select(mask).view(len(result), -1)
-    return result
+    return left_side <= 1
+
 
 @gin.configurable(allowlist=[])
 def efficiency(preds, target):
@@ -62,8 +57,13 @@ def efficiency(preds, target):
     is located in the predicted circle
     1 - if yes, 0 - otherwise
     """
+    # unpack target = (target, mask)
+    target, mask = target
     idx = point_in_ellipse(preds, target)
+    if mask is not None:
+        idx = idx.masked_select(mask)
     return torch.sum(idx.float()) / len(idx)
+
 
 # TODO: fix this function
 @gin.configurable(allowlist=[])
