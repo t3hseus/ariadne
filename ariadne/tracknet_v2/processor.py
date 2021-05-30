@@ -128,7 +128,8 @@ class TrackNetProcessorWithMask(DataProcessor):
                  name_suffix: str,
                  transforms: List[BaseTransformer] = None,
                  columns=('x', 'y', 'z'),
-                 max_len=6):
+                 det_indices=(0,1),
+                 filter_first_n=0):
         super().__init__(
             processor_name='TrackNet_v2_Processor',
             output_dir=output_dir,
@@ -136,14 +137,15 @@ class TrackNetProcessorWithMask(DataProcessor):
             transforms=transforms)
         self.output_name = os.path.join(self.output_dir, f'masked_tracknet_{name_suffix}')
         self.columns = columns
-        self.max_len = max_len
-        self.det_indices = [0,1]
+        self.det_indices = det_indices
+        self.filter_first_stations = filter_first_n
 
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
         if len(self.det_indices) > 1:
             self.data_df.loc[self.data_df.det == 1, 'station'] = self.data_df.loc[self.data_df.det == 1, 'station'].values + 3
-            self.data_df = self.data_df.loc[self.data_df['station'] > 1, :]
-            self.data_df.loc[:, 'station'] = self.data_df.loc[:, 'station'].values - 2
+            if self.filter_first_stations>0:
+                self.data_df = self.data_df.loc[self.data_df['station'] > self.filter_first_stations-1, :]
+                self.data_df.loc[:, 'station'] = self.data_df.loc[:, 'station'].values - self.filter_first_stations
         return self.data_df.groupby('event')
 
     def construct_chunk(self,
@@ -185,6 +187,12 @@ class TrackNetProcessorWithMask(DataProcessor):
             if data_chunk.processed_object is None:
                 continue
             all_data_inputs.extend(data_chunk.processed_object)
-        with open(self.output_name, 'wb') as f:
-            np.save(f, np.array(all_data_inputs, dtype=object), allow_pickle=True)
-        LOGGER.info(f'Saved to: {self.output_name}.npz as object-pickle')
+        try:
+            temp_inputs = np.load(self.output_name+'.npy', allow_pickle=True)
+            all_data_inputs = np.concatenate((temp_inputs, np.array(all_data_inputs, dtype=object)))
+        except:
+            print('new array is created')
+        np.save(self.output_name, all_data_inputs, allow_pickle=True)
+        temp_inputs = np.load(self.output_name+'.npy', allow_pickle=True)
+        print(len(temp_inputs))
+        LOGGER.info(f'Saved to: {self.output_name}.npy as object-pickle')

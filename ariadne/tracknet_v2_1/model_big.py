@@ -15,9 +15,9 @@ class TrackNetClassifierBig(nn.Module):
         coord_size: number of predicted point coords
         num_classes: number of classes to use (real/fake candidate etc)
     """
-    def __init__(self, gru_size=32, coord_size=2, num_classes=2):
+    def __init__(self, gru_size=32, coord_size=2, num_grus=1):
         super().__init__()
-        self.gru_feat_block = nn.Sequential(nn.Linear(gru_size*2, 40),
+        self.gru_feat_block = nn.Sequential(nn.Linear(gru_size, 40),
                                        #nn.BatchNorm1d(30),
                                        nn.ReLU(),
                                        nn.Linear(40, 20)

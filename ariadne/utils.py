@@ -46,29 +46,12 @@ def brute_force_hits_two_first_stations_cart(df, return_momentum=False):
     first_station.columns = [ 'x_left', 'y_left', 'z_left', 'px_left', 'py_left', 'pz_left', 'track_left']
     second_station = df[df['station'] == 1][['x', 'y', 'z', 'px', 'py', 'pz', 'track']]
     second_station.columns = ['x_right', 'y_right', 'z_right',  'px_right', 'py_right', 'pz_right', 'track_right']
-    temp_y = df[df['station'] == 2][['x', 'y', 'track']]
     rows = itertools.product(first_station.iterrows(), second_station.iterrows())
     df = pd.DataFrame(left.append(right) for (_, left), (_, right) in rows)
     df = df.sample(frac=1).reset_index(drop=True)
     df_label = (df['track_left'] == df['track_right']) & (df['track_left'] != -1)
     x = df[['x_left', 'y_left', 'z_left', 'x_right', 'y_right', 'z_right']].values.reshape((-1, 2, 3))
-    y = np.full((len(df_label), 2), -2.)
-
-    if return_momentum:
-        df_all_fake = (df['track_left'] == df['track_right']) & (df['track_left'] == -1)
-        df_first_fake = (df['track_left'] == -1) & (df['track_right'] != -1)
-        temp_momentum = df[['px_left', 'py_left', 'pz_left']]
-        temp_momentum.loc[df_first_fake, ['px_left', 'py_left', 'pz_left']] = 0.
-        temp_momentum.loc[df_all_fake, ['px_left', 'py_left', 'pz_left']] = df[['px_right', 'py_right', 'pz_right']]
-    y[df_label == 1] = np.squeeze(np.array(list(map(lambda x: temp_y[temp_y['track'] == x][['x', 'y']].values,
-                                              df[df_label == 1]['track_left']))), 1)
-    if not return_momentum:
-        return x, y, df_label
-    momentum = np.full((len(df_label), 3), -2.)
-    momentum[df_label == 1] = np.squeeze(
-            np.array(list(map(lambda x: temp_momentum[temp_momentum['track'] == x][['px', 'py', 'pz']].values,
-                              df[df_label == 1]['track_left']))), 1)
-    return x, y, momentum, df_label
+    return x, df_label
 
 def weights_update(model, checkpoint):
     model_dict = model.state_dict()
@@ -159,7 +142,7 @@ def find_nearest_hit(ellipses, last_station_hits, index=None, find_n=10):
     #numpy, numpy -> numpy, numpy
     if index is None:
         index = faiss.IndexFlatL2(2)
-        index.train(last_station_hits.astype('float32'))
+        #index.train(last_station_hits.astype('float32'))
         index.add(last_station_hits.astype('float32'))
     #ellipses = torch_ellipses.detach().cpu().numpy()
     centers = ellipses[:, :2]
@@ -255,12 +238,14 @@ def filter_hits_in_ellipses(ellipses, nearest_hits, hits_index, z_last=True, fil
     ellipses = np.expand_dims(ellipses, 2)
     #found_hits = nearest_hits.reshape(-1, find_n, nearest_hits.shape[-1])
     if z_last:
-        x_part = (nearest_hits[:, :, 0] - ellipses[:,0].repeat(find_n,1)) ** 2 / ellipses[:,3].repeat(find_n,1) ** 2
-        y_part = (nearest_hits[:, :, 1] - ellipses[:,1].repeat(find_n,1)) ** 2 / ellipses[:,4].repeat(find_n,1) ** 2
+        x_part = (ellipses[:,0].repeat(find_n,1) - nearest_hits[:, :, 0]) / ellipses[:, 3].repeat(find_n,1)
+        #print(x_part**2)
+        y_part = (ellipses[:,1].repeat(find_n,1) - nearest_hits[:, :, 1]) / ellipses[:, 4].repeat(find_n,1)
+        #print(y_part**2)
     else:
         x_part = (nearest_hits[:, :, 1] - ellipses[:, 1].repeat(find_n, 1)) ** 2 / ellipses[:, -2].repeat(find_n, 1) ** 2
         y_part = (nearest_hits[:, :, 2] - ellipses[:, 2].repeat(find_n, 1)) ** 2 / ellipses[:, -1].repeat(find_n, 1) ** 2
-    left_side = x_part + y_part
+    left_side = x_part**2 + y_part**2
     is_in_ellipse = left_side <= 1
     is_in_ellipse *= hits_index != -1
     return nearest_hits, is_in_ellipse

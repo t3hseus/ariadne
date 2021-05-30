@@ -21,6 +21,8 @@ import matplotlib.pyplot as plt
 from torch.nn import functional as F
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2_1.model import TrackNetClassifier
+from ariadne.tracknet_v2_1.model_small import TrackNetClassifierSmall
+from ariadne.tracknet_v2_1.model_big import TrackNetClassifierBig
 from ariadne.utils import weights_update, find_nearest_hit, find_nearest_hit_old, find_nearest_hit_no_faiss,\
     get_diagram_arr_linspace, draw_for_col, draw_from_data, get_checkpoint_path, load_data, draw_treshold_plots
 from ariadne.tracknet_v2.metrics import point_in_ellipse
@@ -65,7 +67,7 @@ def faiss_test(tracknet_ckpt_path_dict,
                                             batch_first=True),
                            checkpoint=torch.load(path_to_tracknet_ckpt))
     model.to(DEVICE)
-    class_model = weights_update(model=TrackNetClassifier(),
+    class_model = weights_update(model=TrackNetClassifierBig(),
                                  checkpoint=torch.load(path_to_classifier_ckpt))
     class_model.to(DEVICE)
 
@@ -99,13 +101,13 @@ def faiss_test(tracknet_ckpt_path_dict,
                 all_last_y = np.expand_dims(all_last_y, axis=0)
             test_pred, last_gru_output = model(inputs=torch.from_numpy(batch_input).to(DEVICE),
                                                input_lengths=torch.from_numpy(batch_len).to(DEVICE),
-                                               return_gru_state=True)
+                                               return_gru_states=True)
             num_real_tracks = batch_real_flag.sum()
             t1 = time.time()
-            nearest_points, is_point_in_ellipse = find_nearest_hit_old(test_pred.detach().cpu().numpy(), all_last_y)
+            nearest_points, is_point_in_ellipse = find_nearest_hit_old(test_pred[:, -1].detach().cpu().numpy(), all_last_y)
             t2 = time.time()
             if use_classifier:
-                pred_classes = class_model(last_gru_output[is_point_in_ellipse],
+                pred_classes = class_model(last_gru_output[is_point_in_ellipse][:,-1],
                                            torch.from_numpy(nearest_points[is_point_in_ellipse].astype('float')).to(DEVICE))
                 confidence = deepcopy(F.sigmoid(pred_classes))
                 pred_classes = (F.sigmoid(pred_classes) > treshold).squeeze().detach().cpu().numpy()
