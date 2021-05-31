@@ -86,9 +86,11 @@ def load_data(input_dir, file_mask, n_samples=None):
     data_merged = {}
     datafiles = glob.glob(f'{input_dir}/{file_mask}')
     for f in datafiles:
-        one_file_data = np.load(f, mmap_mode='r', allow_pickle=False)
+        one_file_data = np.load(f, mmap_mode='r', allow_pickle=True)
         first_file_len = len(one_file_data[one_file_data.files[0]])
         files = one_file_data.files
+        for f in files:
+            print(one_file_data[f][0])
         lengths = [len(one_file_data[f]) == first_file_len for f in files]
         assert all(lengths), 'Lengths of files in npz are not equal!'
         if flag == 0:
