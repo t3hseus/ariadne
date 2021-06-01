@@ -143,8 +143,8 @@ class TrackNetProcessorWithMask(DataProcessor):
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
         if len(self.det_indices) > 1:
             self.data_df.loc[self.data_df.det == 1, 'station'] = self.data_df.loc[self.data_df.det == 1, 'station'].values + 3
-            if self.filter_first_stations>0:
-                self.data_df = self.data_df.loc[self.data_df['station'] > self.filter_first_stations-1, :]
+            if self.filter_first_stations > 0:
+                self.data_df = self.data_df.loc[self.data_df['station'] >= self.filter_first_stations, :]
                 self.data_df.loc[:, 'station'] = self.data_df.loc[:, 'station'].values - self.filter_first_stations
         return self.data_df.groupby('event')
 
