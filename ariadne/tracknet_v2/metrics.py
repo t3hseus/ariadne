@@ -12,11 +12,15 @@ def ellipse_area(preds, target):
     # Arguments
         preds: output of the model (x, y, r1, r2)
     """
-    if preds.size(1) != 4:
+    # unpack target = (target, mask)
+    target, mask = target
+    if preds.size(2) != 4:
         raise ValueError('Prediction must be 4-dimensional (x, y, r1, r2), '
-                         f'but got preds.shape[1] = {preds.size(1)}')
-    areas = preds[:, 2] * preds[:, 3] * math.pi
-    return torch.mean(areas.float())
+                         f'but got preds.shape[2] = {preds.size(2)}')
+    areas = preds[:, :, 2] * preds[:, :, 3] * math.pi
+    if mask is not None:
+        return areas.masked_select(mask).mean().float()
+    return areas.mean().float()
 
 
 @gin.configurable(allowlist=[])
@@ -25,26 +29,32 @@ def point_in_ellipse(preds, target):
     is located in the predicted circle
     1 - if yes, 0 - otherwise
     """
-    if preds.size(0) != target.size(0):
+    if preds.shape[0] != target.shape[0]:
         raise ValueError('Shape mismatch! Number of samples in '
                         'the prediction and target must be equal. '
                         f'{preds.size(0) != target.size(0)}')
 
-    if preds.size(1) != 4:
-        raise ValueError('Prediction must be 4-dimensional (x, y, r1, r2), '
-                            f'but got preds.shape[1] = {preds.size(1)}')
+    if (preds.shape[-1] < 4):
+        raise ValueError('Prediction must be 4-dimensional (x, y, r1, r2) or 5-dimensional (x, y, z, r1, r2), '
+                            f'but got preds.shape[2] = {preds.size(2)}')
 
-    if target.size(1) != 2:
-        raise ValueError('Target must be 2-dimensional (x, y), '
-                             f'but got target.shape[1] = {target.size(1)}')
+    if target.shape[-1] < 2:
+        raise ValueError('Target must be 2-dimensional (x, y) or 3-dimensional (x, y, z), '
+                             f'but got target.shape[2] = {target.size(2)}')
+    if preds.ndim < 3 and target.ndim == 3:
+        preds = preds.unsqueeze(1).repeat(1, target.shape[1], 1)
 
-    x_dist = F.pairwise_distance(preds[:, :1], target[:, :1], p=2)
-    y_dist = F.pairwise_distance(preds[:, 1:2], target[:, 1:2], p=2)
-    x_part = x_dist / torch.pow(preds[:, 2], 2)
-    y_part = y_dist / torch.pow(preds[:, 3], 2)
+    x_dist = (preds[:, :, 0] - target[:, :, 0]) ** 2
+    y_dist = (preds[:, :, 1] - target[:, :, 1]) ** 2
+    x_part = x_dist / torch.pow(preds[:, :, -2], 2)
+    y_part = y_dist / torch.pow(preds[:, :, -1], 2)
     # left size of equation x_part + y_part = 1
     left_side = x_part + y_part
-    return left_side <= 1
+    if target.size(2) == 3:
+        is_this_station = torch.eq(preds[:, :, 2], target[:, :, 2])
+        return torch.le(left_side, 1) * is_this_station
+    return torch.le(left_side, 1)
+
 
 @gin.configurable(allowlist=[])
 def efficiency(preds, target):
@@ -52,9 +62,15 @@ def efficiency(preds, target):
     is located in the predicted circle
     1 - if yes, 0 - otherwise
     """
+    # unpack target = (target, mask)
+    target, mask = target
     idx = point_in_ellipse(preds, target)
+    if mask is not None:
+        idx = idx.masked_select(mask)
     return torch.sum(idx.float()) / len(idx)
 
+
+# TODO: fix this function
 @gin.configurable(allowlist=[])
 def calc_metrics(inputs, model, tracklen=None):
     """ Take array of tracks in the format of numpy 3d array
@@ -104,6 +120,7 @@ def calc_metrics(inputs, model, tracklen=None):
         target = inputs_val[:, i, :2]
         # get model's prediction
         preds = model(inputs_part)
+
         # get indices of the tracks, which continuation was found
         idx = point_in_ellipse(preds, target)
         # count number of right predictions

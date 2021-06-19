@@ -45,6 +45,9 @@ class TrackNetV21Dataset(TrackNetV2Dataset):
     def __len__(self):
         return len(self.data['labels'])
 
+    def get_num_events(self):
+        return len(np.unique(self.data['events']))
+
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
@@ -105,7 +108,7 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        sample_gru = self.data['grus'][idx]
+        sample_gru = self.data['grus'][idx, -1]
         found_hit = self.data['preds'][idx]
         is_track = self.data['labels'][idx]
         return [{'gru_features': torch.tensor(sample_gru).squeeze(),

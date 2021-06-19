@@ -48,7 +48,7 @@ class ValidProcessor(TrackNetV21Processor):
                 continue
             df = chunk.processed_object
             grouped_df = df[df['track'] != -1].groupby('track')
-            last_station = df[df['station'] > 1][['phi', 'z']].values
+            last_station = df[df['station']==2][['z', 'phi']].values
             chunk_data_event_last_station = np.full(len(last_station), chunk.id)
             multiplicity = grouped_df.ngroups
             if multiplicity == 0:

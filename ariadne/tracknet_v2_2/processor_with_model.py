@@ -50,11 +50,12 @@ class TrackNetV22ProcessorWithModel(TrackNetV21Processor):
         self.valid_size = valid_size
         self.chunks = []
         self.device = torch.device(device)
-        #self.model = tracknet_v2_model
-        self.model = TrackNETv2(input_features=3)
+        self.model = tracknet_v2_model()
+        #self.model = TrackNETv2(input_features=3)
         if tracknet_v2_checkpoint and os.path.isfile(tracknet_v2_checkpoint):
             self.model = weights_update(model=self.model, checkpoint=torch.load(tracknet_v2_checkpoint))
         self.model.eval()
+        self.model = self.model.to(self.device)
 
     def preprocess_chunk(self,
                          chunk: TracknetDataChunk,

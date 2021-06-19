@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -p gpu
+#SBATCH -p long
 #SBATCH --gres=gpu:1
 
 lscpu

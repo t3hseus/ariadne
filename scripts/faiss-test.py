@@ -1,7 +1,8 @@
 import logging
 import sys
 import os
-sys.path.append(os.path.abspath('./'))
+sys.path.append(os.path.abspath('../'))
+sys.path.append(os.path.abspath('.'))
 import torch
 
 import pandas as pd
@@ -21,8 +22,7 @@ import matplotlib.pyplot as plt
 from torch.nn import functional as F
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2_1.model import TrackNetClassifier
-from ariadne.utils import weights_update, find_nearest_hit, find_nearest_hit_old, find_nearest_hit_no_faiss,\
-    get_diagram_arr_linspace, draw_for_col, draw_from_data, get_checkpoint_path, load_data, draw_treshold_plots
+from ariadne.utils import *
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 
 LOGGER = logging.getLogger('ariadne.test')
@@ -63,11 +63,12 @@ def faiss_test(tracknet_ckpt_path_dict,
                                             conv_features=tracknet_conv_features,
                                             rnn_type='gru',
                                             batch_first=True),
-                           checkpoint=torch.load(path_to_tracknet_ckpt))
+                           checkpoint=torch.load(path_to_tracknet_ckpt, map_location=torch.device(DEVICE)))
     model.to(DEVICE)
-    class_model = weights_update(model=TrackNetClassifier(),
-                                 checkpoint=torch.load(path_to_classifier_ckpt))
-    class_model.to(DEVICE)
+    if use_classifier:
+        class_model = weights_update(model=TrackNetClassifier(),
+                                     checkpoint=torch.load(path_to_classifier_ckpt, map_location=torch.device(DEVICE)))
+        class_model.to(DEVICE)
 
     events = load_data(input_dir, file_mask, None)
     all_last_station_coordinates = load_data(input_dir, last_station_file_mask, None)
@@ -97,12 +98,38 @@ def faiss_test(tracknet_ckpt_path_dict,
                 batch_real_flag = np.expand_dims(batch_real_flag, axis=0)
             if all_last_y.ndim < 2:
                 all_last_y = np.expand_dims(all_last_y, axis=0)
+            last_station_index = store_in_index(all_last_y, num_components=2)
             test_pred, last_gru_output = model(inputs=torch.from_numpy(batch_input).to(DEVICE),
                                                input_lengths=torch.from_numpy(batch_len).to(DEVICE),
-                                               return_gru_state=True)
+                                               return_gru_states=True)
             num_real_tracks = batch_real_flag.sum()
+            print(batch_input[batch_real_flag])
+            print(batch_target[batch_real_flag])
+            print(test_pred[batch_real_flag])
+            test_pred = test_pred[:, -1, :]
+            nearest_hits_index = search_in_index(test_pred.detach().cpu().numpy()[:, :2], last_station_index,1, n_dim=2)
+            nearest_hits = all_last_y[nearest_hits_index]
+            nearest_hits, is_point_in_ellipse = filter_hits_in_ellipses(test_pred.cpu().detach().numpy(),
+                                                                    nearest_hits,
+                                                                    nearest_hits_index,
+                                                                    filter_station=True,
+                                                                    z_last=True,
+                                                                    find_n=nearest_hits_index.shape[1],
+                                                                    n_dim=2)
+
+            print(nearest_hits[batch_real_flag])
+            print(is_point_in_ellipse[batch_real_flag])
+            last_gru_output = last_gru_output.unsqueeze(1).repeat(1, is_point_in_ellipse.shape[-1], 1, 1).reshape(-1, last_gru_output.shape[-1] )
+            nearest_points = nearest_hits.reshape(-1, nearest_hits.shape[-1])
+            print(nearest_points.shape)
+            print(is_point_in_ellipse.shape)
+            batch_target = np.expand_dims(batch_target, 1).repeat(is_point_in_ellipse.shape[-1]).reshape(-1,2)
+            batch_momentum = np.expand_dims(batch_momentum, 1).repeat(is_point_in_ellipse.shape[-1]).reshape(-1, 3)
+            batch_real_flag = np.expand_dims(batch_real_flag, 1).repeat(is_point_in_ellipse.shape[-1]).reshape(-1)
+            print(batch_real_flag.sum())
+            is_point_in_ellipse = is_point_in_ellipse.reshape(-1)
             t1 = time.time()
-            nearest_points, is_point_in_ellipse = find_nearest_hit_old(test_pred.detach().cpu().numpy(), all_last_y)
+            print(is_point_in_ellipse.shape)
             t2 = time.time()
             if use_classifier:
                 pred_classes = class_model(last_gru_output[is_point_in_ellipse],
@@ -111,12 +138,18 @@ def faiss_test(tracknet_ckpt_path_dict,
                 pred_classes = (F.sigmoid(pred_classes) > treshold).squeeze().detach().cpu().numpy()
             is_prediction_true = np.logical_and(batch_target, nearest_points)
             is_prediction_true = is_prediction_true.all(1)
+            print(is_prediction_true)
+            print(nearest_points)
             if use_classifier:
                 found_points = is_point_in_ellipse
                 found_points[is_point_in_ellipse] = (pred_classes == 1)
             else:
                 found_points = is_point_in_ellipse
-            found_right_points = found_points & (is_prediction_true == 1) & (batch_real_flag == 1)
+            print(found_points[batch_real_flag])
+            print(is_prediction_true[batch_real_flag])
+            found_right_points = found_points & (is_prediction_true == 
+1) & (batch_real_flag == 1)
+            print(found_right_points)
             temp_dict['found'] = found_points
             temp_dict['found_right_point'] = found_right_points
             temp_dict['is_real_track'] = batch_real_flag
@@ -194,12 +227,12 @@ def faiss_test(tracknet_ckpt_path_dict,
         tracks_pred_true = result_df_faiss[result_df_faiss['found_right_point'].astype('int') == 1]
 
         if draw_figures:
-            draw_for_col(real_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, style='plot')
-            draw_for_col(real_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot')
-            draw_for_col(real_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', num_events, 175, style='plot')
-            draw_for_col(found_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, metric='precision', style='plot')
-            draw_for_col(found_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot', metric='precision')
-            draw_for_col(found_tracks_result_df, tracks_pred_true, 'cos_t', '$cos_t$', num_events, 175, style='plot', metric='precision')
+            draw_for_col(real_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, style='boxplot', treshold=treshold)
+            draw_for_col(real_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='boxplot', treshold=treshold)
+            draw_for_col(real_tracks_result_df, tracks_pred_true,'cos_t', '$cos_t$', num_events, 175, style='boxplot', treshold=treshold)
+            draw_for_col(found_tracks_result_df, tracks_pred_true, 'pt', '$pt$', num_events, 175, metric='precision', style='plot', treshold=treshold)
+            draw_for_col(found_tracks_result_df, tracks_pred_true, 'a_phi', '$a_\\phi$', num_events, 175, style='plot', metric='precision', treshold=treshold)
+            draw_for_col(found_tracks_result_df, tracks_pred_true, 'cos_t', '$cos_t$', num_events, 175, style='plot', metric='precision', treshold=treshold)
             times_mean = {k: np.mean(v) for k, v in times.items()}
             times_std = {k: np.std(v) for k, v in times.items()}
             draw_from_data(title=f"TrackNETv2.1 Mean Processing Time vs Multiplicity (ms), treshold {treshold}",
@@ -209,6 +242,8 @@ def faiss_test(tracknet_ckpt_path_dict,
                            axis_x="multiplicity",
                            mean_label='mean'
                            )
+        if not use_classifier:
+            break
         treshold += treshold_step
 
     if use_classifier and plot_treshold:
@@ -219,7 +254,7 @@ def faiss_test(tracknet_ckpt_path_dict,
                             total_events=max_num_events)
     if not use_classifier and plot_treshold:
         LOGGER.warning('You can apply treshold only on classifier logits, not TrackNETv2. Skipping plotting')
-        
+
 
 
 def main(argv):

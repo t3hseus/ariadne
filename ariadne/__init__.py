@@ -9,3 +9,4 @@ from . import graph_net
 from . import point_net
 from . import external_configurables
 from . import metrics
+from . import tracknet_v2_1_bmn

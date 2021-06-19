@@ -29,7 +29,9 @@ class Compose:
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, data: pd.DataFrame):
+    def __call__(self, data: pd.DataFrame, preserve_index=True):
+        if preserve_index:
+            data['index'] = data.index
         for t in self.transforms:
             data = t(data)
             if data.empty:
@@ -87,7 +89,7 @@ class BaseTransformer(object):
         return 0
 
     def add_fakes(self, data, fakes):
-        return pd.concat([data, fakes], axis=0).reset_index()
+        return pd.concat([data, fakes], axis=0, ignore_index=True)
 
 
 
@@ -162,8 +164,7 @@ class BaseFilter(BaseTransformer):
             data.loc[~data.index.isin(good_tracks.index), 'track'] = -1
         else:
             data = data.loc[data.index.isin(good_tracks.index), :]
-        data = self.add_fakes(data, fakes)
-        return data
+        return self.add_fakes(data, fakes)
 
     def get_broken(self):
         return self._broken_tracks
@@ -214,12 +215,12 @@ class BaseCoordConverter(BaseTransformer):
         if not self.drop_old:
             for col in self.from_columns:
                 data[col + '_' + self.postfix] = data[col]
-        for i in range(len(self.to_columns)):
-            data.loc[:, self.to_columns[i]] = converted[i]
-        self.get_ranges(data, self.to_columns)
         if self.drop_old:
             for col in self.from_columns:
                 del data[col]
+        for i in range(len(self.to_columns)):
+            data.loc[:, self.to_columns[i]] = converted[i]
+        self.get_ranges(data, self.to_columns)
         return data
 
     def get_ranges(self, data, columns):
@@ -268,6 +269,39 @@ class PreserveOriginal:
         return (f"{'-' * 30}\n"
                f'{self.__class__.__name__} ceeping original state of columns: {self.columns} \n'
                f"{'-' * 30}\n")
+
+@gin.configurable
+class BakeStationValues:
+    """Coverts z coordinate of hit to given value for each station station.
+    Nessesary for BM@N, becaule strips have different depths.
+     # Args:
+         scaler (function or method pd.DataFrame -> iterable of pd.Series): scaler with fit_predict method
+         columns (list or tuple, ['x', 'y', 'z'] by default): Columns to scale
+         drop_old (boolean, True by default): If True, unscaled data is discarded,
+                                            else preserved in columns with suffix '_old'
+    """
+
+    def __init__(self, values, col='z', station_col='station'):
+        self.station_values = values
+        self.station_column = station_col
+        self.column = col
+
+    def __call__(self, data):
+        """
+        # Args:
+            data (pd.DataFrame):  to clean up.
+        # Returns:
+            data (pd.DataFrame): transformed dataframe
+        """
+        for i, value in self.station_values.items():
+            data.loc[data['station'] == i, 'z'] = value
+        return data
+
+    def __repr__(self):
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with scaler: {self.scaler}'
+                f'{"-" * 30}\n')
+
 
 @gin.configurable
 class StandardScale(BaseScaler):
@@ -403,16 +437,18 @@ class ConstraintsNormalize(BaseTransformer):
             x_norm, y_norm, z_norm = self.normalize(data, global_constrains)
             data = super().transform_data(data, [x_norm, y_norm, z_norm])
         else:
-            assert all([station in data['station'].unique() for station in
-                        self.constraints.keys()]), "Some station keys in constraints are not presented in data. Keys: " \
-                                                   f"{data['station'].unique()}; data keys: {self.constraints.keys()}"
+            ##assert all([station in data['station'].unique() for station in
+             #           self.constraints.keys()]), "Some station keys in constraints are not presented in data. Keys: " \
+            #                                       f"{data['station'].unique()}; data keys: {self.constraints.keys()}"
 
-            for station in self.constraints.keys():
+            for station in list(data['station'].unique()):
+                #print(data['station'].unique())
                 group = data.loc[data['station'] == station,]
                 x_norm, y_norm, z_norm = self.normalize(group, self.constraints[station])
                 data.loc[data['station'] == station, :] = \
                     self.transform_data_by_group(data['station'] == station, data,
-                                                 [x_norm, y_norm, z_norm])
+                                                     [x_norm, y_norm, z_norm])
+
         return data
 
     def transform_data_by_group(self, grouping, data, normed):
@@ -501,6 +537,35 @@ class DropSpinningTracks(BaseFilter):
     def __init__(self, keep_filtered=True, station_col='station', track_col='track', event_col='event'):
 
         self.filter = lambda x: x[self.station_column].unique().shape[0] == x[self.station_column].shape[0]
+        super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
+                         keep_filtered=keep_filtered)
+
+    def __repr__(self):
+        return(f'{"-" * 30}\n'
+               f'{self.__class__.__name__} with parameters:'
+               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
+               f'{"-" * 30}\n'
+               f'Number of broken tracks: {self.get_num_broken()} \n')
+
+@gin.configurable
+class DropTracksWithHoles(BaseFilter):
+    """Drops tracks with points on same stations (e.g. (2,2,2) or (1,2,1)).
+      # Args:
+        keep_fakes (bool, True by default ): If True, points with no tracks are preserved, else they are deleted from data.
+        station_col (str, 'station' by default): Event column in data
+        track_col(str, 'track' by default): Track column in data
+        event_col (str, 'event' by default): Station column in data
+    """
+
+    def __init__(self,
+                 keep_filtered=True,
+                 station_col='station',
+                 track_col='track',
+                 event_col='event',
+                 min_station_num=0):
+
+        self.filter = lambda x: x[self.station_column].values.shape[0] == \
+                                len(np.arange(min_station_num, int(x[self.station_column].max())))+1
         super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
                          keep_filtered=keep_filtered)
 
@@ -622,13 +687,15 @@ class ToBuckets(BaseTransformer):
 
     """
 
-    def __init__(self, flat=True, shuffle=False, random_state=42,
-                 event_col='event', track_col='track'):
+    def __init__(self, flat=True, shuffle=False, max_stations=None, random_state=42,
+                 event_col='event', track_col='track', keep_fakes=False, max_bucket_size=None):
         super().__init__(event_col=event_col, track_col=track_col)
         self.flat = flat
         self.shuffle = shuffle
         self.random_state = random_state
-
+        self.max_num_stations=max_stations
+        self.keep_fakes = keep_fakes
+        self.max_bucket_size = max_bucket_size
 
     def __call__(self, df):
         """
@@ -639,27 +706,44 @@ class ToBuckets(BaseTransformer):
             if flat is True, returns dataframe with specific column, else dict with bucket dataframes
         """
         # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        data = self.drop_fakes(df)
+        df['index'] = df.index
         rs = np.random.RandomState(self.random_state)
-        groupby = df.groupby([self.event_col, self.track_col])
+        groupby = df.groupby([self.event_column, self.track_column])
         maxlen = groupby.size().max()
-        n_stations_min = groupby.size().min()
+        if self.max_num_stations is None:
+            self.max_num_stations = maxlen
+        minlen = max(groupby.size().min(), 3)
         subbuckets = {}
         res = {}
         val_cnt = groupby.size().unique()  # get all unique track lens (in BES3 all are 3)
+        val_cnt = range(minlen, max(maxlen+1, val_cnt.max()))
+        print(val_cnt)
         for length in val_cnt:
             this_len = groupby.filter(lambda x: x.shape[0] == length)
-            bucket_index = list(df.loc[df.index.isin(this_len.index)].index)
+            if len(this_len) > 0:
+                this_len_groups = this_len.groupby([self.event_column, self.track_column])
+                bucket_index = np.stack(list(this_len_groups['index'].agg(lambda x: list(x.values))), axis=0)
+            else:
+                bucket_index = []
             subbuckets[length] = bucket_index
+        print(subbuckets)
         # approximate size of the each bucket
-        bsize = len(df) // (maxlen - 2)
-        # set index
-        k = maxlen
-        buckets = {i: [] for i in subbuckets.keys()}
+        bsize = len(df) // (self.max_num_stations - 2)
+        print(bsize)
+        if self.max_bucket_size is not None:
+            bsize = min(bsize, self.max_bucket_size)
+        buckets = {i: [] for i in range(3, self.max_num_stations+1)}
+        print(buckets)
         # reverse loop until two points
-        for n_points in range(maxlen, 2, -1):
+        for n_points in range(self.max_num_stations, minlen-1, -1):
+            print(n_points, maxlen)
             # while bucket is not full
+            k = n_points
+            if n_points not in buckets.keys():
+                continue
             while len(buckets[n_points]) < bsize:
+                if k < n_points or k > maxlen:
+                    break
                 if self.shuffle:
                     rs.shuffle(subbuckets[k])
                 # if we can't extract all data from subbucket
@@ -667,28 +751,47 @@ class ToBuckets(BaseTransformer):
                 if len(buckets[n_points]) + len(subbuckets[k]) > bsize:
                     n_extract = bsize - len(buckets[n_points])
                     # extract n_extract samples
-                    buckets[n_points].extend(subbuckets[k][:n_extract])
+                    buckets[n_points].extend(subbuckets[k][:n_extract, :n_points])
+                    print(buckets[n_points])
                     # remove them from original subbucket
                     subbuckets[k] = subbuckets[k][n_extract:]
+                    print(subbuckets)
                 else:
-                    buckets[n_points].extend(subbuckets[k])
+                    if len(subbuckets[k]) == 0:
+                        k += 1
+                        continue
+                    buckets[n_points].extend(subbuckets[k][:, :n_points])
                     # remove all data from the original list
                     subbuckets[k] = []
-                    # decrement index
-                    k -= 1
+                    # increment index
+                k += 1
+                print(buckets)
+                if all([len(subbuckets[i]) == 0 for i in range(n_points, maxlen+1) if i in subbuckets.keys()]):
+                    break
+
+            if all([len(subbuckets[i]) == 0 for i in subbuckets.keys()]):
+                break
+        #append unappended items
+        for i, k in subbuckets.items():
+            if len(k) > 0:
+                try:
+                    append_len = int(len(k)/(i-2))
+                    begin = 0
+                    for j in range(i-1, min(list(buckets.keys()))-1, -1):
+                        print(k[begin:begin+append_len])
+                        buckets[j].extend(k[begin:begin+append_len, :j])
+                        begin = begin+append_len
+                except:
+                    print('alert!')
+        buckets = {k: np.concatenate(i) for k, i in buckets.items() if len(i) > 0}
         self.buckets_ = buckets
         if self.flat is True:
             res = df.copy()
             res['bucket'] = 0
             for i, bucket in buckets.items():
                 res.loc[bucket, 'bucket'] = i
-            if self.keep_fakes:
-                self.fakes.loc[:, 'bucket'] = -1
-                res = super().add_fakes(data)
         else:
             res = {i: df.loc[bucket] for i, bucket in buckets.items()}
-            if self.keep_fakes:
-                res[-1] = self.fakes
         return res
 
     def get_bucket_index(self):
