@@ -14,37 +14,6 @@ import logging
 
 LOGGER = logging.getLogger('ariadne.prepare')
 
-
-def get_seeds_with_vertex(hits):
-    # first station hits
-    st0_hits = hits[hits.station == 0][['x', 'y', 'z']].values
-    vertex = hits[(hits.station == 0) & (hits.track != -1)][['vx', 'vy', 'vz']][0]  # change to mode
-    # create seeds
-    seeds = np.zeros((len(st0_hits), 2, 3))
-    seeds[:, 0] = vertex
-    seeds[:, 1] = st0_hits
-    return seeds
-
-
-def get_seeds(hits):
-    temp1 = hits[hits.station == 0]
-    st0_hits = hits[hits.station == 0][['x', 'y', 'z']].values
-    temp2 = hits[hits.station == 1]
-    st1_hits = hits[hits.station == 1][['x', 'y', 'z']].values
-    # all possible combinations
-    idx0 = range(len(st0_hits))
-    idx1 = range(len(st1_hits))
-    idx_comb = itertools.product(idx0, idx1)
-    # unpack indices
-    idx0, idx1 = zip(*idx_comb)
-    idx0 = list(idx0)
-    idx1 = list(idx1)
-    # create seeds array
-    seeds = np.zeros((len(idx0), 2, 3))
-    seeds[:, 0, ] = st0_hits[idx0]
-    seeds[:, 1, ] = st1_hits[idx1]
-    return seeds
-
 def compute_metrics(real_tracks,
                     labels,
                     tracks_predicted_right,
@@ -52,6 +21,7 @@ def compute_metrics(real_tracks,
                     precision_list,
                     recall_list,
                     verbose=False):
+
     tracks_predicted_right += labels.sum()
     tracks_predicted_all += len(labels)
     if verbose:
@@ -63,6 +33,7 @@ def compute_metrics(real_tracks,
 
 
 def get_labels(gt_tracks, predicted_tracks, use_gpu=False):
+    """THIS IS A MESS!"""
     torch.cuda.empty_cache()
     if use_gpu:
         labels_for_ellipses = torch.zeros(len(predicted_tracks), dtype=torch.bool, device="cuda")
@@ -87,7 +58,6 @@ def get_labels(gt_tracks, predicted_tracks, use_gpu=False):
                        axis=-1), axis=-1)
             assert len(labels_for_ellipses) == len(expanded_xs), 'length of labels and xs is different!'
     return labels_for_ellipses
-
 
 def prolong(x, gru, nearest_hits_mask, nearest_hits, stations_gone, use_gpu=False):
     if use_gpu:
@@ -117,3 +87,4 @@ def prolong(x, gru, nearest_hits_mask, nearest_hits, stations_gone, use_gpu=Fals
                                                                      grus_for_prolong.shape[-2],
                                                                      grus_for_prolong.shape[-1])
     return prolonged_xs, prolonged_grus
+

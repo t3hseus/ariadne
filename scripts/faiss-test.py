@@ -23,7 +23,7 @@ from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2_1.model import TrackNetClassifier
 from ariadne.tracknet_v2_1.model_small import TrackNetClassifierSmall
 from ariadne.tracknet_v2_1.model_big import TrackNetClassifierBig
-from ariadne.utils import weights_update, find_nearest_hit, find_nearest_hit_old, find_nearest_hit_no_faiss,\
+from ariadne.utils import weights_update, find_nearest_hit, find_nearest_hit_old, find_hits_in_ellipse,\
     get_diagram_arr_linspace, draw_for_col, draw_from_data, get_checkpoint_path, load_data, draw_treshold_plots
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 

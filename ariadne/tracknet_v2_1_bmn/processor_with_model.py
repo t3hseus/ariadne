@@ -19,18 +19,8 @@ from ariadne.preprocessing import (
     ProcessedDataChunk,
     ProcessedData
 )
-from ariadne.utils import (brute_force_hits_two_first_stations_cart,
-    find_nearest_hit,
-    weights_update,
-    store_in_index,
-    filter_hits_in_ellipse,
-    search_in_index,
-    is_ellipse_intersects_station,
-    filter_hits_in_ellipses,
-    find_nearest_hit_no_faiss,
-    is_ellipse_intersects_station_with_border,
-    is_ellipse_intersects_station_tensor)
-from ariadne.inference_utils import *
+
+from ariadne.utils import *
 from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData, TracknetDataChunk
 from ariadne.tracknet_v2_bmn.processor_bmn import TrackNetBMNProcessor
 
@@ -220,12 +210,12 @@ class TrackNetV21BMNProcessorWithModel(TrackNetV21Processor):
                     if len(this_station_hits) == 0:
                         LOGGER.info('Have zero hits on this station! Skipping other stations')
                         break
-                   #nearest_hits_index = search_in_index(batch_prediction.detach().cpu().numpy()[:, :3],
+                   #nearest_hits_index = find_nearest_hits_in_index(batch_prediction.detach().cpu().numpy()[:, :3],
                     #                                     event_indexes[self.z_values[stations_gone]*1000],
                     #                                     60)
                     #nearest_hits = this_station_hits[nearest_hits_index]
 
-                    nearest_hits, in_ellipse_mask = find_nearest_hit_no_faiss(batch_prediction, torch.tensor(this_station_hits, device=batch_prediction.device), return_numpy=False)
+                    nearest_hits, in_ellipse_mask = find_hits_in_ellipse(batch_prediction, torch.tensor(this_station_hits, device=batch_prediction.device), return_numpy=False)
                     #print('ok')
                     #nearest_hits, in_ellipse_mask = filter_hits_in_ellipses(batch_prediction.cpu().detach().numpy(),
                     #                                                   nearest_hits,
