@@ -39,7 +39,6 @@ class TrackNetClassifier(nn.Module):
         gru_x: GRU output of base model
         coord_x: coordinates of predicted point (found as last hit) 
         """
-        # BxTxC -> BxCxT
         gru_features = gru_features.contiguous().view(gru_features.size()[0], -1)
         x1 = self.gru_feat_block(gru_features.float())
         x2 = self.coord_feat_block(coord_features.float())
