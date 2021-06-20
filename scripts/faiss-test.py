@@ -66,7 +66,7 @@ def faiss_test(tracknet_ckpt_path_dict,
                            checkpoint=torch.load(path_to_tracknet_ckpt, map_location=torch.device(DEVICE)))
     model.to(DEVICE)
     if use_classifier:
-        class_model = weights_update(model=TrackNetClassifier(),
+        class_model = weights_update(model=TrackNetClassifier(coord_size=2),
                                      checkpoint=torch.load(path_to_classifier_ckpt, map_location=torch.device(DEVICE)))
         class_model.to(DEVICE)
 
@@ -107,7 +107,8 @@ def faiss_test(tracknet_ckpt_path_dict,
             print(batch_target[batch_real_flag])
             print(test_pred[batch_real_flag])
             test_pred = test_pred[:, -1, :]
-            nearest_hits_index = search_in_index(test_pred.detach().cpu().numpy()[:, :2], last_station_index,1, n_dim=2)
+            last_gru_output = last_gru_output[:, -1, :]
+            nearest_hits_index = search_in_index(test_pred.detach().cpu().numpy()[:, :2], last_station_index, 1, n_dim=2)
             nearest_hits = all_last_y[nearest_hits_index]
             nearest_hits, is_point_in_ellipse = filter_hits_in_ellipses(test_pred.cpu().detach().numpy(),
                                                                     nearest_hits,
@@ -119,7 +120,7 @@ def faiss_test(tracknet_ckpt_path_dict,
 
             print(nearest_hits[batch_real_flag])
             print(is_point_in_ellipse[batch_real_flag])
-            last_gru_output = last_gru_output.unsqueeze(1).repeat(1, is_point_in_ellipse.shape[-1], 1, 1).reshape(-1, last_gru_output.shape[-1] )
+            last_gru_output = last_gru_output.unsqueeze(1).repeat(1, is_point_in_ellipse.shape[-1], 1, 1).reshape(-1, last_gru_output.shape[-1])
             nearest_points = nearest_hits.reshape(-1, nearest_hits.shape[-1])
             print(nearest_points.shape)
             print(is_point_in_ellipse.shape)

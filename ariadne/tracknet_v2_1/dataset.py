@@ -93,7 +93,6 @@ class TrackNetClassifierDataset(TrackNetV2Dataset):
                          use_index=use_index,
                          n_samples=n_samples)
         self.use_index = use_index
-        self.is_train = is_train
         self.data = load_data(input_dir, file_mask, n_samples)
 
     def __len__(self):

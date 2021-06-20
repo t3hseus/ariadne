@@ -48,6 +48,7 @@ def brute_force_hits_two_first_stations_cart(df, return_momentum=False):
     x = df[['x_left', 'y_left', 'z_left', 'x_right', 'y_right', 'z_right']].values.reshape((-1, 2, 3))
     return x, df_label
 
+
 def weights_update(model, checkpoint):
     model_dict = model.state_dict()
     pretrained_dict = checkpoint['state_dict']
@@ -122,6 +123,20 @@ def get_checkpoint_path(model_dir, version=None, checkpoint='latest'):
         list_of_files = glob.glob(f"{model_dir}/*.ckpt")
         checkpoint = max(list_of_files, key=os.path.getmtime).split('/')[-1]
     return f'{model_dir}/{checkpoint}'
+
+def get_tracks(df, columns=('x','y','z'), use_momentums=False):
+    tracks = df[df['track'] != -1].groupby('track')
+    multiplicity = tracks.ngroups
+    tracks = []
+    momentums = []
+    for i, track in tracks:
+        temp_track = track[columns].values
+        tracks.append(temp_track)
+        if use_momentums:
+            momentums.append(track[['px','py','pz']].values[0])
+    if use_momentums:
+        return tracks, multiplicity, momentums
+    return tracks, multiplicity
 
 def find_nearest_hit_no_faiss(ellipses, last_station_hits, return_numpy=False):
     torch.cuda.empty_cache()
@@ -286,6 +301,25 @@ def get_extreme_points_tensor(params):
     del half_widths
     return result
 
+def get_seeds(hits):
+    temp1 = hits[hits.station == 0]
+    st0_hits = hits[hits.station == 0][['x', 'y', 'z']].values
+    temp2 = hits[hits.station == 1]
+    st1_hits = hits[hits.station == 1][['x', 'y', 'z']].values
+    # all possible combinations
+    idx0 = range(len(st0_hits))
+    idx1 = range(len(st1_hits))
+    idx_comb = itertools.product(idx0, idx1)
+    # unpack indices
+    idx0, idx1 = zip(*idx_comb)
+    idx0 = list(idx0)
+    idx1 = list(idx1)
+    # create seeds array
+    seeds = np.zeros((len(idx0), 2, 3))
+    seeds[:, 0, ] = st0_hits[idx0]
+    seeds[:, 1, ] = st1_hits[idx1]
+    return seeds
+
 def is_ellipse_intersects_module(ellipse_params,
                                  module_params):
     # calculate top, bottom, left, right
@@ -413,6 +447,7 @@ def draw_for_col(tracks_real,
                  metric='efficiency',
                  style='boxplot',
                  verbose=True,
+                 treshold=None,
                  logger='ariadne.test'):
     if verbose:
         LOGGER = logging.getLogger(logger)
@@ -474,7 +509,12 @@ def draw_for_col(tracks_real,
             plt.tight_layout()
             plt.rcParams['savefig.facecolor'] = 'white'
             os.makedirs('../output', exist_ok=True)
-            plt.savefig(f'../output/{model_name}_img_track_{metric}_{col}_ev{total_events}_t{n_ticks}.png', dpi=300)
+            if treshold is None:
+                plt.savefig(
+                    f'../output/{model_name}_img_track_{metric}_{col}_ev{total_events}_t{n_ticks}.png',
+                    dpi=300)
+            else:
+                plt.savefig(f'../output/{model_name}_img_track_{metric}_{col}_ev{total_events}_t{n_ticks}_tr{treshold}.png', dpi=300)
             plt.show()
     else:
         raise NotImplementedError(f"Style of plotting '{style}' is not supported yet")
@@ -603,10 +643,62 @@ def one_hot_embedding(labels, num_classes):
     y = torch.eye(num_classes)  # [D,D]
     return y[labels]            # [N,D]
 
-def init_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+def prolong(x, gru, nearest_hits_mask, nearest_hits, stations_gone, use_gpu=False):
+    if use_gpu:
+        xs_for_prolong = x.unsqueeze(1).repeat((1, nearest_hits_mask.shape[-1], 1,1))
+        grus_for_prolong = gru.unsqueeze(1).repeat((1, nearest_hits_mask.shape[-1], 1,1))
+        prolonged_xs = torch.zeros((len(xs_for_prolong),
+                                    nearest_hits_mask.shape[-1],
+                                    xs_for_prolong.shape[2] + 1,
+                                    3))
+        prolonged_xs[:, :, :xs_for_prolong.shape[2], :] = xs_for_prolong
+        prolonged_xs[:, :, xs_for_prolong.shape[2], :] = nearest_hits
+        prolonged_xs = prolonged_xs[nearest_hits_mask].reshape(-1, stations_gone + 1, 3)
+        prolonged_grus = grus_for_prolong[nearest_hits_mask].reshape(-1,
+                                                                     grus_for_prolong.shape[-2],
+                                                                     grus_for_prolong.shape[-1])
+    else:
+        xs_for_prolong = np.expand_dims(x, 1).repeat(nearest_hits_mask.shape[-1], 1)
+        grus_for_prolong = np.expand_dims(gru.detach().cpu().numpy(), 1).repeat(nearest_hits_mask.shape[-1], 1)
+        prolonged_xs = np.zeros(
+            (len(xs_for_prolong), nearest_hits_mask.shape[-1], xs_for_prolong.shape[2] + 1, 3))
+
+        prolonged_xs[:, :, :xs_for_prolong.shape[2], :] = xs_for_prolong
+        prolonged_xs[:, :, xs_for_prolong.shape[2], :] = nearest_hits
+        prolonged_xs = prolonged_xs[nearest_hits_mask].reshape(-1, stations_gone + 1, 3)
+        prolonged_grus = grus_for_prolong[nearest_hits_mask].reshape(-1,
+                                                                     grus_for_prolong.shape[-2],
+                                                                     grus_for_prolong.shape[-1])
+    return prolonged_xs, prolonged_grus
+
+def get_labels(gt_tracks, predicted_tracks, use_gpu=False):
+    torch.cuda.empty_cache()
+    if use_gpu:
+        labels_for_ellipses = torch.zeros(len(predicted_tracks), dtype=torch.bool, device="cuda")
+        assert len(predicted_tracks) > 0, 'Can not compute labels for empty set of tracks!'
+        if len(gt_tracks) > 0:
+            expanded_tracks = gt_tracks.unsqueeze(0).repeat((len(predicted_tracks), 1, 1, 1))
+            expanded_xs = predicted_tracks.unsqueeze(1).repeat((1, expanded_tracks.shape[1], 1,1))
+            track_wise_labels = torch.all(torch.all(torch.isclose(expanded_tracks.float(), expanded_xs.float().to("cuda")), dim=-1), dim=-1)
+            track_found_something = torch.any(torch.all(torch.all(torch.isclose(expanded_tracks[:, :2].float(),
+                                                                                expanded_xs[:, :2].float().to("cuda")),
+                                                                  dim=-1),
+                                                        dim=-1),
+                                              dim=0)
+            labels_for_ellipses += torch.any(track_wise_labels, dim=-1)
+            gt_tracks_labels = torch.any(track_wise_labels,dim=0)
+            assert len(labels_for_ellipses) == len(expanded_xs), 'length of labels and xs is different!'
+        labels_for_ellipses_numpy = labels_for_ellipses.detach().cpu().numpy()
+        del labels_for_ellipses
+        return labels_for_ellipses_numpy, gt_tracks_labels, track_found_something
+    else:
+        labels_for_ellipses = np.zeros(len(predicted_tracks), dtype=bool)
+        assert len(predicted_tracks) > 0, 'Can not compute labels for empty set of tracks!'
+        if len(gt_tracks) > 0:
+            expanded_tracks = np.expand_dims(gt_tracks, 0).repeat(len(predicted_tracks), 0)
+            expanded_xs = np.expand_dims(predicted_tracks, 1).repeat(expanded_tracks.shape[1], 1)
+            labels_for_ellipses += np.any(
+                np.all(np.all(np.equal(expanded_tracks, expanded_xs), axis=-1),
+                       axis=-1), axis=-1)
+            assert len(labels_for_ellipses) == len(expanded_xs), 'length of labels and xs is different!'
+    return labels_for_ellipses
