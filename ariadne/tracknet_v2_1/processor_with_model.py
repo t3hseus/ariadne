@@ -75,7 +75,6 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
 
     def postprocess_chunks(self,
                            chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
-        init_seed(42)
         for chunk in chunks:
             if chunk.processed_object is None:
                 continue
