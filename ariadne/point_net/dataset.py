@@ -80,7 +80,7 @@ class SubsetWithItemLen(Subset, ItemLengthGetter):
         super(SubsetWithItemLen, self).__init__(dataset, indices)
 
     def get_item_length(self, item_index):
-        return len(self.dataset[self.indices[item_index]].X)
+        return len(self.dataset[self.indices[item_index]].X[0])
 
     def get_class(self, item_index):
         return self.dataset[self.indices[item_index]].track[0] > 0
@@ -135,6 +135,7 @@ class BatchBucketSampler(Sampler):
             except StopIteration:
                 if len(self.indices[_last_inserted]) < self.batch_size:
                     self.indices = self.indices[:-1]
+                    assert len(self.indices) > 0, f"indices will be empty. check batch size '{self.batch_size}' vs dataset size '{len(self.data_source)}'"
                 break
 
         if self.shuffle and (len(self.indices) // 5) > 0:

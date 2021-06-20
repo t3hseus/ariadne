@@ -145,7 +145,7 @@ class Transform(nn.Module):
             torch.transpose(input, 1, 2),
             transform_matrix
         ).transpose(1, 2)
-        return output, transform_matrix
+        return output#, transform_matrix
 
 
     def forward(self, input):
@@ -161,19 +161,19 @@ class Transform(nn.Module):
         local_features = input
 
         if self.input_transform is not None:
-            x, input_transform_mtrx = self._transform_features(x, self.input_transform)
+            x = self._transform_features(x, self.input_transform)
             x = self.input2features(x)
             local_features = x
 
         if self.feature_transform is not None:
-            x, feature_transform_mtrx = self._transform_features(x, self.feature_transform)
+            x = self._transform_features(x, self.feature_transform)
             local_features = x
 
         global_features = self.top_layers(x)
         # repeat global features for each local feature
         #global_features = global_features.repeat(local_features.size(-1), 1, 1).permute(1, 2, 0)
         #output = torch.cat([local_features, global_features], 1)
-        return global_features, input_transform_mtrx, feature_transform_mtrx
+        return global_features#, input_transform_mtrx, feature_transform_mtrx
 
 @gin.configurable
 class PointNet(nn.Module):
@@ -211,14 +211,15 @@ class PointNet(nn.Module):
         #     self.classifier = nn.Conv1d(in_features, classes, 1)
 
     def forward(self, x):
-        x, input_transform_mtrx, feature_transform_mtrx = self.transform(x)
+        #x, input_transform_mtrx, feature_transform_mtrx = self.transform(x)
+        x = self.transform(x)
         x = self.features(x)
         #x = self.top_layers(x)
         #output = self.classifier(x)
         # (bsz, classes, n_points) -> (bsz, n_points, classes)
         #output = output.transpose(2,1).contiguous()
 
-        return x.squeeze(-1), input_transform_mtrx, feature_transform_mtrx
+        return [x]#, input_transform_mtrx, feature_transform_mtrx
 
 if __name__ == '__main__':
     # remove this after merging

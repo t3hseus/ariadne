@@ -26,14 +26,14 @@ class PointNetWeightedBCE(nn.Module):
 
 @gin.configurable
 class PointNetWeightedDistloss(nn.Module):
-    def __init__(self, lambda1, lambda2):
+    def __init__(self):
         super().__init__()
-        self.lambda1 = lambda1
-        self.lambda2 = lambda2
-        self.MIN_EPS = 0.01
 
     def forward(self, preds, target):
-        return torch.norm(preds - target)
+        #dist = torch.abs(target - preds[0])
+        #return dist.sum()
+        return torch.square((preds[0] - target)).sum()#F.mse_loss(preds[0], target, reduction='sum')
+        #return F.binary_cross_entropy((preds[0] > 0.3).float(), (target > 0).float(), reduction='none')
         # return torch.abs(1 - torch.cosine_similarity(preds, target).sum()) * torch.norm(preds - target)
         # return (1/mul) * torch.norm(preds - target) + big + less
         # return torch.nn.functional.mse_loss(preds, target)#torch.pairwise_distance(preds, target).sum()

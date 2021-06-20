@@ -1,7 +1,7 @@
 import gin
 import torch
 from pytorch_lightning.metrics import functional as metrics
-
+from ariadne.metrics import _compute_metric
 from ariadne.point_net.model import MIN_EPS_HOLDER
 
 # TODO: update all metrics!!!
@@ -149,11 +149,6 @@ def wrong_dist(preds, target):
     return only_true.double().mean()
 
 
-@gin.configurable('point_net_dist.norm', allowlist=[])
-def norm(preds, target):
-    return torch.norm(preds - target)
-
-
 @gin.configurable('point_net_dist.count_in_eps', allowlist=[])
 def count_in_eps(preds, target):
     return torch.div((target < MIN_EPS_HOLDER.MIN_EPS).sum(), (target == 0).sum().double())
@@ -204,3 +199,20 @@ def f1_score_dist(preds, target):
 @gin.configurable('point_net_dist.accuracy', allowlist=[])
 def accuracy_dist(preds, target):
     return metrics.accuracy((preds < MIN_EPS_HOLDER.MIN_EPS / 2).int(), (target == 0.0).int(), num_classes=2)
+
+@gin.configurable('point_net_dist.norm', allowlist=[])
+def norm(preds, target):
+    return torch.norm(preds[0] - target)
+
+
+@gin.configurable('point_net_count.custom_precision')
+def custom_precision(preds, target):
+    pred_bool = preds[0] > 1.9
+    target_bool = target > 1
+    return metrics.precision(pred_bool, target_bool)
+
+@gin.configurable('point_net_count.custom_recall')
+def custom_recall(preds, target):
+    pred_bool = preds[0] > 1.9
+    target_bool = target > 1
+    return metrics.recall(pred_bool, target_bool)

@@ -256,13 +256,14 @@ class PointNet_ProcessorCBM(PointNet_ProcessorBMN7):
         #chunk_df = chunk_df.sample(frac=1).reset_index(drop=True)
 
         out = chunk_df[self.coord_cols].values.T
-        is_true = chunk_df[['ntrack']].values[0] >= 2
+        count = chunk_df[['ntrack']].values[0]
+        #assert count[0] <=4
         out = Points(
             X=out.astype(np.float32),
-            track=np.array([is_true]).astype(np.float32).squeeze(-1)
+            track=(np.array([count]).astype(np.float32).squeeze(-1))
         )
         self.mean_hits.append(len(chunk_df))
-        return TransformedPointsDataChunk(out, output_name, is_true)
+        return TransformedPointsDataChunk(out, output_name, count >= 2)
 
 
     def forward_fields(self):
