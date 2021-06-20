@@ -157,7 +157,6 @@ class TrackNetProcessorWithMask(DataProcessor):
                          chunk: TracknetDataChunk,
                          idx: str) -> ProcessedTracknetDataChunk:
         chunk_df = chunk.df_chunk_data
-
         if chunk_df.empty:
             return ProcessedTracknetDataChunk(None, '')
         chunk_id = int(chunk_df.event.values[0])
@@ -167,11 +166,18 @@ class TrackNetProcessorWithMask(DataProcessor):
 
     def postprocess_chunks(self,
                            chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
+
         for chunk in chunks:
+
             if chunk.processed_object is None:
                 continue
             chunk_data_x = []
             df = chunk.processed_object
+            stations = df.groupby('station').size().max()
+            # max_station = max(stations)
+            if stations > 1000:
+                chunk.processed_object = None
+                continue
             grouped_df = df[df['track'] != -1].groupby('track')
             for i, data in grouped_df:
                 chunk_data_x.append(data[list(self.columns)].values)

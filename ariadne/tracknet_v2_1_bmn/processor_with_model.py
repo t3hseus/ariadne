@@ -19,15 +19,18 @@ from ariadne.preprocessing import (
     ProcessedDataChunk,
     ProcessedData
 )
-from ariadne.utils import brute_force_hits_two_first_stations_cart, \
-    find_nearest_hit, \
-    weights_update, \
-    store_in_index,\
-    filter_hits_in_ellipse,\
-    search_in_index, \
-    is_ellipse_intersects_station,\
-    filter_hits_in_ellipses
-
+from ariadne.utils import (brute_force_hits_two_first_stations_cart,
+    find_nearest_hit,
+    weights_update,
+    store_in_index,
+    filter_hits_in_ellipse,
+    search_in_index,
+    is_ellipse_intersects_station,
+    filter_hits_in_ellipses,
+    find_nearest_hit_no_faiss,
+    is_ellipse_intersects_station_with_border,
+    is_ellipse_intersects_station_tensor)
+from ariadne.inference_utils import *
 from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData, TracknetDataChunk
 from ariadne.tracknet_v2_bmn.processor_bmn import TrackNetBMNProcessor
 
@@ -74,77 +77,13 @@ class TrackNetV21BMNProcessorWithModel(TrackNetV21Processor):
         self.model.to(self.device)
         self.stations_sizes = np.array(station_params)
         self.max_n_stations = len(self.stations_sizes)
-        self.z_values = [15.229, 18.499, 21.604, 39.702, 64.535, 112.649, 135.330, 160.6635, 183.668]
+        #self.z_values = [15.229, 18.499, 21.604, 39.702, 64.535, 112.649, 135.330, 160.6635, 183.668]
+        self.z_values = [12.344, 15.614, 24.499, 39.702, 64.535, 112.649, 135.330, 160.6635, 183.668]
         self.z_values = self.z_values[9-self.max_n_stations:]
         self.det_indices = [0, 1]
         self.min_len = min_len
 
-    def get_seeds_with_vertex(self, hits):
-        # first station hits
-        st0_hits = hits[hits.station == 0][['x', 'y', 'z']].values
-        vertex = hits[(hits.station == 0) & (hits.track != -1)][['vx', 'vy', 'vz']][0]  # change to mode
-        # create seeds
-        seeds = np.zeros((len(st0_hits), 2, 3))
-        seeds[:, 0 ] = vertex
-        seeds[:, 1 ] = st0_hits
-        return seeds
 
-    def get_seeds(self, hits):
-        st0_hits = hits[hits.station == 0][['x', 'y', 'z']].values
-        st1_hits = hits[hits.station == 1][['x', 'y', 'z']].values
-        # all possible combinations
-        idx0 = range(len(st0_hits))
-        idx1 = range(len(st1_hits))
-        idx_comb = itertools.product(idx0, idx1)
-        # unpack indices
-        idx0, idx1 = zip(*idx_comb)
-        idx0 = list(idx0)
-        idx1 = list(idx1)
-        # create seeds array
-        seeds = np.zeros((len(idx0), 2, 3))
-        seeds[:, 0, ] = st0_hits[idx0]
-        seeds[:, 1, ] = st1_hits[idx1]
-        return seeds
-
-    def compute_metrics(self, real_tracks,
-                        labels,
-                        tracks_predicted_right,
-                        tracks_predicted_all,
-                        precision,
-                        recall,
-                        verbose=False):
-        tracks_predicted_right += labels.sum()
-        tracks_predicted_all += len(labels)
-        if verbose:
-             LOGGER.info(labels.sum().astype("float") / len(labels))
-        precision.append(labels.sum().astype("float") / len(labels))
-        if len(real_tracks) > 0:
-            recall.append(labels.sum().astype("float") / len(real_tracks))
-        return tracks_predicted_right, tracks_predicted_all
-
-    def get_labels(self, gt_tracks, predicted_tracks):
-        labels_for_ellipses = np.zeros(len(predicted_tracks), dtype=bool)
-        assert len(predicted_tracks) > 0, 'Can not compute labels for empty set of tracks!'
-        if len(gt_tracks) > 0:
-            expanded_tracks = np.expand_dims(gt_tracks, 0).repeat(len(predicted_tracks), 0)
-            expanded_xs = np.expand_dims(predicted_tracks, 1).repeat(expanded_tracks.shape[1], 1)
-            labels_for_ellipses += np.any(
-                np.all(np.all(np.equal(expanded_tracks, expanded_xs), axis=-1),
-                       axis=-1), axis=-1)
-            assert len(labels_for_ellipses) == len(expanded_xs), 'length of labels and xs is different!'
-        return labels_for_ellipses
-
-    def prolong(self, x, gru, nearest_hits_mask, nearest_hits, stations_gone):
-        xs_for_prolong = np.expand_dims(x, 1).repeat(nearest_hits_mask.shape[-1], 1)
-        grus_for_prolong = np.expand_dims(gru.detach().cpu().numpy(), 1).repeat(nearest_hits_mask.shape[-1], 1)
-        prolonged_xs = np.zeros(
-            (len(xs_for_prolong), nearest_hits_mask.shape[-1], xs_for_prolong.shape[2] + 1, 3))
-        prolonged_xs[:, :, :xs_for_prolong.shape[2], :] = xs_for_prolong
-        prolonged_xs[:, :, xs_for_prolong.shape[2], :] = nearest_hits
-        prolonged_xs = prolonged_xs[nearest_hits_mask].reshape(-1, stations_gone + 1, 3)
-        prolonged_grus = grus_for_prolong[nearest_hits_mask].reshape(-1, grus_for_prolong.shape[-2],
-                                                                     grus_for_prolong.shape[-1])
-        return prolonged_xs, prolonged_grus
 
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
         if len(self.det_indices) > 1:
@@ -176,206 +115,246 @@ class TrackNetV21BMNProcessorWithModel(TrackNetV21Processor):
         self.chunks.append(chunk_id)
         return ProcessedTracknetDataChunk(chunk_df, output_name, chunk_id)
 
+    def initialize_all(self):
+        self.track_right_pred_nums = {i: 0 for i in range(3, self.max_n_stations + 1)}
+        self.track_all_pred_nums = {i: 0 for i in range(3, self.max_n_stations + 1)}
+        self.track_count_vs_len = {i: 0 for i in range(3, self.max_n_stations + 1)}
+        self.track_precision_vs_len_event = {i: [] for i in range(3, self.max_n_stations + 1)}
+        self.track_recall_vs_len_event = {i: [] for i in range(3, self.max_n_stations + 1)}
+        self.track_hit_eff = {i: 0 for i in range(3, self.max_n_stations + 1)}
+        self.precisions_vs_multiplicity = {i: [] for i in range(100)}
+        self.recalls_vs_multiplicity = {i: [] for i in range(100)}
+        self.hit_eff_vs_multiplicity = {i: [] for i in range(100)}
+        self.recalls = []
+        self.candidate_counts = []
+        self.candidate_3_counts = []
+        self.multiplicities = []
+        self.num_hits_in_events = []
+
+
+    def get_tracks(self, df):
+        tracks = df[df['track'] != -1].groupby('track')
+        multiplicity = tracks.ngroups
+        self.multiplicities.append(multiplicity)
+        self.num_hits_in_events.append(len(df))
+        tracks_vs_len = {3: [], 4: [], 5: [], 6: [], 7: [], 8: [], 9: []}
+        all_tracks = []
+        for i, track in tracks:
+            temp_track = track[['x', 'y', 'z']].values
+            if len(temp_track) >= self.min_len:
+                tracks_vs_len[len(temp_track)].append(temp_track)
+                self.track_count_vs_len[len(temp_track)] += 1
+                all_tracks.append(temp_track)
+        for stations_in_track, this_track_list in tracks_vs_len.items():
+            if len(this_track_list) > 0:
+                tracks_vs_len[stations_in_track] = np.stack(this_track_list, 0)
+        return tracks_vs_len, multiplicity
+
+
     def postprocess_chunks(self,
                            chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
-        track_right_pred_nums = {i: 0 for i in range(3,self.max_n_stations+1)}
-        track_all_pred_nums = {i: 0 for i in range(3,self.max_n_stations+1)}
-        track_count_vs_len = {i: 0 for i in range(3,self.max_n_stations+1)}
-        track_precision_vs_len_event = {i: [] for i in range(3,self.max_n_stations+1)}
-        track_recall_vs_len_event = {i: [] for i in range(3,self.max_n_stations+1)}
-        track_hit_eff = {i: 0 for i in range(3,self.max_n_stations+1)}
-        precisions_vs_multiplicity = {i: [] for i in range(100)}
-        recalls_vs_multiplicity = {i: [] for i in range(100)}
-        hit_eff_vs_multiplicity = {i: [] for i in range(100)}
-        candidate_counts = []
-        candidate_3_counts = []
+        self.initialize_all()
         for chunk in chunks:
+            torch.cuda.empty_cache()
             if chunk.processed_object is None:
+                continue
+            if chunk.id == 343 or chunk.id == 560 or chunk.id == 621 or chunk.id == 675:
+                chunk.processed_object = None
                 continue
             LOGGER.info(f'=====> id {chunk.id}')
             df = chunk.processed_object
-            tracks = df[df['track'] != -1].groupby('track')
-            multiplicity = tracks.ngroups
+            tracks_vs_len, multiplicity = self.get_tracks(df)
             if multiplicity == 0:
                 LOGGER.warning(f'Multiplicity in chunk #{chunk.id} is 0! This chunk is skipped')
                 chunk.processed_object = None
                 continue
-            tracks_vs_len = {3: [], 4: [], 5: [], 6: [], 7: [], 8:[], 9: []}
-            track_indices = {3: [], 4: [], 5: [], 6: [], 7: [], 8:[], 9: []}
-            all_tracks = []
-            for i, track in tracks:
-                temp_track = track[['x', 'y', 'z']].values
-                if len(temp_track) >= self.min_len:
-                    tracks_vs_len[len(temp_track)].append(temp_track)
-                    track_count_vs_len[len(temp_track)] += 1
-                    all_tracks.append(temp_track)
-            for stations_in_track, this_track_list in tracks_vs_len.items():
-                if len(this_track_list) > 0:
-                    tracks_vs_len[stations_in_track] = np.stack(this_track_list, 0)
-
-            chunk_data_x = self.get_seeds(df)
-            candidate_counts.append(len(chunk_data_x))
+            stations = df.groupby('station').size().max()
+            #max_station = max(stations)
+            if stations > 1000:
+                chunk.processed_object = None
+                continue
+            chunk_data_x = get_seeds(df)
+            self.candidate_counts.append(len(chunk_data_x))
             chunk_data_len = np.full(len(chunk_data_x), 2)
             chunk_data_event = np.full(len(chunk_data_x), chunk.id)
             event_hits = np.ascontiguousarray(df[['x', 'y', 'z']].values)
             event_hits[:, -1] *= 1000.
-            event_index = store_in_index(event_hits)  # z is last!
-            for i, track in tracks:
-                temp_track = track[['x', 'y', 'z']].values
-                temp_track[:, -1] *= 1000.
+            event_indexes = {}
+            for z_value in np.unique(event_hits[:,2]):
+                event_indexes[z_value] = store_in_index(event_hits[event_hits[:,2] == z_value])  # z is last!
             gru_candidates = []
             candidate_labels = []
-            track_hit_labels = []
             x_candidates = []
-            max_batch_size = 10000
-            if chunk.id == 2:
-                temp_track = torch.tensor([[[ 3.382228,   4.909874,  21.604   ],
-                                         [  5.183506,  10.62523,   39.702   ],
-                                         [  8.42668 ,  19.67131 ,  64.535   ],
-                                         [ 16.08211 ,  36.84681 , 112.649   ]
-                    #[[ -4.095308,    2.703733,   21.604  ],
-                        #                    [ -6.530911,   6.497071,  39.702 ],
-                                            # [ -9.494087,  12.82823,   64.535   ],
-                                            # [-10.98873,   24.71189,  112.649   ],
-                                            # [ -9.889756,  30.28516,  135.33    ],
-                                            #  [ -7.072373,  36.8528,   160.6635  ]
-                                            ]])
-                this_chunk_prediction, this_chunk_gru = self.model(torch.tensor(temp_track).to(self.device),
-                                                                   torch.tensor([temp_track.shape[1]],dtype=torch.int64).to(self.device),
-                                                                   return_gru_states=True)
-
-                new_pred = torch.full((len(this_chunk_prediction), 5), self.z_values[(temp_track.shape[1])] * 1000.)
-                new_pred[:, :2] = this_chunk_prediction[:, -1, :2]
-                new_pred[:, 3:] = this_chunk_prediction[:, -1, 2:]
-                nearest_hits_index = search_in_index(new_pred.detach().cpu().numpy()[:, :3], event_index, 15)
-                nearest_hits = event_hits[nearest_hits_index]
-                h, el = filter_hits_in_ellipses(new_pred.cpu().detach().numpy(), nearest_hits, np.array(0),
-                                        filter_station=True, z_last=True, find_n=1)
-                #is_on_station = is_ellipse_intersects_station(this_chunk_prediction[0, -1].tolist(), self.stations_sizes[(temp_track.shape[1])].flatten().tolist())
-
-
+            max_batch_size = 256
             for stations_gone in range(2, self.max_n_stations):
                 num_batches = int(len(chunk_data_x) / max_batch_size) + 1
+                num_right_batches = 0
+                num_all_batches = 0
                 next_stage_xs = []
                 next_stage_lens = []
                 if len(chunk_data_x) == 0:
                     LOGGER.info('Have zero ellipces on this station! Skipping other stations')
                     break
+                print(num_batches)
+                labels_for_empty_el_batch = []
+                labels_for_full_el_batch = []
                 for batch_num in range(num_batches):
                     min_i = max_batch_size*batch_num
                     max_i = min(max_batch_size + min_i, len(chunk_data_x))
                     if min_i==max_i:
                         LOGGER.info('Have zero ellipces on this station! Skipping other stations')
                         break
-                    this_batch_x = chunk_data_x[min_i: max_i]
+                    this_batch_x =torch.tensor( chunk_data_x[min_i: max_i]).to(self.device)
                     this_batch_len = chunk_data_len[min_i: max_i]
-                    batch_prediction, batch_gru = self.model(torch.tensor(this_batch_x).to(self.device),
-                                                                  torch.tensor(this_batch_len, dtype=torch.int64).to(self.device),
-                                                                  return_gru_states=True)
-                    new_pred = torch.full((len(batch_prediction), 5), self.z_values[stations_gone]*1000.)
+                    batch_prediction, batch_gru = self.model(this_batch_x,
+                                                             torch.tensor(this_batch_len, dtype=torch.int64).to(self.device),
+                                                             return_gru_states=True)
+                    new_pred = torch.full((len(batch_prediction), 5), self.z_values[stations_gone]*1000., device=self.device)
                     new_pred[:, :2] = batch_prediction[:, -1, :2]
                     new_pred[:, 3:] = batch_prediction[:, -1, 2:]
                     batch_prediction = new_pred
-                    nearest_hits_index = search_in_index(batch_prediction.detach().cpu().numpy()[:, :3], event_index, 15)
-                    nearest_hits = event_hits[nearest_hits_index]
-                    nearest_hits, in_ellipse_mask = filter_hits_in_ellipses(batch_prediction.cpu().detach().numpy(),
-                                                                       nearest_hits,
-                                                                       nearest_hits_index,
-                                                                       filter_station=True,
-                                                                       z_last=True,
-                                                                       find_n=nearest_hits_index.shape[1])
+                    #print(self.z_values[stations_gone]*1000)
+                    this_station_hits = event_hits[event_hits[:, 2] == self.z_values[stations_gone] * 1000.]
+                    if batch_num == 0:
+                        print(f'station {stations_gone+1}, on this station: {len(this_station_hits)} hits' )
+                    if len(this_station_hits) == 0:
+                        LOGGER.info('Have zero hits on this station! Skipping other stations')
+                        break
+                   #nearest_hits_index = search_in_index(batch_prediction.detach().cpu().numpy()[:, :3],
+                    #                                     event_indexes[self.z_values[stations_gone]*1000],
+                    #                                     60)
+                    #nearest_hits = this_station_hits[nearest_hits_index]
 
+                    nearest_hits, in_ellipse_mask = find_nearest_hit_no_faiss(batch_prediction, torch.tensor(this_station_hits, device=batch_prediction.device), return_numpy=False)
+                    #print('ok')
+                    #nearest_hits, in_ellipse_mask = filter_hits_in_ellipses(batch_prediction.cpu().detach().numpy(),
+                    #                                                   nearest_hits,
+                    #                                                  nearest_hits_index,
+                    #                                                   filter_station=True,
+                    #                                                   z_last=True,
+                    #                                                  find_n=nearest_hits_index.shape[1])
+#
                     nearest_hits[:, :, -1] /= 1000.
                     station_mask = (nearest_hits[:, :, -1] == self.z_values[stations_gone])
-                    nearest_hits_mask = in_ellipse_mask * (station_mask)
+                    nearest_hits_mask = in_ellipse_mask #* (station_mask)
                     # here empty ellipses and all inputs for them are saved
-                    empty_ellipses_mask = (nearest_hits_mask.sum(axis=-1) == 0) # if nothing is found in ellipse
-                    empty_ellipses = batch_prediction[empty_ellipses_mask].detach().cpu().numpy()
+                    empty_ellipses_mask = (nearest_hits_mask.sum(dim=-1) == 0) # if nothing is found in ellipse
+                    empty_ellipses = batch_prediction[empty_ellipses_mask]#.detach().cpu().numpy()
                     empty_xs = this_batch_x[empty_ellipses_mask]
-                    empty_grus = batch_gru[empty_ellipses_mask].detach().cpu().numpy()
+                    empty_grus = batch_gru[empty_ellipses_mask]#.detach().cpu().numpy()
                     #here filtered candidates are prolonged and all_data is saved
-                    prolonged_batch_xs, prolonged_grus = self.prolong(this_batch_x,
-                                                                      batch_gru,
-                                                                      nearest_hits_mask,
-                                                                      nearest_hits,
-                                                                      stations_gone)
+                    #prolonged_batch_xs_1, prolonged_grus_0 = prolong(this_batch_x.detach().cpu().numpy(),
+                    #                                                  batch_gru,
+                    #                                                  nearest_hits_mask.detach().cpu().numpy(),
+                    #                                                  nearest_hits.detach().cpu().numpy(),
+                    #                                                  stations_gone)
+                    prolonged_batch_xs, prolonged_grus = prolong(this_batch_x,
+                                                                 batch_gru,
+                                                                 nearest_hits_mask,
+                                                                 nearest_hits,
+                                                                 stations_gone,
+                                                                 use_gpu=True)
                     next_stage_xs.append(prolonged_batch_xs)
                     next_stage_lens.append(np.full(len(prolonged_batch_xs), stations_gone + 1))
-                    if stations_gone > 4:
-                         use_empty_ellipses  = []
+                    if stations_gone > 3:
+                         use_empty_ellipses = []
                          empty_ellipses_station_intersections = []
-                         for el_num, ellipse in enumerate(empty_ellipses):
-                             orig_ellipse = np.concatenate((ellipse[:2], ellipse[3:]), 0)
-                             is_ellipse_on_station = is_ellipse_intersects_station(orig_ellipse.tolist(),
-                                                                                   self.stations_sizes[stations_gone].tolist())
-                             empty_ellipses_station_intersections.append(is_ellipse_on_station)
-                             use_empty_ellipses.append(is_ellipse_on_station == False) # вот тут я убрала фильтр по станции!
+                         orig_ellipses = torch.zeros((len(empty_ellipses), 4))
+                         orig_ellipses[:, :2] = empty_ellipses[:, :2]
+                         orig_ellipses[:, 2:] = empty_ellipses[:, 3:]
+                         #are_ellipses_on_station = is_ellipse_intersects_station_tensor(orig_ellipses,
+                         #                                                               self.stations_sizes[stations_gone].tolist())
+                         #use_empty_ellipses.append(True)  # вот тут я убрала фильтр по станции!
+                         use_empty_ellipses = torch.ones(len(orig_ellipses), dtype=torch.bool)
                          empty_xs = empty_xs[use_empty_ellipses]
                          empty_grus = empty_grus[use_empty_ellipses]
                          if len(empty_xs) > 0:
-                             labels_for_empty_ellipses = self.get_labels(tracks_vs_len[stations_gone],
-                                                                           empty_xs)
-                             if (stations_gone == 3):
-                                 candidate_3_counts.append(len(empty_xs))
-                             track_right_pred_nums[stations_gone], track_all_pred_nums[stations_gone] = self.compute_metrics(tracks_vs_len[stations_gone],
-                                                  labels_for_empty_ellipses,
-                                                  track_right_pred_nums[stations_gone],
-                                                  track_all_pred_nums[stations_gone],
-                                                  track_precision_vs_len_event[stations_gone],
-                                                  track_recall_vs_len_event[stations_gone])
-                             gru_candidates.extend(empty_grus[:, -2])  # because we don't need gru for empty ellipse
+                             labels_for_empty_ellipses = get_labels(torch.tensor(tracks_vs_len[stations_gone],
+                                                                                 device=self.device),
+                                                                    empty_xs,
+                                                                    use_gpu=True)
+                             labels_for_empty_el_batch.append(labels_for_empty_ellipses)
+                             gru_candidates.extend(empty_grus[:, -2].detach().cpu().numpy())  # because we don't need gru for empty ellipse
                              candidate_labels.extend(labels_for_empty_ellipses)
-                             x_candidates.extend(empty_xs[:, -1])
+                             x_candidates.extend(empty_xs[:, -1].detach().cpu().numpy())
+                             del empty_xs
 
                     if (stations_gone == (self.max_n_stations-1)): # if we are predicting for last station
                         if len(prolonged_batch_xs) > 0:  # now we prolong candidates with all hits *in* ellipses
-                            labels_for_ellipses = self.get_labels(tracks_vs_len[stations_gone + 1], prolonged_batch_xs)
-                            track_right_pred_nums[stations_gone+1], track_all_pred_nums[stations_gone+1] =\
-                                self.compute_metrics(tracks_vs_len[stations_gone + 1],
-                                                 labels_for_ellipses,
-                                                 track_right_pred_nums[stations_gone + 1],
-                                                 track_all_pred_nums[stations_gone + 1],
-                                                 track_precision_vs_len_event[stations_gone + 1],
-                                                 track_recall_vs_len_event[stations_gone + 1])
+                            labels_for_ellipses = get_labels(torch.tensor(tracks_vs_len[stations_gone + 1],
+                                                                          device=self.device),
+                                                             prolonged_batch_xs,
+                                                             use_gpu=True)
+                            labels_for_full_el_batch.append(labels_for_ellipses)
                             gru_candidates.extend(prolonged_grus[:, -1])  # because we need gru for predicted ellipse
                             candidate_labels.extend(labels_for_ellipses)
                             x_candidates.extend(prolonged_batch_xs[:, -1])
+                            del prolonged_batch_xs
+
+                if len(labels_for_empty_el_batch) > 0:
+                    labels_for_empty_el_batch = np.concatenate(labels_for_empty_el_batch)
+                    self.track_right_pred_nums[stations_gone], self.track_all_pred_nums[stations_gone] = \
+                        compute_metrics(tracks_vs_len[stations_gone],
+                                        labels_for_empty_el_batch,
+                                        self.track_right_pred_nums[stations_gone],
+                                        self.track_all_pred_nums[stations_gone],
+                                        self.track_precision_vs_len_event[stations_gone],
+                                        self.track_recall_vs_len_event[stations_gone])
+                if len(labels_for_full_el_batch) > 0:
+                    labels_for_full_el_batch = np.concatenate(labels_for_full_el_batch)
+                    self.track_right_pred_nums[stations_gone+1], self.track_all_pred_nums[stations_gone+1] = compute_metrics(
+                        tracks_vs_len[stations_gone+1],
+                        labels_for_full_el_batch,
+                        self.track_right_pred_nums[stations_gone+1],
+                        self.track_all_pred_nums[stations_gone+1],
+                        self.track_precision_vs_len_event[stations_gone+1],
+                        self.track_recall_vs_len_event[stations_gone+1])
                 if len(next_stage_xs) > 1:
                     chunk_data_x = np.concatenate(next_stage_xs, 0)
                     chunk_data_len = np.concatenate(next_stage_lens, 0)
                 else:
-                    chunk_data_x = next_stage_xs[0]
-                    chunk_data_len = next_stage_lens[0]
-            print(np.sum(candidate_labels)/len(candidate_labels))
-            recalls_vs_multiplicity[multiplicity].append(np.sum(candidate_labels) / multiplicity)
-            precisions_vs_multiplicity[multiplicity].append(np.sum(candidate_labels) / len(candidate_labels))
+                    try:
+                        chunk_data_x = next_stage_xs[0]
+                        chunk_data_len = next_stage_lens[0]
+                    except:
+                        continue
+            print('recall in this event is: ', np.sum(candidate_labels)/multiplicity)
+            self.recalls.append(np.sum(candidate_labels)/multiplicity)
+            print(np.sum(candidate_labels), multiplicity)
+            print('Running mean recall is: ', np.mean(self.recalls))
+            print(self.track_precision_vs_len_event)
+            print(self.track_recall_vs_len_event)
+            print(self.track_right_pred_nums)
+            print(self.track_all_pred_nums)
+            self.recalls_vs_multiplicity[multiplicity].append(np.sum(candidate_labels) / multiplicity)
+            self.precisions_vs_multiplicity[multiplicity].append(np.sum(candidate_labels) / len(candidate_labels))
             chunk_data = {'x': {'grus': gru_candidates, 'x': x_candidates},
                           'label': candidate_labels,
                           'event': chunk.id,
                           'multiplicity': multiplicity}
             chunk.processed_object = chunk_data
-        print(candidate_counts)
-        print(candidate_3_counts)
         precision_lens = {}
         recall_lens = {}
-        print(track_precision_vs_len_event)
-        print(track_recall_vs_len_event)
-        for stations_gone in track_right_pred_nums.keys():
-            if track_all_pred_nums[stations_gone] > 0:
-                precision_lens[stations_gone] = track_right_pred_nums[stations_gone] / (track_all_pred_nums[stations_gone] + 1e-6)
-                recall_lens[stations_gone] = track_right_pred_nums[stations_gone] / (track_count_vs_len[stations_gone] + 1e-6)
-                track_precision_vs_len_event[stations_gone] = np.mean(track_precision_vs_len_event[stations_gone])
-                track_recall_vs_len_event[stations_gone] = np.mean(track_recall_vs_len_event[stations_gone])
+        print(self.track_precision_vs_len_event)
+        print(self.track_recall_vs_len_event)
+        print(self.track_right_pred_nums)
+        print(self.track_all_pred_nums)
+        print(self.track_count_vs_len)
+        for stations_gone in self.track_right_pred_nums.keys():
+            if self.track_all_pred_nums[stations_gone] > 0:
+                precision_lens[stations_gone] = self.track_right_pred_nums[stations_gone] / (self.track_all_pred_nums[stations_gone] + 1e-6)
+                recall_lens[stations_gone] = self.track_right_pred_nums[stations_gone] / (self.track_count_vs_len[stations_gone] + 1e-6)
+                self.track_precision_vs_len_event[stations_gone] = np.mean(self.track_precision_vs_len_event[stations_gone])
+                self.track_recall_vs_len_event[stations_gone] = np.mean(self.track_recall_vs_len_event[stations_gone])
         LOGGER.info(f'precision vs len {precision_lens}')
         LOGGER.info(f'recall vs len {recall_lens}')
-        LOGGER.info(f'precision event-wise vs len {track_precision_vs_len_event}')
-        LOGGER.info(f'recall event-wise vs len {track_recall_vs_len_event}')
-        LOGGER.info(f'hit accuracy vs len { track_hit_eff}')
-
-        for i in precisions_vs_multiplicity.keys():
-            if len(precisions_vs_multiplicity[i]) > 0:
-                LOGGER.info(f'Mean precision for mult {i}: {np.mean(precisions_vs_multiplicity[i])}, '
-                      f'Mean recall: {np.mean(recalls_vs_multiplicity[i])}')
+        LOGGER.info(f'precision event-wise vs len {self.track_precision_vs_len_event}')
+        LOGGER.info(f'recall event-wise vs len {self.track_recall_vs_len_event}')
+        LOGGER.info(f'hit accuracy vs len { self.track_hit_eff}')
+        for i in self.precisions_vs_multiplicity.keys():
+            if len(self.precisions_vs_multiplicity[i]) > 0:
+                LOGGER.info(f'Mean precision for mult {i}: {np.mean(self.precisions_vs_multiplicity[i])}, '
+                      f'Mean recall: {np.mean(self.recalls_vs_multiplicity[i])}')
         return ProcessedTracknetData(chunks, chunks[0].output_name)
 
 

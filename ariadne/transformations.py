@@ -548,6 +548,44 @@ class DropSpinningTracks(BaseFilter):
                f'Number of broken tracks: {self.get_num_broken()} \n')
 
 @gin.configurable
+class UnspinSpinningTracks(BaseFilter):
+    """Drops tracks with points on same stations (e.g. (2,2,2) or (1,2,1)). If z values on station are
+      # Args:
+        keep_fakes (bool, True by default ): If True, points with no tracks are preserved, else they are deleted from data.
+        station_col (str, 'station' by default): Event column in data
+        track_col(str, 'track' by default): Track column in data
+        event_col (str, 'event' by default): Station column in data
+    """
+    def check_spinning(self, x):
+        if x[self.station_column].unique().shape[0] != x[self.station_column].shape[0]:
+            for station in x[self.station_column].unique():
+                z_values = x[x[self.station_column] == station][self.z_column].values
+                if len(z_values) > 1:
+                    if len(z_values.unique()) > 1:
+                        for col in self.columns:
+                            x.loc[x[self.station_column] == station, col] = np.mean(x.loc[x[self.station_column] == station, col])
+                        print(x.loc[x[self.station_column] == station].index)
+                        x.drop(x.loc[x[self.station_column] == station].index[:-1], inplace=True)
+                    else:
+                        return False
+        return True
+
+    def __init__(self, keep_filtered=True, columns=('x', 'y', 'z'), z_column='z', station_col='station', track_col='track', event_col='event'):
+
+        self.z_column = z_column
+        self.columns = columns
+        self.filter = self.check_spinning
+        super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
+                         keep_filtered=keep_filtered)
+
+    def __repr__(self):
+        return(f'{"-" * 30}\n'
+               f'{self.__class__.__name__} with parameters:'
+               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
+               f'{"-" * 30}\n'
+               f'Number of broken tracks: {self.get_num_broken()} \n')
+
+@gin.configurable
 class DropTracksWithHoles(BaseFilter):
     """Drops tracks with points on same stations (e.g. (2,2,2) or (1,2,1)).
       # Args:

@@ -11,7 +11,7 @@ from ariadne.transformations import Compose, StandardScale, ToCylindrical, \
 from tqdm import tqdm
 from copy import deepcopy
 from typing import Dict
-LOGGER = logging.getLogger('ariadne.prepare')
+LOGGER = logging.getLogger('ariadne.prepare-hydra-wombat')
 import torch
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 from ariadne.parsing import parse_df

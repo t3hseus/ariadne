@@ -28,7 +28,7 @@ def brute_force_hits_two_first_stations(df, return_momentum=False):
     if return_momentum:
         df_all_fake = (df['track_left'] == df['track_right']) & (df['track_left'] == -1)
         df_first_fake = (df['track_left'] == -1) & (df['track_right'] != -1)
-        temp_momentum = df[['px_left', 'py_left', 'pz_left']]
+        temp_momentum = df[['px_left', 'py_left', 'pz_left','track_left']]
         temp_momentum.loc[df_first_fake, ['px_left', 'py_left', 'pz_left']] = 0.
         temp_momentum.loc[df_all_fake, ['px_left', 'py_left', 'pz_left']] = df[['px_right', 'py_right', 'pz_right']]
     y[df_label == 1] = np.squeeze(np.array(list(map(lambda x: temp_y[temp_y['track'] == x][['phi', 'z']].values,
@@ -37,7 +37,7 @@ def brute_force_hits_two_first_stations(df, return_momentum=False):
         return x, y, df_label
     momentum = np.full((len(df_label), 3), -2.)
     momentum[df_label == 1] = np.squeeze(
-            np.array(list(map(lambda x: temp_momentum[temp_momentum['track'] == x][['px', 'py', 'pz']].values,
+            np.array(list(map(lambda x: temp_momentum[temp_momentum['track_left'] == x][['px_left', 'py_left', 'pz_left']].values,
                               df[df_label == 1]['track_left']))), 1)
     return x, y, momentum, df_label
 
@@ -130,13 +130,14 @@ def get_checkpoint_path(model_dir, version=None, checkpoint='latest'):
     return f'{model_dir}/{checkpoint}'
 
 def find_nearest_hit_no_faiss(ellipses, last_station_hits, return_numpy=False):
-    centers = ellipses[:, :2]
-    dists = torch.cdist(last_station_hits.float(), centers.float())
-    minimal = last_station_hits[torch.argmin(dists, dim=0)]
+    torch.cuda.empty_cache()
+    dists = torch.cdist(ellipses[:,:3].float(), last_station_hits.float())
+    minimal = last_station_hits[torch.argsort(dists, dim=1)]
     is_in_ellipse = point_in_ellipse(ellipses, minimal)
     if return_numpy:
         minimal = minimal.detach().cpu().numpy()
         is_in_ellipse = is_in_ellipse.detach().cpu().numpy()
+    del dists
     return minimal, is_in_ellipse
 
 def find_nearest_hit(ellipses, last_station_hits, index=None, find_n=10):
@@ -167,13 +168,12 @@ def store_in_index(event_hits, index=None, num_components=3):
         num_components (int, 3 by default): number of dimentions in event space
     """
     #numpy -> numpy
-    if index is None:
-        index = faiss.IndexFlatL2(num_components)
-        index.train(event_hits.astype('float32'))
+    index = faiss.IndexFlatL2(num_components)
+    #index.train(event_hits.astype('float32'))
     index.add(event_hits.astype('float32'))
     return index
 
-def search_in_index(centers, index, find_n=100):
+def search_in_index(centers, index, find_n=100, n_dim=2):
     """Function to search in index for nearest hits in 3d-space
     Args:
         centers (np.array of shape (*,3): centers for which nearest hits are needed
@@ -182,7 +182,7 @@ def search_in_index(centers, index, find_n=100):
     Returns:
         numpy.ndarray with hits positions in original array
     """
-    assert centers.shape[1] == 3, 'index is 3-dimentional, please add z-coordinate to centers'
+    assert centers.shape[1] == n_dim, f'index is {n_dim}-dimentional, please add z-coordinate to centers'
     _, i = index.search(np.ascontiguousarray(centers.astype('float32')), find_n)
     return i
 
@@ -245,8 +245,8 @@ def filter_hits_in_ellipses(ellipses, nearest_hits, hits_index, z_last=True, fil
         y_part = (ellipses[:,1].repeat(find_n,1) - nearest_hits[:, :, 1]) / ellipses[:, 4].repeat(find_n,1)
         #print(y_part**2)
     else:
-        x_part = (nearest_hits[:, :, 1] - ellipses[:, 1].repeat(find_n, 1)) ** 2 / ellipses[:, -2].repeat(find_n, 1) ** 2
-        y_part = (nearest_hits[:, :, 2] - ellipses[:, 2].repeat(find_n, 1)) ** 2 / ellipses[:, -1].repeat(find_n, 1) ** 2
+        x_part = (nearest_hits[:, :, 1] - ellipses[:, 1].repeat(find_n, 1)) / ellipses[:, -2].repeat(find_n, 1)
+        y_part = (nearest_hits[:, :, 2] - ellipses[:, 2].repeat(find_n, 1)) / ellipses[:, -1].repeat(find_n, 1)
     left_side = x_part**2 + y_part**2
     is_in_ellipse = left_side <= 1
     is_in_ellipse *= hits_index != -1
@@ -266,11 +266,67 @@ def get_extreme_points(xcenter,
     top = ycenter + half_height
     return (left, right, bottom, top)
 
+def get_extreme_points_tensor(params):
+    # width dependent measurements
+    result = torch.zeros((len(params),4))
+    half_widths = params[:,3] / 2
+    result[:,0] = params[:,0] - half_widths
+    result[:,1] = params[:,0] + half_widths
+    # height dependent measurements
+    half_height = params[:,4]/ 2
+    result[:,2] = params[:,1] - half_height
+    result[:,3] = params[:,1] + half_height
+    del half_height
+    del half_widths
+    return result
+
 def is_ellipse_intersects_module(ellipse_params,
                                  module_params):
     # calculate top, bottom, left, right
     ellipse_bounds = get_extreme_points(*ellipse_params)
     module_bounds = get_extreme_points(*module_params)
+    # check conditions
+    if ellipse_bounds[0] > module_bounds[1]:
+        # ellipse left > rectangle rigth
+        return False
+
+    if ellipse_bounds[1] < module_bounds[0]:
+        # ellipse rigth < rectangle left
+        return False
+
+    if ellipse_bounds[2] > module_bounds[3]:
+        # ellipse bottom > rectangle top
+        return False
+
+    if ellipse_bounds[3] < module_bounds[2]:
+        # ellipse top < rectangle bottom
+        return False
+    return True
+
+def is_ellipse_intersects_module_tensor(ellipse_params,
+                                       module_params):
+    # calculate top, bottom, left, right
+    ellipse_bounds = get_extreme_points_tensor(ellipse_params)
+    module_bounds = get_extreme_points(*module_params)
+    # check conditions
+    mask = torch.zeros(len(ellipse_bounds), dtype=torch.bool)
+    mask = ellipse_bounds[:, 0].le(module_bounds[1])
+    mask = mask * ellipse_bounds[:, 1].ge(module_bounds[0])
+    mask = mask * ellipse_bounds[:, 2].le(module_bounds[3])
+    mask = mask * ellipse_bounds[:, 2].ge(module_bounds[2])
+    del ellipse_bounds
+    return mask
+
+def is_ellipse_intersects_module_with_border(ellipse_params,
+                                 module_params,
+                                 treshold=0.5):
+    # calculate top, bottom, left, right
+    ellipse_bounds = get_extreme_points(*ellipse_params)
+    module_bounds = list(get_extreme_points(*module_params))
+    module_bounds[0] += module_params[-2] * treshold/2.
+    module_bounds[2] += module_params[-1] * treshold/2.
+    module_bounds[1] -= module_params[-2] * treshold/2.
+    module_bounds[3] -= module_params[-1] * treshold/2.
     # check conditions
     if ellipse_bounds[0] > module_bounds[1]:
         # ellipse left > rectangle rigth
@@ -296,6 +352,27 @@ def is_ellipse_intersects_station(ellipse_params,
     for module in station_params:
         ellipse_in_module = is_ellipse_intersects_module(
             ellipse_params, module)
+        # add to the list
+        module_intersections.append(ellipse_in_module)
+    return any(module_intersections)
+
+def is_ellipse_intersects_station_tensor(ellipse_params,
+                                  station_params):
+    module_intersections = torch.zeros(len(ellipse_params), dtype=torch.bool)
+    for module in station_params:
+        ellipse_in_module = is_ellipse_intersects_module_tensor(
+            ellipse_params, module)
+        # add to the list
+        module_intersections += ellipse_in_module
+    return module_intersections
+
+def is_ellipse_intersects_station_with_border(ellipse_params,
+                                              station_params,
+                                              treshold=0.5):
+    module_intersections = []
+    for module in station_params:
+        ellipse_in_module = is_ellipse_intersects_module_with_border(
+            ellipse_params, module, treshold)
         # add to the list
         module_intersections.append(ellipse_in_module)
     return any(module_intersections)
