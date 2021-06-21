@@ -143,13 +143,15 @@ def get_pd_line_graph(segments,
 def to_pandas_graph_from_df(
         single_event_df: pd.DataFrame,
         suffixes=None,
-        compute_is_true_track: bool = True
+        compute_is_true_track: bool = True,
+        save_index: bool = True
 ) -> pd.DataFrame:
     if suffixes is None:
         suffixes = ['_prev', '_current']
     assert single_event_df.event.nunique() == 1
     my_df = single_event_df.copy()
-    my_df['index_old'] = my_df.index
+    if save_index:
+        my_df['index_old'] = my_df.index
     by_stations = [df for (ind, df) in my_df.groupby('station')]
     cartesian_product = pd.DataFrame()
     for i in range(1, len(by_stations)):
