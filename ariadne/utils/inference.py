@@ -32,16 +32,16 @@ def compute_metrics(real_tracks,
     return tracks_predicted_right, tracks_predicted_all
 
 
-def get_labels(gt_tracks, predicted_tracks, use_gpu=False):
+def get_labels(gt_tracks, predicted_tracks, use_torch=False, device='cuda'):
     """THIS IS A MESS!"""
     torch.cuda.empty_cache()
-    if use_gpu:
-        labels_for_ellipses = torch.zeros(len(predicted_tracks), dtype=torch.bool, device="cuda")
+    if use_torch:
+        labels_for_ellipses = torch.zeros(len(predicted_tracks), dtype=torch.bool, device=device)
         assert len(predicted_tracks) > 0, 'Can not compute labels for empty set of tracks!'
         if len(gt_tracks) > 0:
             expanded_tracks = gt_tracks.unsqueeze(0).repeat((len(predicted_tracks), 1, 1, 1))
             expanded_xs = predicted_tracks.unsqueeze(1).repeat((1, expanded_tracks.shape[1], 1,1))
-            labels_for_ellipses += torch.any(torch.all(torch.all(torch.isclose(expanded_tracks.float(), expanded_xs.float().to("cuda")), dim=-1), dim=-1),
+            labels_for_ellipses += torch.any(torch.all(torch.all(torch.isclose(expanded_tracks.float(), expanded_xs.float().to(device)), dim=-1), dim=-1),
                                              dim=-1)
             assert len(labels_for_ellipses) == len(expanded_xs), 'length of labels and xs is different!'
         labels_for_ellipses_numpy = labels_for_ellipses.detach().cpu().numpy()
@@ -59,9 +59,8 @@ def get_labels(gt_tracks, predicted_tracks, use_gpu=False):
             assert len(labels_for_ellipses) == len(expanded_xs), 'length of labels and xs is different!'
     return labels_for_ellipses
 
-def prolong(x, gru, nearest_hits_mask, nearest_hits, stations_gone, use_gpu=False):
-    if use_gpu:
-
+def prolong(x, gru, nearest_hits_mask, nearest_hits, stations_gone, use_torch=False):
+    if use_torch:
         xs_for_prolong = x.unsqueeze(1).repeat((1, nearest_hits_mask.shape[-1], 1,1))
         grus_for_prolong = gru.unsqueeze(1).repeat((1, nearest_hits_mask.shape[-1], 1,1))
         prolonged_xs = torch.zeros((len(xs_for_prolong),

@@ -12,47 +12,6 @@ import os
 import random
 import logging
 
-def brute_force_hits_two_first_stations(df, return_momentum=False):
-    first_station = df[df['station'] == 0][['r', 'phi', 'z','px', 'py', 'pz', 'track']]
-    first_station.columns = ['r_left', 'phi_left', 'z_left', 'px_left', 'py_left', 'pz_left', 'track_left']
-    second_station = df[df['station'] == 1][['r', 'phi', 'z', 'px', 'py', 'pz', 'track']]
-    second_station.columns = ['r_right', 'phi_right', 'z_right',  'px_right', 'py_right', 'pz_right', 'track_right']
-    temp_y = df[df['station'] > 1][['phi', 'z', 'track']]
-    rows = itertools.product(first_station.iterrows(), second_station.iterrows())
-    df = pd.DataFrame(left.append(right) for (_, left), (_, right) in rows)
-    df = df.sample(frac=1).reset_index(drop=True)
-    df_label = (df['track_left'] == df['track_right']) & (df['track_left'] != -1)
-
-    x = df[['r_left', 'phi_left', 'z_left', 'r_right', 'phi_right', 'z_right']].values.reshape((-1, 2, 3))
-    y = np.full((len(df_label), 2), -2.)
-    if return_momentum:
-        df_all_fake = (df['track_left'] == df['track_right']) & (df['track_left'] == -1)
-        df_first_fake = (df['track_left'] == -1) & (df['track_right'] != -1)
-        temp_momentum = df[['px_left', 'py_left', 'pz_left','track_left']]
-        temp_momentum.loc[df_first_fake, ['px_left', 'py_left', 'pz_left']] = 0.
-        temp_momentum.loc[df_all_fake, ['px_left', 'py_left', 'pz_left']] = df[['px_right', 'py_right', 'pz_right']]
-    y[df_label == 1] = np.squeeze(np.array(list(map(lambda x: temp_y[temp_y['track'] == x][['phi', 'z']].values,
-                                              df[df_label == 1]['track_left']))), 1)
-    if not return_momentum:
-        return x, y, df_label
-    momentum = np.full((len(df_label), 3), -2.)
-    momentum[df_label == 1] = np.squeeze(
-            np.array(list(map(lambda x: temp_momentum[temp_momentum['track_left'] == x][['px_left', 'py_left', 'pz_left']].values,
-                              df[df_label == 1]['track_left']))), 1)
-    return x, y, momentum, df_label
-
-def brute_force_hits_two_first_stations_cart(df, return_momentum=False):
-    first_station = df[df['station'] == 0][['x', 'y', 'z', 'px', 'py', 'pz', 'track']]
-    first_station.columns = [ 'x_left', 'y_left', 'z_left', 'px_left', 'py_left', 'pz_left', 'track_left']
-    second_station = df[df['station'] == 1][['x', 'y', 'z', 'px', 'py', 'pz', 'track']]
-    second_station.columns = ['x_right', 'y_right', 'z_right',  'px_right', 'py_right', 'pz_right', 'track_right']
-    rows = itertools.product(first_station.iterrows(), second_station.iterrows())
-    df = pd.DataFrame(left.append(right) for (_, left), (_, right) in rows)
-    df = df.sample(frac=1).reset_index(drop=True)
-    df_label = (df['track_left'] == df['track_right']) & (df['track_left'] != -1)
-    x = df[['x_left', 'y_left', 'z_left', 'x_right', 'y_right', 'z_right']].values.reshape((-1, 2, 3))
-    return x, df_label
-
 def get_seeds_with_vertex(hits):
     # first station hits
     st0_hits = hits[hits.station == 0][['x', 'y', 'z']].values
@@ -122,6 +81,7 @@ def find_hits_in_ellipse(ellipses, last_station_hits, return_numpy=False):
         is_in_ellipse = is_in_ellipse.detach().cpu().numpy()
     del dists
     return minimal, is_in_ellipse
+
 def filter_hits_in_one_ellipse(ellipse, nearest_hits, z_last=True, filter_station=True, find_n=10):
     """Function to get hits, which are in given ellipse.
     Space is 3-dimentional, so either first component of ellipce must be z-coordinate or third.

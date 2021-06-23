@@ -51,7 +51,6 @@ class TrackNETv2(nn.Module):
 
     def forward(self, inputs, input_lengths, return_gru_states=False):
         # BxTxC -> BxCxT
-        print(inputs)
         inputs = inputs.transpose(1, 2).float()
         input_lengths = input_lengths.int().cpu()
         x = self.conv(inputs)
