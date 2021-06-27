@@ -27,13 +27,8 @@ def get_nearest_hits(centers: np.array,
 	from specified index for each center"""
 
 	d, ids = index.search(centers, k_neighbours)
-
-	all_hits = np.empty((0, 2))
-
-	for res in ids:
-		# can't find a way to search several hits, so used list comprehension
-		hits = np.array([index.reconstruct(int(i)) for i in res])
-		all_hits = np.concatenate((all_hits, hits))
+	all_hits = np.array([index.reconstruct(int(i)) for i in ids.flatten()])
+	#maybe need to use array of hits on station and build index right here
 
 	return all_hits
 
