@@ -1,6 +1,6 @@
 import numpy as np
 import unittest as ut
-import inference
+from ariadne.tracknet_v2 import inference
 
 class Tests(ut.TestCase):
 
