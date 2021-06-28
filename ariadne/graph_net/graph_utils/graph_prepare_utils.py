@@ -39,7 +39,7 @@ def get_edges_from_supernodes(sn_from, sn_to):
     # ^may be useful later but now weight function is just a norm:
     w = np.linalg.norm(ba - cb, axis=1)
     line_graph_edges['weight'] = w
-    indexation = ['weight', 'true_superedge', 'edge_index_p', 'edge_index_c']
+    indexation = ['weight', 'true_superedge', 'edge_index_p', 'edge_index_c', 'from_ind', 'cur_ind', 'to_ind']
     return line_graph_edges[indexation]
 
 def get_supernodes_df(one_station_segments,
