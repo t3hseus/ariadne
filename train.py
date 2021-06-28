@@ -14,7 +14,7 @@ from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from ariadne.lightning import TrainModel
-
+from ariadne.utils import get_checkpoint_path, weights_update
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
@@ -59,11 +59,16 @@ def experiment(model,
                log_dir='lightning_logs',
                fp16_training=False,
                random_seed=None,
-               accumulate_grad_batches=1):
+               accumulate_grad_batches=1,
+               resume_from_checkpoint=None  # path to checkpoint to resume
+               ):
 
     os.makedirs(log_dir, exist_ok=True)
     tb_logger = TensorBoardLogger(log_dir, name=model.__name__)
     setup_logger(tb_logger.log_dir)
+
+    with open(os.path.join(tb_logger.log_dir, "train_config.cfg"), "w") as f:
+        f.write(gin.config_str())
 
 
     LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
@@ -75,16 +80,26 @@ def experiment(model,
 
     LOGGER.info('Create model for training')
     # create model for trainingimport logging
+
     model = TrainModel(
-        model=model,
-        criterion=criterion,
-        metrics=metrics,
-        optimizer=optimizer,
-        data_loader=data_loader
-    )
+            model=model,
+            criterion=criterion,
+            metrics=metrics,
+            optimizer=optimizer,
+            data_loader=data_loader
+        )
+    if resume_from_checkpoint is not None:
+        resume_from_checkpoint = get_checkpoint_path(model_dir=resume_from_checkpoint,
+                                                 version=None,
+                                                 checkpoint='latest')
+        LOGGER.info(f"Resuming from checkpoint {resume_from_checkpoint}")
 
     LOGGER.info(model)
+    if hasattr(model.data_loader, "get_num_train_events") and hasattr(model.data_loader, "get_num_val_events"):
+        LOGGER.info(f"Number events for training {model.data_loader.get_num_train_events()}")
+        LOGGER.info(f"Number events for validation {model.data_loader.get_num_val_events()}")
 
+    LOGGER.info(f"Log directory {tb_logger.log_dir}")
     # configure trainer
     trainer_kwargs = {
         'max_epochs': epochs,
@@ -96,10 +111,12 @@ def experiment(model,
         #'progress_bar_refresh_rate': 100,
         #'log_every_n_steps': 50,
     }
-    trainer_kwargs['checkpoint_callback'] = ModelCheckpoint(
+
+    checkpoint_callback = ModelCheckpoint(
         dirpath=f"{trainer_kwargs['logger'].log_dir}",
         filename=f'{{epoch}}-{{step}}'
     )
+    trainer_kwargs['callbacks'] = [checkpoint_callback]
     if torch.cuda.is_available():
         trainer_kwargs['gpus'] = 1 #torch.cuda.device_count()
         if trainer_kwargs['gpus'] > 1:
@@ -110,8 +127,13 @@ def experiment(model,
         # TODO: use torch.nn.functional.binary_cross_entropy_with_logits which is safe to autocast
         trainer_kwargs['precision'] = 16
         trainer_kwargs['amp_level'] = '02'
+    try:
+        trainer = Trainer(resume_from_checkpoint=resume_from_checkpoint, **trainer_kwargs)
+    except: #if one of keys is not in checkpoint etc
+        model.model = weights_update(model=model.model,
+                           checkpoint=torch.load(resume_from_checkpoint))
+        trainer = Trainer(resume_from_checkpoint=None, **trainer_kwargs)
 
-    trainer = Trainer(**trainer_kwargs)
     trainer.fit(model=model)
 
 

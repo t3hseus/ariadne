@@ -9,3 +9,5 @@ from . import graph_net
 from . import point_net
 from . import external_configurables
 from . import metrics
+from . import vertex_loot_onlyZ
+from . import vertex_loot
