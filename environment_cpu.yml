@@ -17,7 +17,6 @@ dependencies:
   - cpuonly=1.0
   - pytorch
   - pyqt=5.12.*
-  - vispy=0.6.4
   - pytorch-lightning
   - gin-config
   - absl-py
