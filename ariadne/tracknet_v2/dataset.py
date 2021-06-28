@@ -165,7 +165,7 @@ class TrackNetV2DatasetWithMask(Dataset):
             ])
 
         mask = np.ones(input_dict['input_lengths']).astype(np.bool)
-        mask[:self._mask_first_n_steps] = False
+        mask[:self._mask_first_n_steps] = True#False
 
         if self.use_index:
             return input_dict, (target, mask), idx

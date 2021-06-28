@@ -34,6 +34,7 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
                  device: str,
                  tracknet_v2_model: TrackNETv2,
                  n_times_oversampling: int = 4,
+                 num_grus=1,
                  tracknet_v2_checkpoint: str = '',
                  transforms: List[BaseTransformer] = None):
         super().__init__(

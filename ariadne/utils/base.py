@@ -23,11 +23,11 @@ def get_seeds_with_vertex(hits):
     return seeds
 
 
-def get_seeds(hits):
+def get_seeds(hits, columns=('x','y','z')):
     temp1 = hits[hits.station == 0]
-    st0_hits = hits[hits.station == 0][['x', 'y', 'z']].values
+    st0_hits = hits[hits.station == 0][columns].values
     temp2 = hits[hits.station == 1]
-    st1_hits = hits[hits.station == 1][['x', 'y', 'z']].values
+    st1_hits = hits[hits.station == 1][columns].values
     # all possible combinations
     idx0 = range(len(st0_hits))
     idx1 = range(len(st1_hits))
