@@ -128,7 +128,7 @@ class TrackNetProcessorWithMask(DataProcessor):
                  name_suffix: str,
                  transforms: List[BaseTransformer] = None,
                  columns=('x', 'y', 'z'),
-                 det_indices=None,
+                 det_indices=(0,1),
                  filter_first_n=0):
         super().__init__(
             processor_name='TrackNet_v2_Processor',
@@ -138,12 +138,9 @@ class TrackNetProcessorWithMask(DataProcessor):
         self.output_name = os.path.join(self.output_dir, f'masked_tracknet_{name_suffix}')
         self.columns = columns
         self.det_indices = det_indices
-        if self.det_indices is None:
-            self.det_indices = [0]
         self.filter_first_stations = filter_first_n
 
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
-        LOGGER.info(len(self.det_indices))
         if len(self.det_indices) > 1:
             self.data_df.loc[self.data_df.det == 1, 'station'] = self.data_df.loc[self.data_df.det == 1, 'station'].values + 3
             if self.filter_first_stations > 0:

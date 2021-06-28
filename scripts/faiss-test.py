@@ -133,7 +133,7 @@ def faiss_test(tracknet_ckpt_path_dict,
             print(is_point_in_ellipse.shape)
             t2 = time.time()
             if use_classifier:
-                pred_classes = class_model(last_gru_output[is_point_in_ellipse],
+                pred_classes = class_model(last_gru_output[is_point_in_ellipse][:,-1],
                                            torch.from_numpy(nearest_points[is_point_in_ellipse].astype('float')).to(DEVICE))
                 confidence = deepcopy(F.sigmoid(pred_classes))
                 pred_classes = (F.sigmoid(pred_classes) > treshold).squeeze().detach().cpu().numpy()
@@ -148,7 +148,7 @@ def faiss_test(tracknet_ckpt_path_dict,
                 found_points = is_point_in_ellipse
             print(found_points[batch_real_flag])
             print(is_prediction_true[batch_real_flag])
-            found_right_points = found_points & (is_prediction_true == 
+            found_right_points = found_points & (is_prediction_true ==
 1) & (batch_real_flag == 1)
             print(found_right_points)
             temp_dict['found'] = found_points

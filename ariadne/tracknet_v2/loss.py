@@ -2,8 +2,7 @@ import gin
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import logging
-LOGGER = logging.getLogger('ariadne.loss')
+
 
 class PointInEllipseLoss(nn.Module):
     """Penalizes predictions when a true point
@@ -79,9 +78,6 @@ class TrackNetLoss(nn.Module):
     def forward(self, preds, target):
         # unpack target = (target, mask)
         target, mask = target
-        #LOGGER.info(target)
-
-        #print(target)
         points_in_ellipse = self.point_in_ellipse_loss(preds, target)
         ellipses_square = self.ellipse_square_loss(preds)
         loss = self.alpha * points_in_ellipse + (1 - self.alpha) * ellipses_square

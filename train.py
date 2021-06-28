@@ -1,10 +1,6 @@
+import logging
 
 import os
-import sys
-
-sys.path.append('/zfs/hybrilit.jinr.ru/user/n/nuvard/miniconda3/envs/ariadne_cpu/lib/python3.8/site-packages')
-print(sys.path)
-import logging
 
 import gin
 import numpy as np
@@ -92,8 +88,6 @@ def experiment(model,
             optimizer=optimizer,
             data_loader=data_loader
         )
-    for buf in model.named_buffers():
-        print(buf)
     if resume_from_checkpoint is not None:
         resume_from_checkpoint = get_checkpoint_path(model_dir=resume_from_checkpoint,
                                                  version=None,
@@ -131,12 +125,11 @@ def experiment(model,
         # TODO: use torch.nn.functional.binary_cross_entropy_with_logits which is safe to autocast
         trainer_kwargs['precision'] = 16
         trainer_kwargs['amp_level'] = '02'
-
     try:
         trainer = Trainer(resume_from_checkpoint=resume_from_checkpoint, **trainer_kwargs)
-    except:  # if one of keys is not in checkpoint etc
+    except: #if one of keys is not in checkpoint etc
         model.model = weights_update(model=model.model,
-                                     checkpoint=torch.load(resume_from_checkpoint))
+                           checkpoint=torch.load(resume_from_checkpoint))
         trainer = Trainer(resume_from_checkpoint=None, **trainer_kwargs)
 
     trainer.fit(model=model)

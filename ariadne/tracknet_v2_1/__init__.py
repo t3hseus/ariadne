@@ -1,4 +1,6 @@
 from . import model
+from . import model_small
+from . import model_big
 from . import dataset
 from . import processor
 from . import processor_with_model

@@ -1,6 +1,8 @@
 import unittest
 import sys
 import pandas as pd
+import numpy as np
+import itertools
 
 from ariadne.transformations import (
     StandardScale,
@@ -12,13 +14,18 @@ from ariadne.transformations import (
     ToCartesian,
     Compose, 
     ToBuckets, 
-    ConstraintsNormalize
+    ConstraintsNormalize,
+BakeStationValues,
+DropTracksWithHoles
 )
 
 path = '../data/200.csv'
 path_radial = '../data/200_radial.csv'
 
 
+import logging
+logging.basicConfig(stream=sys.stderr)
+logging.getLogger("TestLogger").setLevel(logging.DEBUG)
 
 class StandardTestCase(unittest.TestCase):
     def setUp(self):
@@ -223,10 +230,10 @@ class DropShortTestCase(unittest.TestCase):
         result = self.transformer(self.data)
         result.reset_index(inplace=True, drop=True)
         self.assertEqual(len(result[result.track==-1]), 4)
-        self.assertEqual(result.iloc[0,4], 1)
-        self.assertEqual(result.iloc[1,4], 1)
-        self.assertEqual(result.iloc[3,4], -1)
-        self.assertEqual(result.iloc[4,4], -1)
+        self.assertEqual(result.iloc[0, 3], 1)
+        self.assertEqual(result.iloc[1, 3], 1)
+        self.assertEqual(result.iloc[3, 3], -1)
+        self.assertEqual(result.iloc[4, 3], -1)
 
 
     def test_get_broken(self):
@@ -260,10 +267,10 @@ class DropWarpsTestCase(unittest.TestCase):
         self._init_transformer()
         result = self.transformer(self.data)
         self.assertEqual(len(result), len(self.data))
-        self.assertEqual(len(result[result['track']==-1]), 4)
-        self.assertEqual(result.iloc[0,4], 1)
-        self.assertEqual(result.iloc[3, 4], -1)
-        self.assertEqual(result.iloc[5, 4], -1)
+        self.assertEqual(len(result[result['track'] == -1]), 4)
+        self.assertEqual(result.iloc[0, 3], 1)
+        self.assertEqual(result.iloc[3, 3], -1)
+        self.assertEqual(result.iloc[5, 3], -1)
 
     def test_transform_no_keep(self):
         self._init_transformer(keep_filtered=False)
@@ -276,6 +283,79 @@ class DropWarpsTestCase(unittest.TestCase):
         self.assertEqual(self.transformer.get_num_broken(), None)
         self.transformer(self.data)
         self.assertEqual(self.transformer.get_num_broken(), 1)
+
+class DropHolesTestCase(unittest.TestCase):
+    def _init_transformer(self, keep_filtered=True,min_station_num=1):
+        self.transformer = DropTracksWithHoles(keep_filtered=keep_filtered, min_station_num=min_station_num)
+
+    def setUp(self):
+        self.data = pd.DataFrame({'r': [1.,  0.1, 0.2, 0.8, 0.6, 0.2],
+                                  'phi': [3.,  2., 0.2, 1.1, -0.5, -0.1],
+                                  'z': [0.1,  0.33, 0.1, 0.2, 0.2, 0.1],
+                                  'track': [1,  1, 2, 2, 2, -1],
+                                  'station': [1, 3, 1, 2, 3, 3],
+                                  'event': [0, 0, 0, 0, 0, 0]})
+
+    def test_init(self):
+        self._init_transformer()
+        self.assertEqual(len(self.data), 6)
+        self.assertEqual(len(self.data.columns), 6)
+        self.assertEqual(self.transformer._broken_tracks, None)
+        self.assertEqual(self.transformer._num_broken_tracks, None)
+
+    def test_transform(self):
+        self._init_transformer()
+        result = self.transformer(self.data)
+        log = logging.getLogger('test')
+        log.info(result)
+        self.assertEqual(len(result), len(self.data))
+        self.assertEqual(len(result[result['track'] == -1]), 3)
+
+    def test_transform_no_keep(self):
+        self._init_transformer(keep_filtered=False)
+        self.assertEqual(len(self.transformer(self.data)), 4)
+        self._init_transformer(keep_filtered=True)
+        self.assertEqual(len(self.transformer(self.data)), 6)
+
+    def test_transform_from_zero(self):
+        self._init_transformer(keep_filtered=False, min_station_num=0)
+        self.assertEqual(len(self.transformer(self.data)), 1)
+        self._init_transformer(keep_filtered=True, min_station_num=0)
+        self.assertEqual(len(self.transformer(self.data)), 6)
+
+    def test_get_broken(self):
+        self._init_transformer(2)
+        self.assertEqual(self.transformer.get_num_broken(), None)
+        self.transformer(self.data)
+        self.assertEqual(self.transformer.get_num_broken(), 1)
+
+
+class BakeColumnTestCase(unittest.TestCase):
+    def _init_transformer(self, keep_filtered=True):
+        self.transformer = BakeStationValues(values={0: 0.1, 1:0.3, 2: 0.5, 3:0.7})
+
+    def setUp(self):
+        self.data = pd.DataFrame({'r': [1.,  0.1, 0.2, 0.8, 0.6, 0.2],
+                                  'phi': [3.,  2., 0.2, 1.1, -0.5, -0.1],
+                                  'z': [0.1,  0.33, 0.1, 0.2, 0.2, 0.1],
+                                  'track': [1,  1, 2, 2, 2, -1],
+                                  'station': [1, 3, 1, 2, 3, 3],
+                                  'event': [0, 0, 0, 0, 0, 0]})
+
+    def test_init(self):
+        self._init_transformer()
+        self.assertEqual(len(self.data), 6)
+        self.assertEqual(len(self.data.columns), 6)
+
+    def test_transform(self):
+        self._init_transformer()
+        result = self.transformer(self.data)
+        self.assertEqual(len(result), len(self.data))
+        self.assertEqual(len(result[result['z'] == 0.1]), 0)
+        self.assertEqual(len(result[result['z'] == 0.3]), 2)
+        self.assertEqual(len(result[result['z'] == 0.5]), 1)
+        self.assertEqual(len(result[result['z'] == 0.7]), 3)
+
 
 class ComposeTestCase(unittest.TestCase):
     def _init_transformer(self):
@@ -308,6 +388,221 @@ class ComposeTestCase(unittest.TestCase):
         transformed = self.transformer(self.data)
         self.assertAlmostEqual(transformed.loc[0, 'phi'], self.radial_df.loc[0, 'phi'])
         self.assertAlmostEqual(transformed.loc[0, 'r'], self.radial_df.loc[0, 'r'])
+
+
+class ToBucketsTestCase(unittest.TestCase):
+
+    def _init_transformer(self, flat=True, shuffle=False, max_stations=None, max_bucket_size=None, keep_fakes=True):
+        self.transformer = ToBuckets(flat=flat, shuffle=shuffle, max_stations=max_stations, max_bucket_size=max_bucket_size, keep_fakes=keep_fakes)
+
+    def setUp(self):
+        self.data = pd.DataFrame({'r': [1., 0.5, 0.1, 0.2, 0.1, 0.2, 0.8, 0.6, 0.2,0.8, 0.6, 0.2,0.2, 0.2, 0.1,0.2, 0.1,0.2, 0.2, 0.1],
+                                  'phi': [3., 0.5, 2., 0.2, 1.1, -0.5, -0.1, 2., 0.2, 1.1, -0.5, -0.1, 0.2, 0.2, 0.1,0.2, 0.1,0.2, 0.2, 0.1],
+                                  'z': [0.1, 0.2, 0.33, 0.1, 0.2, 0.2, 0.1, 0.33, 0.1, 0.2, 0.2, 0.1,0.2, 0.2, 0.1,0.2, 0.1,0.2, 0.2, 0.1],
+                                  'track': [1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5],
+                                  'station': [1, 2, 3, 4, 5, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 1, 2, 3, 4, 5],
+                                  'event': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0, 0, 0,0, 0, 0, 0, 0]})
+
+    def test_init(self):
+        self._init_transformer()
+        self.assertEqual(len(self.data), 20)
+        self.assertEqual(len(self.data.columns), 6)
+        self.assertEqual(self.transformer.max_num_stations, None)
+        self._init_transformer(shuffle=True, max_stations=3)
+        self.assertEqual(self.transformer.max_num_stations, 3)
+
+    def test_transform(self):
+        log = logging.getLogger("TestLogger")
+        self._init_transformer()
+        result = self.transformer(self.data)
+        self.assertEqual(len(result), 20)
+        self.assertEqual(len(result[result['bucket'] == 5]), 10)
+        self.assertEqual(len(result[result['bucket'] == 4]), 4)
+        self.assertEqual(len(result[result['bucket'] == 3]), 6)
+        self.assertEqual(self.transformer.max_num_stations, 5)
+
+    def test_transform_not_flat(self):
+        self._init_transformer(flat=False)
+        result = self.transformer(self.data)
+        self.assertEqual(len(result[5]), 10)
+        self.assertEqual(len(result[4]), 4)
+        self.assertEqual(len(result[3]), 6)
+
+    def test_transform_with_balancing(self):
+        self._init_transformer(flat=False)
+        track_list = []
+        station_list = []
+        event_list = []
+        num_tracks = [2, 10]
+        for num, i in enumerate(range(3, 5)):
+            for track in range(num_tracks[num]):
+                track_list.append(np.full(i, i*1000+track))
+                event_list.append(np.zeros(i))
+                station_list.append(np.arange(1, i+1))
+        events = list(np.concatenate(event_list))
+        self.data = pd.DataFrame(
+            {
+             'track': list(np.concatenate(track_list)),
+             'station': list(np.concatenate(station_list)),
+             'event': events,
+             'r': list(np.random.rand(len(events))),
+             'phi': list(np.random.rand(len(events))),
+             'z': list(np.random.rand(len(events))),
+             })
+        result = self.transformer(self.data)
+        #log.info(f'\n {result}')
+        #log.info(np.in1d(result[3], result[4]))
+        #log.info(result[4])
+        #log.info(result[3])
+        self.assertEqual(any(np.in1d(result[3]['index'], result[4]['index'])), False)
+        self.assertEqual(len(result[4]), 10*4)
+        self.assertEqual(len(result[3]), 2*3)
+
+    def test_transform_with_balancing_and_bucket_size(self):
+        self._init_transformer(flat=False, max_bucket_size=6)
+        track_list = []
+        station_list = []
+        event_list = []
+        num_tracks = [2, 10]
+        for num, i in enumerate(range(3, 5)):
+            for track in range(num_tracks[num]):
+                track_list.append(np.full(i, i*1000+track))
+                event_list.append(np.zeros(i))
+                station_list.append(np.arange(1, i+1))
+        events = list(np.concatenate(event_list))
+        self.data = pd.DataFrame(
+            {
+             'track': list(np.concatenate(track_list)),
+             'station': list(np.concatenate(station_list)),
+             'event': events,
+             'r': list(np.random.rand(len(events))),
+             'phi': list(np.random.rand(len(events))),
+             'z': list(np.random.rand(len(events))),
+             })
+        log = logging.getLogger("TestLogger")
+        result = self.transformer(self.data)
+        #log.info(f'\n {result}')
+        #log.info(np.in1d(result[3], result[4]))
+        #log.info(result[4])
+        #log.info(result[3])
+        self.assertEqual(any(np.in1d(result[3]['index'], result[4]['index'])), False)
+        self.assertEqual(len(result[4]), 6*4)
+        self.assertEqual(len(result[3]), 6*3)
+
+    def test_transform_with_empty_bucket_and_bucket_size(self):
+        self._init_transformer(flat=False, max_bucket_size=6)
+        track_list = []
+        station_list = []
+        event_list = []
+        num_tracks = [2, 0, 10]
+        for num, i in enumerate(range(3, 6)):
+            if i == 1:
+                continue
+            for track in range(num_tracks[num]):
+                track_list.append(np.full(i, i*1000+track))
+                event_list.append(np.zeros(i))
+                station_list.append(np.arange(1, i+1))
+        events = list(np.concatenate(event_list))
+        self.data = pd.DataFrame(
+            {
+             'track': list(np.concatenate(track_list)),
+             'station': list(np.concatenate(station_list)),
+             'event': events,
+             'r': list(np.random.rand(len(events))),
+             'phi': list(np.random.rand(len(events))),
+             'z': list(np.random.rand(len(events))),
+             })
+        log = logging.getLogger("TestLogger")
+        result = self.transformer(self.data)
+        #log.info(f'\n {result}')
+        #log.info(np.in1d(result[3], result[4]))
+        #log.info(result[4])
+        #log.info(result[3])
+        self.assertEqual(any(np.in1d(result[3]['index'], result[5]['index'])), False)
+        self.assertEqual(len(result[5]), 6*5)
+        self.assertEqual(len(result[4]), 4*4)
+        self.assertEqual(len(result[3]), 2*3)
+
+    def test_transform_with_longer_bucket_and_bucket_size_and_maxlen(self):
+        self._init_transformer(flat=False, max_bucket_size=6, max_stations=4)
+        track_list = []
+        station_list = []
+        event_list = []
+        num_tracks = [2, 3, 10]
+        for num, i in enumerate(range(3, 6)):
+            for track in range(num_tracks[num]):
+                track_list.append(np.full(i, i*1000+track))
+                event_list.append(np.zeros(i))
+                station_list.append(np.arange(1, i+1))
+        events = list(np.concatenate(event_list))
+        self.data = pd.DataFrame(
+            {
+             'track': list(np.concatenate(track_list)),
+             'station': list(np.concatenate(station_list)),
+             'event': events,
+             'r': list(np.random.rand(len(events))),
+             'phi': list(np.random.rand(len(events))),
+             'z': list(np.random.rand(len(events))),
+             })
+        log = logging.getLogger("TestLogger")
+        result = self.transformer(self.data)
+        #log.info(f'\n {result}')
+        #log.info(np.in1d(result[3], result[4]))
+        #log.info(result[4])
+        #log.info(result[3])
+        self.assertEqual(any(np.in1d(result[3]['index'], result[4]['index'])), False)
+        self.assertEqual(len(result[3]), 6*3)
+        self.assertEqual(len(result[4]), 6*4)
+        self.assertEqual(5 in result.keys(), False)
+
+    def test_transform_with_longer_bucket_and_bucket_size_and_maxlen_flat(self):
+        self._init_transformer(flat=True, max_bucket_size=6, max_stations=4)
+        track_list = []
+        station_list = []
+        event_list = []
+        num_tracks = [2, 3, 10]
+        for num, i in enumerate(range(3, 6)):
+            for track in range(num_tracks[num]):
+                track_list.append(np.full(i, i*1000+track))
+                event_list.append(np.zeros(i))
+                station_list.append(np.arange(1, i+1))
+        events = list(np.concatenate(event_list))
+        self.data = pd.DataFrame(
+            {
+             'track': list(np.concatenate(track_list)),
+             'station': list(np.concatenate(station_list)),
+             'event': events,
+             'r': list(np.random.rand(len(events))),
+             'phi': list(np.random.rand(len(events))),
+             'z': list(np.random.rand(len(events))),
+             })
+        log = logging.getLogger("TestLogger")
+        result = self.transformer(self.data)
+        #log.info(f'\n {result}')
+        #log.info(np.in1d(result[3], result[4]))
+        #log.info(result[4])
+        #log.info(result[3])
+        self.assertEqual(any(np.in1d(result[result['bucket']==3]['index'], result[result['bucket']==4]['index'])), False)
+        self.assertEqual(len(result[result['bucket']==3]), 6*3)
+        self.assertEqual(len(result[result['bucket']==4]), 6*4)
+        self.assertEqual(5 in result['bucket'], False)
+
+    def test_transform_bes(self):
+        data = pd.DataFrame({'r': [1., 0.5, 0.1, 0.2, 0.8, 0.6],
+                              'phi': [3., 0.5, 2., 0.2, 1.1, -0.5],
+                              'z': [0.1, 0.2, 0.33, 0.1, 0.2, 0.2],
+                              'track': [1, 1, 1, 2, 2, 2],
+                              'station': [1, 2, 3, 1, 2, 2],
+                              'event': [0, 0, 0, 0, 0, 0]})
+        self._init_transformer(flat=False, keep_fakes=False)
+        result = self.transformer(data)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(len(result[3]), 2*3)
+        self._init_transformer(flat=True)
+        result = self.transformer(data)
+        self.assertEqual(len(result), 6)
+        self.assertEqual(all(result['bucket'] == 3), True)
+
 '''
 class ToBucketsTestCase(unittest.TestCase):
     def _init_transformer(self, flat=True, keep_fakes=True):

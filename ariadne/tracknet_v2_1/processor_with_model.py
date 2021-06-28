@@ -61,7 +61,6 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
         self.model.to(self.device)
         self.model.eval()
 
-
     def preprocess_chunk(self,
                          chunk: TracknetDataChunk,
                          idx: str) -> ProcessedTracknetDataChunk:
