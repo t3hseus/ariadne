@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-print(sys.path)
+
 from typing import List, Tuple, Optional, Iterable
 
 import gin
