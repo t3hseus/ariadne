@@ -53,6 +53,7 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
         self.device = torch.device(device)
         #self.model = tracknet_v2_model
         self.model = TrackNETv2(input_features=3)
+        self.num_grus = num_grus
         if tracknet_v2_checkpoint and os.path.isfile(tracknet_v2_checkpoint):
             if not torch.cuda.is_available():
                  self.model = weights_update(model=self.model, checkpoint=torch.load(tracknet_v2_checkpoint, map_location=torch.device('cpu')))
@@ -98,25 +99,24 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
                                                       torch.tensor(chunk_data_len, dtype=torch.int64).to(self.device),
                                                       return_gru_states=True)
             chunk_prediction = chunk_prediction[:, -1, :]
-            chunk_gru = chunk_gru[:, -1, :]
+            chunk_gru = chunk_gru[:, -self.num_grus:, :].reshape(-1, self.num_grus*chunk_gru.shape[-1])
             last_station_index = store_in_index(np.ascontiguousarray(last_station), num_components=2)
             nearest_hits_index = search_in_index(chunk_prediction.detach().cpu().numpy()[:, :2],
                                                  last_station_index,
-                                                 10,
+                                                 5,
                                                  n_dim=2)
             nearest_hits = last_station[nearest_hits_index]
             nearest_hits, in_ellipse = filter_hits_in_ellipses(chunk_prediction.cpu().detach().numpy(),
-                                                                        nearest_hits,
-                                                                        nearest_hits_index,
-                                                                        filter_station=True,
-                                                                        z_last=True,
-                                                                        find_n=nearest_hits_index.shape[1],
-                                                                        n_dim=2)
+                                                               nearest_hits,
+                                                               nearest_hits_index,
+                                                               filter_station=True,
+                                                               z_last=True,
+                                                               find_n=nearest_hits_index.shape[1],
+                                                               n_dim=2)
 
             is_close = np.all(np.isclose(nearest_hits, np.expand_dims(chunk_data_y, 1).repeat(nearest_hits.shape[1], axis=1)), axis=-1)
             found_real_track_ending = is_close & np.expand_dims(chunk_data_real.astype(bool), 1).repeat(is_close.shape[1], axis=1)
             is_close = np.all(np.isclose(nearest_hits, np.expand_dims(chunk_data_y, 1).repeat(nearest_hits.shape[1], 1)), -1)
-    
             to_use = found_real_track_ending | in_ellipse
             chunk_gru = np.expand_dims(chunk_gru.detach().cpu().numpy(), 1).repeat(nearest_hits.shape[1], 1)
             nearest_hits = nearest_hits.reshape(-1, nearest_hits.shape[-1])
