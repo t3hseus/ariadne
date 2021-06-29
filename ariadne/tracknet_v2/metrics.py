@@ -2,8 +2,6 @@ import math
 import gin
 import torch
 import numpy as np
-import torch.nn.functional as F
-
 
 @gin.configurable(allowlist=[])
 def ellipse_area(preds, target):

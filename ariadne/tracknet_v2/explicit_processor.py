@@ -20,7 +20,7 @@ from ariadne.tracknet_v2.processor import (
     ProcessedTracknetData,
     TrackNetProcessor
 )
-from ariadne.utils import  brute_force_hits_two_first_stations
+from ariadne.utils.base import  brute_force_hits_two_first_stations
 LOGGER = logging.getLogger('ariadne.prepare')
 
 class ProcessedTracknetDataChunk(ProcessedDataChunk):

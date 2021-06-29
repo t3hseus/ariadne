@@ -2,15 +2,8 @@ import torch
 import numpy as np
 import itertools
 import pandas as pd
-from copy import deepcopy
 from ariadne.tracknet_v2.metrics import point_in_ellipse
 import faiss
-import matplotlib.pyplot as plt
-from scipy.interpolate import make_interp_spline, BSpline
-import glob
-import os
-import random
-import logging
 
 def brute_force_hits_two_first_stations(df, return_momentum=False):
     first_station = df[df['station'] == 0][['r', 'phi', 'z','px', 'py', 'pz', 'track']]

@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import gin
 from ariadne.preprocessing import BaseTransformer
-from ariadne.utils import brute_force_hits_two_first_stations, find_nearest_hit
+from ariadne.utils.base import brute_force_hits_two_first_stations, find_nearest_hit
 from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData
 
 LOGGER = logging.getLogger('ariadne.prepare-hydra-wombat')

@@ -19,7 +19,8 @@ from ariadne.preprocessing import (
     ProcessedDataChunk,
     ProcessedData
 )
-from ariadne.utils import brute_force_hits_two_first_stations, find_nearest_hit, weights_update
+from ariadne.utils.base import brute_force_hits_two_first_stations, find_nearest_hit
+from ariadne.utils.model import weights_update
 from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData, TracknetDataChunk
 
 LOGGER = logging.getLogger('ariadne.prepare')

@@ -1,15 +1,7 @@
-import torch
 import numpy as np
-import itertools
-import pandas as pd
-from copy import deepcopy
-from ariadne.tracknet_v2.metrics import point_in_ellipse
-import faiss
 import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline, BSpline
-import glob
 import os
-import random
 import logging
 
 def boxplot_style_data(bp):

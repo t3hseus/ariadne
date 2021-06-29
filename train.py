@@ -14,7 +14,7 @@ from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from ariadne.lightning import TrainModel
-from ariadne.utils import get_checkpoint_path, weights_update
+from ariadne.utils.model import get_checkpoint_path, weights_update
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(

@@ -20,7 +20,9 @@ from ariadne.preprocessing import (
     ProcessedData
 )
 
-from ariadne.utils import *
+from ariadne.utils.base import *
+from ariadne.utils.inference import *
+from ariadne.utils.model import *
 from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData, TracknetDataChunk
 
 LOGGER = logging.getLogger('ariadne.prepare')

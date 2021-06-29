@@ -7,7 +7,8 @@ from torch.utils.data import Dataset, DataLoader
 from copy import deepcopy
 import gin
 from ariadne.tracknet_v2_1.dataset import TrackNetV21Dataset, TrackNetClassifierDataset
-from ariadne.utils import weights_update, find_nearest_hit, load_data
+from ariadne.utils.base import find_nearest_hit
+
 import warnings
 warnings.filterwarnings("ignore")
 

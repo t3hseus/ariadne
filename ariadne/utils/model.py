@@ -1,4 +1,3 @@
-import torch
 import glob
 import os
 

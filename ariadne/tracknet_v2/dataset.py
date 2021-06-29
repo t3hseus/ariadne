@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from copy import deepcopy
 import gin
 
-from ariadne.utils import load_data
+from ariadne.utils.data import load_data
 
 # Ignore warnings
 import warnings

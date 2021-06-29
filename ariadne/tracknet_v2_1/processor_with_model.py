@@ -19,7 +19,8 @@ from ariadne.preprocessing import (
     ProcessedDataChunk,
     ProcessedData
 )
-from ariadne.utils import *
+from ariadne.utils.model import weights_update
+from ariadne.utils.base import *
 from ariadne.tracknet_v2_1.processor import TrackNetV21Processor, ProcessedTracknetDataChunk, ProcessedTracknetData, TracknetDataChunk
 
 LOGGER = logging.getLogger('ariadne.prepare')

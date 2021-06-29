@@ -4,7 +4,10 @@ import numpy as np
 import gin
 from ariadne.tracknet_v2.model import TrackNETv2
 from ariadne.tracknet_v2.dataset import TrackNetV2Dataset
-from ariadne.utils import weights_update, find_nearest_hit, load_data
+from ariadne.utils.model import weights_update
+from ariadne.utils.base import find_nearest_hit
+from ariadne.utils.data import load_data
+
 import warnings
 warnings.filterwarnings("ignore")
 
