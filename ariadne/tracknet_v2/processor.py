@@ -98,7 +98,6 @@ class TrackNetProcessor(DataProcessor):
             chunk.processed_object = chunk_data
         return ProcessedTracknetData(chunks[0].output_name,chunks)
 
-
     def save_on_disk(self,
                      processed_data: ProcessedTracknetData):
         all_data_inputs = []
@@ -129,6 +128,8 @@ class TrackNetProcessorWithMask(DataProcessor):
                  transforms: List[BaseTransformer] = None,
                  columns=('x', 'y', 'z'),
                  det_indices=(0,1),
+                 min_track_len=4,
+                 balance=True,
                  filter_first_n=0):
         super().__init__(
             processor_name='TrackNet_v2_Processor',
@@ -139,6 +140,8 @@ class TrackNetProcessorWithMask(DataProcessor):
         self.columns = columns
         self.det_indices = det_indices
         self.filter_first_stations = filter_first_n
+        self.min_track_len=min_track_len - 1
+        self.balance=balance
 
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
         if len(self.det_indices) > 1:
@@ -156,49 +159,52 @@ class TrackNetProcessorWithMask(DataProcessor):
     def preprocess_chunk(self,
                          chunk: TracknetDataChunk,
                          idx: str) -> ProcessedTracknetDataChunk:
-        chunk_df = chunk.df_chunk_data
-        if chunk_df.empty:
+        df = chunk.df_chunk_data
+        if df.empty:
             return ProcessedTracknetDataChunk(None, '')
-        chunk_id = int(chunk_df.event.values[0])
-        output_name = f'{self.output_dir}/masked_tracknet_{idx.replace(".txt", "")}'
-        return ProcessedTracknetDataChunk(chunk_df, self.output_name)
+        chunk_data_xs = {}
+        stations = df.groupby('station').size().max()
+        # max_station = max(stations)
+        if stations > 1000:
+            return ProcessedTracknetDataChunk(None, '')
+        grouped_df = df[df['track'] != -1].groupby('track')
+        for i, data in grouped_df:
+            track = data[list(self.columns)].values
+            track_len = len(track)
+            if track_len > self.min_track_len:
+                if track_len not in chunk_data_xs.keys():
+                    chunk_data_xs[track_len] = []
+                chunk_data_xs[track_len].append(track)
+        if len(chunk_data_xs.keys()) == 0:
+            return ProcessedTracknetDataChunk(None, '')
+        if self.balance:
+            nums = [len(i) for i in chunk_data_xs.items()]
+            min_num = min(nums)
+            chunk_data_xs = {k: v[:min_num] for k,v in chunk_data_xs.items()}
+        return ProcessedTracknetDataChunk(chunk_data_xs, self.output_name)
 
 
     def postprocess_chunks(self,
                            chunks: List[ProcessedTracknetDataChunk]) -> ProcessedTracknetData:
-
-        for chunk in chunks:
-
-            if chunk.processed_object is None:
-                continue
-            chunk_data_x = []
-            df = chunk.processed_object
-            stations = df.groupby('station').size().max()
-            # max_station = max(stations)
-            if stations > 1000:
-                chunk.processed_object = None
-                continue
-            grouped_df = df[df['track'] != -1].groupby('track')
-            for i, data in grouped_df:
-                chunk_data_x.append(data[list(self.columns)].values)
-            chunk_data_x.extend(chunk_data_x)
-            chunk.processed_object = chunk_data_x
-        return ProcessedTracknetData(self.output_name,chunks)
+        return ProcessedTracknetData(self.output_name, chunks)
 
 
     def save_on_disk(self,
                      processed_data: ProcessedTracknetData):
-        all_data_inputs = []
-        for data_chunk in processed_data.processed_data:
-            if data_chunk.processed_object is None:
+        chunk_data_xs = []
+        for chunk in processed_data.processed_data:
+            if chunk.processed_object is None:
                 continue
-            all_data_inputs.extend(data_chunk.processed_object)
+            for items in chunk.processed_object.values():
+                chunk_data_xs.extend(items)
+        all_data_inputs = np.array(chunk_data_xs, dtype=object)
+        LOGGER.info(f'Get {len(all_data_inputs)} tracks')
         try:
             temp_inputs = np.load(self.output_name+'.npy', allow_pickle=True)
-            all_data_inputs = np.concatenate((temp_inputs, np.array(all_data_inputs, dtype=object)))
+            all_data_inputs = np.concatenate((temp_inputs, all_data_inputs))
         except:
-            print('new array is created')
+            LOGGER.info('new array is created')
         np.save(self.output_name, all_data_inputs, allow_pickle=True)
         temp_inputs = np.load(self.output_name+'.npy', allow_pickle=True)
-        print(len(temp_inputs))
+        LOGGER.info(f'now have {len(temp_inputs)} tracks')
         LOGGER.info(f'Saved to: {self.output_name}.npy as object-pickle')
