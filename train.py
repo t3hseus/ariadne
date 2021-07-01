@@ -60,7 +60,8 @@ def experiment(model,
                fp16_training=False,
                random_seed=None,
                accumulate_grad_batches=1,
-               resume_from_checkpoint=None  # path to checkpoint to resume
+               resume_from_checkpoint=None,  # path to checkpoint to resume
+               numGpus=None,
                ):
 
     os.makedirs(log_dir, exist_ok=True)
@@ -106,6 +107,7 @@ def experiment(model,
         'terminate_on_nan': True,
         'accumulate_grad_batches': accumulate_grad_batches,
         'logger': tb_logger,
+        'gpus': numGpus
         #'progress_bar_refresh_rate': 100,
         #'log_every_n_steps': 50,
     }
