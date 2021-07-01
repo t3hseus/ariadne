@@ -89,6 +89,7 @@ class GraphNet_Processor(DataProcessor):
             LOGGER.warning(f'SKIPPED {chunk_id} event with bad indices')
             return ReversedDiGraphDataChunk(None, output_name)
 
+        chunk_df = chunk_df[['event', 'r', 'phi', 'z', 'station', 'track']]
         pd_graph_df = to_pandas_graph_from_df(
             single_event_df=chunk_df,
             suffixes=self._suffixes_df,
@@ -114,7 +115,7 @@ class GraphNet_Processor(DataProcessor):
             hits=nodes_t,
             edges=edges_filtered,
             feature_names=['y_p', 'y_c', 'z_p', 'z_c', 'z'],
-            feature_scale=[np.pi, np.pi, 1., 1., 1.],
+            feature_scale=[1., 1., 1., 1., 1.],
         )
         return ReversedDiGraphDataChunk(out, output_name)
 

@@ -19,6 +19,7 @@ dependencies:
   - pyqt=5.12.*
   - vispy=0.6.6
   - pytorch-lightning
+  - torchmetrics
   - gin-config
   - absl-py
   - faiss

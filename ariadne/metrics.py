@@ -4,6 +4,7 @@ import torch.nn.functional as f
 from pytorch_lightning.metrics import functional as metrics
 from pytorch_lightning.metrics import Metric
 
+import torchmetrics.functional
 
 def _compute_metric(preds, target, is_softmax, metric_func, activation=False, **kwargs):
     target = target.int()
@@ -16,7 +17,7 @@ def _compute_metric(preds, target, is_softmax, metric_func, activation=False, **
         preds = (preds > 0.5).int()
     return metric_func(preds, target, **kwargs)
 
-
+## DEPRECATED METRICS:
 @gin.configurable('precision', allowlist=['is_softmax','activation'])
 def precision(preds, target, activation=False, is_softmax=False):
     return _compute_metric(
@@ -58,4 +59,47 @@ def accuracy(preds, target, activation=False, is_softmax=False):
         is_softmax=is_softmax,
         activation=activation,
         metric_func=metrics.accuracy
+    )
+
+## NEW METRICS
+@gin.configurable('new_precision', allowlist=['is_softmax','activation'])
+def precision_new(preds, target, activation=False, is_softmax=False):
+    return _compute_metric(
+        preds=preds,
+        target=target,
+        is_softmax=is_softmax,
+        metric_func=torchmetrics.functional.precision,
+        multiclass=False
+    )
+
+@gin.configurable('new_recall', allowlist=['is_softmax','activation'])
+def recall_new(preds, target, activation=False, is_softmax=False):
+    return _compute_metric(
+        preds=preds,
+        target=target,
+        is_softmax=is_softmax,
+        metric_func=torchmetrics.functional.recall,
+        activation=activation,
+        multiclass=False
+    )
+
+@gin.configurable('new_f1_score', allowlist=['is_softmax','activation'])
+def f1_score_new(preds, target, activation=False, is_softmax=False):
+    return _compute_metric(
+        preds=preds,
+        target=target,
+        is_softmax=is_softmax,
+        metric_func=torchmetrics.functional.f1,
+        activation=activation,
+        multiclass=False
+    )
+
+@gin.configurable('new_accuracy', allowlist=['is_softmax','activation'])
+def accuracy_new(preds, target, activation=False, is_softmax=False):
+    return _compute_metric(
+        preds=preds,
+        target=target,
+        is_softmax=is_softmax,
+        activation=activation,
+        metric_func=torchmetrics.functional.accuracy
     )
