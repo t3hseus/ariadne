@@ -522,6 +522,19 @@ class DropShort(BaseFilter):
                f'{"-" * 30}\n'
                f'Number of broken tracks: {self.get_num_broken()} \n')
 
+@gin.configurable
+class DropEmpty(object):
+    """Drops events without any tracks
+    """
+
+    def __init__(self, track_col='track', event_col='event'):
+        self.track_column = track_col
+        self.event_column = event_col
+
+    def __call__(self, data):
+        group = data.groupby(self.event_column)
+        result = group.filter(lambda e: not e[e[self.track_column] != -1].empty)
+        return result
 
 @gin.configurable
 class DropSpinningTracks(BaseFilter):
