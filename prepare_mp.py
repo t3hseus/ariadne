@@ -81,7 +81,9 @@ def preprocess_mp(
         transformer: Transformer.__class__,
         target_processor: IPreprocessor.__class__,
         target_postprocessor: IPostprocessor.__class__,
-        output_dir: str
+        output_dir: str,
+        process_num: int = None,
+        chunk_size: int = 1
 ):
     os.makedirs(output_dir, exist_ok=True)
     setup_logger(output_dir, target_processor.__class__.__name__)
@@ -90,7 +92,9 @@ def preprocess_mp(
     pd.set_option('mode.chained_assignment', 'raise')
 
     LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
-    pool = multiprocessing.Pool(processes=4)
+    process_num = multiprocessing.cpu_count() if process_num is None else process_num
+    LOGGER.info(f"Running with the {process_num} processes with chunk_size={chunk_size}")
+    pool = multiprocessing.Pool(processes=process_num)
 
     for data_df, basename in parse():
         LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
@@ -101,7 +105,7 @@ def preprocess_mp(
                  target_postprocessor)
         data_df = transformer(data_df)
         with tqdm(total=int(data_df.event.nunique())) as pbar:
-            for ret in pool.imap_unordered(processor, data_df.groupby('event'), 4):
+            for ret in pool.imap_unordered(processor, data_df.groupby('event'), chunksize=chunk_size):
                 pbar.update()
                 if ret[0] is None:
                     LOGGER.info(f"[Preprocess]: bad event {ret[1]}")
