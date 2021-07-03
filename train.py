@@ -1,6 +1,7 @@
 import logging
 
 import os
+import traceback
 
 import gin
 import numpy as np
@@ -123,6 +124,11 @@ def experiment(model,
             # TODO: fix multi-GPU support
             trainer_kwargs['distributed_backend'] = 'ddp'
             trainer_kwargs['accelerator'] = 'ddp'
+    else:
+        trainer_kwargs['gpus'] = None
+        if num_gpus is not None:
+            LOGGER.warning(f"Warning! You set num_gpus={num_gpus} but torch.cuda.is_available() is '{torch.cuda.is_available()}'."
+                           f"Training will be on the CPU!")
 
     if fp16_training:
         # TODO: use torch.nn.functional.binary_cross_entropy_with_logits which is safe to autocast
@@ -130,7 +136,9 @@ def experiment(model,
         trainer_kwargs['amp_level'] = '02'
     try:
         trainer = Trainer(resume_from_checkpoint=resume_from_checkpoint, **trainer_kwargs)
-    except: #if one of keys is not in checkpoint etc
+    except Exception as exc:
+        #if one of keys is not in checkpoint etc
+        LOGGER.error(f"Got exception! exc: {exc}. \n{traceback.format_exc()}")
         model.model = weights_update(model=model.model,
                            checkpoint=torch.load(resume_from_checkpoint))
         trainer = Trainer(resume_from_checkpoint=None, **trainer_kwargs)
