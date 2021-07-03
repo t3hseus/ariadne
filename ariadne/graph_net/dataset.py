@@ -15,7 +15,7 @@ class GraphDataset(Dataset):
 
     def __init__(self, input_dir, n_samples=None):
         self.input_dir = os.path.expandvars(input_dir)
-        filenames = [os.path.join(self.input_dir, f) for f in os.listdir(self.input_dir) if f.endswith('.npz')]
+        filenames = [os.path.join(self.input_dir, f.name) for f in os.scandir(self.input_dir) if f.name.endswith('.npz')]
         self.filenames = (filenames[:n_samples] if n_samples is not None else filenames)
 
     def __getitem__(self, index):
