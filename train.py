@@ -60,7 +60,8 @@ def experiment(model,
                fp16_training=False,
                random_seed=None,
                accumulate_grad_batches=1,
-               resume_from_checkpoint=None  # path to checkpoint to resume
+               resume_from_checkpoint=None,  # path to checkpoint to resume
+               num_gpus=None,
                ):
 
     os.makedirs(log_dir, exist_ok=True)
@@ -106,6 +107,7 @@ def experiment(model,
         'terminate_on_nan': True,
         'accumulate_grad_batches': accumulate_grad_batches,
         'logger': tb_logger,
+        'gpus': num_gpus
         #'progress_bar_refresh_rate': 100,
         #'log_every_n_steps': 50,
     }
@@ -116,10 +118,11 @@ def experiment(model,
     )
     trainer_kwargs['callbacks'] = [checkpoint_callback]
     if torch.cuda.is_available():
-        trainer_kwargs['gpus'] = 1 #torch.cuda.device_count()
+        trainer_kwargs['gpus'] = 1 if trainer_kwargs['gpus'] is None else trainer_kwargs['gpus']
         if trainer_kwargs['gpus'] > 1:
             # TODO: fix multi-GPU support
             trainer_kwargs['distributed_backend'] = 'ddp'
+            trainer_kwargs['accelerator'] = 'ddp'
 
     if fp16_training:
         # TODO: use torch.nn.functional.binary_cross_entropy_with_logits which is safe to autocast

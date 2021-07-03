@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH -p dgx
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 
 lscpu
 nvidia-smi

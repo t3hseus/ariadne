@@ -81,7 +81,7 @@ class BaseTransformer(object):
         return data
 
     def drop_fakes(self, data):
-        return data.loc[data[self.track_column] != -1, :]
+        return data[data[self.track_column] != -1]
 
     def get_num_fakes(self):
         if self.fakes:
@@ -151,6 +151,7 @@ class BaseFilter(BaseTransformer):
         # Returns:
             data (pd.DataFrame): transformed dataframe
         """
+        data = data.copy()
         fakes = data.loc[data[self.track_column] == -1, :]
         data = self.drop_fakes(data)
         tracks = data.groupby([self.event_column, self.track_column])
@@ -160,7 +161,7 @@ class BaseFilter(BaseTransformer):
         broken = list(data.loc[~data.index.isin(good_tracks.index)].index)
         self._broken_tracks = data.loc[broken, [self.event_column, self.track_column, self.station_column]]
         self._num_broken_tracks = len(self._broken_tracks[[self.event_column, self.track_column]].drop_duplicates())
-        if self.keep_filtered:
+        if self.keep_filtered and len(broken) > 0:
             data.loc[~data.index.isin(good_tracks.index), 'track'] = -1
         else:
             data = data.loc[data.index.isin(good_tracks.index), :]

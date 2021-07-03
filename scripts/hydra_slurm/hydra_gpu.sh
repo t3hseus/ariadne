@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH -p long
-#SBATCH --gres=gpu:1
+#SBATCH -t 3660
+#SBATCH --gres=gpu:2
 
 lscpu
 nvidia-smi

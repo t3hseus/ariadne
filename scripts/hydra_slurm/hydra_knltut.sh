@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -p cpu -t 720
+#SBATCH -p knltut -t 3600
 
 lscpu
 conda env update --file environment_cpu.yml --name ariadne_cpu
