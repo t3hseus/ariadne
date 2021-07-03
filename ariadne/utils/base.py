@@ -10,14 +10,14 @@ def brute_force_hits_two_first_stations(df, return_momentum=False):
     first_station.columns = ['r_left', 'phi_left', 'z_left', 'px_left', 'py_left', 'pz_left', 'track_left']
     second_station = df[df['station'] == 1][['r', 'phi', 'z', 'px', 'py', 'pz', 'track']]
     second_station.columns = ['r_right', 'phi_right', 'z_right',  'px_right', 'py_right', 'pz_right', 'track_right']
-    temp_y = df[df['station'] > 1][['z', 'phi', 'track']]
+    temp_y = df[df['station'] > 1][['z', 'phi', 'r', 'track']]
     rows = itertools.product(first_station.iterrows(), second_station.iterrows())
     df = pd.DataFrame(left.append(right) for (_, left), (_, right) in rows)
     df = df.sample(frac=1).reset_index(drop=True)
     df_label = (df['track_left'] == df['track_right']) & (df['track_left'] != -1)
     x = df[['z_left', 'phi_left', 'r_left', 'z_right', 'phi_right', 'r_right']].values.reshape((-1, 2, 3))
-    y = np.full((len(df_label), 2), -2.)
-    y[df_label == 1] = np.squeeze(np.array(list(map(lambda x: temp_y[temp_y['track'] == x][['z', 'phi']].values,
+    y = np.full((len(df_label), 3), -2.)
+    y[df_label == 1] = np.squeeze(np.array(list(map(lambda x: temp_y[temp_y['track'] == x][['z', 'phi', 'r']].values,
                                                     df[df_label == 1]['track_left']))), 1)
     if not return_momentum:
         return x, y, df_label
@@ -187,16 +187,16 @@ def filter_hits_in_ellipses(ellipses, nearest_hits, hits_index, z_last=True, fil
     ellipses = np.expand_dims(ellipses, 2)
     #found_hits = nearest_hits.reshape(-1, find_n, nearest_hits.shape[-1])
     if z_last:
-        x_part = (ellipses[:,0].repeat(find_n,1) - nearest_hits[:, :, 0]) / ellipses[:, -2].repeat(find_n,1)
+        x_part = (ellipses[:, 0].repeat(find_n, 1) - nearest_hits[:, :, 0]) / ellipses[:, -2].repeat(find_n, 1)
         #print(x_part**2)
-        y_part = (ellipses[:,1].repeat(find_n,1) - nearest_hits[:, :, 1]) / ellipses[:, -1].repeat(find_n,1)
+        y_part = (ellipses[:, 1].repeat(find_n, 1) - nearest_hits[:, :, 1]) / ellipses[:, -1].repeat(find_n, 1)
         #print(y_part**2)
     else:
         x_part = (nearest_hits[:, :, 1] - ellipses[:, 1].repeat(find_n, 1)) / ellipses[:, 1].repeat(find_n, 1)
         y_part = (nearest_hits[:, :, 2] - ellipses[:, 2].repeat(find_n, 1)) / ellipses[:, 2].repeat(find_n, 1)
     left_side = x_part**2 + y_part**2
     is_in_ellipse = left_side <= 1
-    is_in_ellipse *= hits_index != -1
+    is_in_ellipse *= (hits_index != -1)
     return nearest_hits, is_in_ellipse
 
 def get_tracks(df, min_len=4):
@@ -332,7 +332,7 @@ def search_in_index(centers, index, find_n=100, n_dim=2):
     _, i = index.search(np.ascontiguousarray(centers.astype('float32')), find_n)
     return i
 
-def store_in_index(event_hits, index=None, num_components=3):
+def store_in_index(event_hits, index=None, n_dim=3):
     """Function to create faiss.IndexFlatL2 or add hits to it.
     Args:
         event_hits (np.ndarray of shape (N,num_components)): array with N hits to store in faiss index of event
@@ -340,7 +340,7 @@ def store_in_index(event_hits, index=None, num_components=3):
         num_components (int, 3 by default): number of dimentions in event space
     """
     #numpy -> numpy
-    index = faiss.IndexFlatL2(num_components)
+    index = faiss.IndexFlatL2(n_dim)
     #index.train(event_hits.astype('float32'))
     index.add(event_hits.astype('float32'))
     return index
