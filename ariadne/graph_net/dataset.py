@@ -24,7 +24,7 @@ class GraphDataset(Dataset):
         else:
             max_count = n_samples
         self.filenames = [""] * max_count
-        files_num = 0
+
         for idx in tqdm(range(max_count)):
             item = next(scanner, None)
             while item is not None and not item.name.endswith('.npz'):
@@ -63,11 +63,10 @@ class GraphDatasetFromMemory(Dataset):
         return len(self.graphs)
 
 
-class MemoryDataset(Dataset):
+class MemoryDataset(GraphDataset):
 
-    def __init__(self, input_dir):
-        super(MemoryDataset, self).__init__()
-        self.input_dir = input_dir
+    def __init__(self, input_dir, n_samples):
+        super(MemoryDataset, self).__init__(input_dir=input_dir, n_samples=n_samples)
 
     def load_data(self):
         raise NotImplementedError
@@ -85,15 +84,9 @@ class ItemLengthGetter(object):
 class GraphsDatasetMemory(MemoryDataset, ItemLengthGetter):
 
     def __init__(self, input_dir, n_samples=None, pin_mem=False):
-        super().__init__(os.path.expandvars(input_dir))
-        self.n_samples = n_samples
-        self.filenames = []
-        self.graphs = {}
+        super().__init__(os.path.expandvars(input_dir), n_samples=n_samples)
         self.pin_mem = pin_mem
-
-        filenames = [os.path.join(self.input_dir, f.name) for f in os.scandir(self.input_dir) if
-                     f.name.endswith('.npz')]
-        self.filenames = (filenames[:self.n_samples] if self.n_samples is not None else filenames)
+        self.graphs = {}
 
     def get_item_length(self, item_index):
         item = None
