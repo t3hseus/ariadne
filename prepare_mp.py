@@ -66,7 +66,7 @@ class EventProcessor:
 
     def __call__(self, data):
         ev_id, event = data
-        idx = os.path.join(self.output_dir, f"{self.basename}_{ev_id}")
+        idx = os.path.join(self.output_dir, f"graph_{self.basename}_{ev_id}")
         chunk = DataChunk.from_df(event)
         processed = self.target_processor(chunk)
         if processed is None:

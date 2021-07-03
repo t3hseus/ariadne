@@ -9,14 +9,37 @@ from collections import OrderedDict
 from torch.utils.data import Dataset, BatchSampler, Sampler, RandomSampler, Subset
 from ariadne.graph_net.graph_utils.graph import load_graph, Graph
 
+LOGGER = logging.getLogger('ariadne.graph.dataset')
 
 @gin.configurable
 class GraphDataset(Dataset):
 
     def __init__(self, input_dir, n_samples=None):
         self.input_dir = os.path.expandvars(input_dir)
-        filenames = [os.path.join(self.input_dir, f) for f in os.listdir(self.input_dir) if f.endswith('.npz')]
-        self.filenames = (filenames[:n_samples] if n_samples is not None else filenames)
+        LOGGER.info(f"[GraphDataset] Building dataset for folder '{self.input_dir}'")
+        scanner = os.scandir(self.input_dir)
+        if n_samples is None:
+            max_count = 1_000_000
+            LOGGER.info(f"[GraphDataset] n_samples was not set. using at most {n_samples} files.")
+        else:
+            max_count = n_samples
+        self.filenames = [""] * max_count
+
+        for idx in tqdm(range(max_count)):
+            item = next(scanner, None)
+            while item is not None and not item.name.endswith('.npz'):
+                item = next(scanner, None)
+            if item is None:
+                if n_samples is not None:
+                    raise RuntimeError(f"Run out of files. requested {n_samples} but {idx} was found. Exiting")
+                else:
+                    self.filenames = (self.filenames[:idx])
+                    break
+            self.filenames[idx] = os.path.join(self.input_dir, item.name)
+
+        LOGGER.info(f"[GraphDataset] Total number of files: {len(self.filenames)}")
+
+
 
     def __getitem__(self, index):
         # uncomment to find bad events in the dataset:
@@ -39,11 +62,11 @@ class GraphDatasetFromMemory(Dataset):
     def __len__(self):
         return len(self.graphs)
 
-class MemoryDataset(Dataset):
 
-    def __init__(self, input_dir):
-        super(MemoryDataset, self).__init__()
-        self.input_dir = input_dir
+class MemoryDataset(GraphDataset):
+
+    def __init__(self, input_dir, n_samples):
+        super(MemoryDataset, self).__init__(input_dir=input_dir, n_samples=n_samples)
 
     def load_data(self):
         raise NotImplementedError
@@ -61,14 +84,9 @@ class ItemLengthGetter(object):
 class GraphsDatasetMemory(MemoryDataset, ItemLengthGetter):
 
     def __init__(self, input_dir, n_samples=None, pin_mem=False):
-        super().__init__(os.path.expandvars(input_dir))
-        self.n_samples = n_samples
-        self.filenames = []
-        self.graphs = {}
+        super().__init__(os.path.expandvars(input_dir), n_samples=n_samples)
         self.pin_mem = pin_mem
-
-        filenames = [os.path.join(self.input_dir, f.name) for f in os.scandir(self.input_dir) if f.name.endswith('.npz')]
-        self.filenames = (filenames[:self.n_samples] if self.n_samples is not None else filenames)
+        self.graphs = {}
 
     def get_item_length(self, item_index):
         item = None
@@ -204,7 +222,6 @@ class GraphBatchBucketSampler(Sampler):
 
         if not self.drop_last:
             raise NotImplementedError
-
 
     def __len__(self):
         if self.drop_last:
