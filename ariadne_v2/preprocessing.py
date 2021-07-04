@@ -4,7 +4,7 @@ import pandas as pd
 from typing import List, Iterable, Set
 from abc import ABCMeta, abstractmethod
 
-from ariadne_v2.data_chunk import DataChunk
+from ariadne_v2.data_chunk import DFDataChunk
 from ariadne_v2.transformations import Compose, BaseTransformer
 
 class ProcessedDataChunk(metaclass=ABCMeta):
@@ -29,12 +29,12 @@ class DataProcessor(metaclass=ABCMeta):
         self.transformer = Compose(transforms)
 
     @abstractmethod
-    def construct_chunk(self, chunk: DataChunk) -> DataChunk:
+    def construct_chunk(self, chunk: DFDataChunk) -> DFDataChunk:
         pass
 
     @abstractmethod
     def preprocess_chunk(self,
-                         chunk: DataChunk,
+                         chunk: DFDataChunk,
                          idx: str) -> ProcessedDataChunk:
         pass
 

@@ -3,7 +3,7 @@ from typing import List
 import gin
 
 from ariadne_v2.transformations import BaseTransformer
-from experiments.graph.inferrer import GraphPreprocessor, SaveGraphsHDF5
+from experiments.graph.inferrer import GraphPreprocessor, SaveGraphsHDF5, GraphDataset, SaveGraphsToDataset
 from experiments.graph.inferrer import SaveGraphs
 
 from ariadne_v2.inference import Transformer
@@ -22,6 +22,13 @@ def save_graphs():
 def save_graphs_hdf5():
     return SaveGraphsHDF5()
 
+@gin.configurable
+def save_graphs_to_dataset():
+    return SaveGraphsToDataset()
+
+@gin.configurable
+def graphs_dataset(output_dir):
+    return GraphDataset(output_dir)
 
 @gin.configurable
 def transformer(transforms: List[BaseTransformer]):

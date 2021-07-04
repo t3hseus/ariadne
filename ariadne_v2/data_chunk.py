@@ -1,9 +1,10 @@
+import multiprocessing
 from abc import abstractmethod, ABCMeta
-from typing import List
+from contextlib import contextmanager
+from typing import List, Union, Callable, Any, Dict
 
 import numpy as np
 import pandas as pd
-
 
 class HDF5Serializable:
     @abstractmethod
@@ -15,33 +16,46 @@ class HDF5Serializable:
         pass
 
 
-class DataChunk(HDF5Serializable, metaclass=ABCMeta):
+class DataChunk(HDF5Serializable):
+    def __init__(self, np_ndarr: np.ndarray, source=None):
+        self.np_arr = np_ndarr
+        self.__source = source
+
+    def jit_hash(self):
+        assert self.__source is not None
+        return self.__source
+
+    def cachable(self):
+        return self.__source is not None
+
+
+class DFDataChunk(DataChunk):
     def __init__(self,
                  np_index: np.ndarray,
                  np_chunk_data: np.ndarray,
                  columns: List[str],
                  dtypes: List,
                  source=None):
+        super(DFDataChunk, self).__init__(np_ndarr=np_chunk_data,
+                                          source=source)
         self.index = np_index
-        self.np_chunk_data = np_chunk_data
         self.columns = columns
         self.dtypes = dtypes
-        self.__source = source
 
     @staticmethod
     def from_df(df: pd.DataFrame, hash_source=None):
-        return DataChunk(np_chunk_data=df.values, np_index=df.index.values, columns=list(df.columns),
-                         dtypes=[dt.str for dt in df.dtypes], source=hash_source)
+        return DFDataChunk(np_chunk_data=df.values, np_index=df.index.values, columns=list(df.columns),
+                           dtypes=[dt.str for dt in df.dtypes], source=hash_source)
 
     def as_df(self):
         return pd.DataFrame({
-            column: self.np_chunk_data[:, idx].astype(self.dtypes[idx])
+            column: self.np_arr[:, idx].astype(self.dtypes[idx])
             for idx, column in enumerate(self.columns)},
             index=self.index)
 
     def to_hdf5(self, db, hash, path):
         columns = list(self.columns)
-        ndarr = self.np_chunk_data
+        ndarr = self.np_arr
         idx = self.index
         db.create_dataset(f"{path}/val", shape=ndarr.shape, data=ndarr, compression="gzip")
         db[f"{path}/col"] = columns
@@ -54,11 +68,4 @@ class DataChunk(HDF5Serializable, metaclass=ABCMeta):
         columns = [column.decode('utf-8') for column in db[f"{path}/col"]]
         dtypes = [dtype.decode('utf-8') for dtype in db[f"{path}/dtype"]]
         index = db[f"{path}/idx"][()]
-        return DataChunk(index, np_chunk_data, columns, dtypes, source=hash)
-
-    def jit_hash(self):
-        assert self.__source is not None
-        return self.__source
-
-    def cachable(self):
-        return self.__source is not None
+        return DFDataChunk(index, np_chunk_data, columns, dtypes, source=hash)

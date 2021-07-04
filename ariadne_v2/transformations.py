@@ -12,7 +12,7 @@ from sklearn.preprocessing import (
 )
 
 from ariadne_v2 import jit_cacher
-from ariadne_v2.data_chunk import DataChunk
+from ariadne_v2.data_chunk import DFDataChunk
 from ariadne_v2.jit_cacher import Cacher
 
 LOGGER = logging.getLogger('ariadne.transforms')
@@ -34,7 +34,7 @@ class Compose:
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, data: DataChunk, preserve_index=True):
+    def __call__(self, data: DFDataChunk, preserve_index=True):
         hash = None
         if data.cachable():
             rep = {f'tr_{idx}': ("%r" % t) for idx, t in enumerate(self.transforms)}
@@ -55,7 +55,7 @@ class Compose:
                 return data
 
         if hash is not None:
-            dc = DataChunk.from_df(data, hash)
+            dc = DFDataChunk.from_df(data, hash)
             with jit_cacher.instance() as cacher:
                 cacher.store_datachunk(hash, dc)
 
