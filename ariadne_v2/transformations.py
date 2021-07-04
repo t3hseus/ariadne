@@ -11,7 +11,12 @@ from sklearn.preprocessing import (
     Normalizer
 )
 
+from ariadne_v2 import jit_cacher
+from ariadne_v2.data_chunk import DataChunk
+from ariadne_v2.jit_cacher import Cacher
+
 LOGGER = logging.getLogger('ariadne.transforms')
+
 
 class Compose:
     """Composes several transforms together. Mostly copied from torchvision.
@@ -29,7 +34,17 @@ class Compose:
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, data: pd.DataFrame, preserve_index=True):
+    def __call__(self, data: DataChunk, preserve_index=True):
+        hash = None
+        if data.cachable():
+            rep = {f'tr_{idx}': ("%r" % t) for idx, t in enumerate(self.transforms)}
+            hash = Cacher.build_hash(preserve_index, **rep, SRC=data.jit_hash())
+            with jit_cacher.instance() as cacher:
+                dc = cacher.read_datachunk(hash)
+                if dc:
+                    return dc.as_df()
+
+        data = data.as_df()
         if preserve_index:
             data['index'] = data.index
         for t in self.transforms:
@@ -38,6 +53,12 @@ class Compose:
                 LOGGER.warning(f'{t.__class__.__name__} returned empty data. '
                                'Skipping all further transforms')
                 return data
+
+        if hash is not None:
+            dc = DataChunk.from_df(data, hash)
+            with jit_cacher.instance() as cacher:
+                cacher.store_datachunk(hash, dc)
+
         return data
 
     def __repr__(self):
@@ -92,7 +113,6 @@ class BaseTransformer(object):
         return pd.concat([data, fakes], axis=0, ignore_index=True)
 
 
-
 class BaseScaler(BaseTransformer):
     """Base class for scalers.
      # Args:
@@ -143,7 +163,6 @@ class BaseFilter(BaseTransformer):
         self.filter_rule = filter_rule
         self.keep_filtered = keep_filtered
 
-
     def __call__(self, data):
         """
         # Args:
@@ -179,7 +198,6 @@ class BaseFilter(BaseTransformer):
                 f'{"-" * 30}\n')
 
 
-
 class BaseCoordConverter(BaseTransformer):
     """Base class for coordinate convertions
 
@@ -191,7 +209,7 @@ class BaseCoordConverter(BaseTransformer):
          to_columns (list or tuple of length 3, ['r', 'phi', 'z'] by default): list of features to convert to
     """
 
-    def __init__(self, convert_function, drop_old=False, from_columns=('x', 'y','z'),
+    def __init__(self, convert_function, drop_old=False, from_columns=('x', 'y', 'z'),
                  to_columns=('r', 'phi', 'z'), postfix='general_convert'):
         assert len(from_columns) == 3, 'To convert coordinates, you need 3 old columns'
         assert len(to_columns) == 3, 'To convert coordinates, you need 3 new columns'
@@ -201,7 +219,6 @@ class BaseCoordConverter(BaseTransformer):
         self.from_columns = from_columns
         self.to_columns = to_columns
         self.postfix = postfix
-
 
     def __call__(self, data):
         """
@@ -235,10 +252,11 @@ class BaseCoordConverter(BaseTransformer):
         return '\n'.join([f'{i}: from {j[0]} to {j[1]}' for i, j in self.range_.items()])
 
     def __repr__(self):
-        return(f'{"-" * 30}\n'
-               f'{self.__class__.__name__} with convert_function: '
-               f'{self.convert_function}\n'
-               f'{"-" * 30}\n')
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with convert_function: '
+                f'{self.convert_function}\n'
+                f'{"-" * 30}\n')
+
 
 @gin.configurable
 class PreserveOriginal:
@@ -268,8 +286,9 @@ class PreserveOriginal:
 
     def __repr__(self):
         return (f"{'-' * 30}\n"
-               f'{self.__class__.__name__} ceeping original state of columns: {self.columns} \n'
-               f"{'-' * 30}\n")
+                f'{self.__class__.__name__} ceeping original state of columns: {self.columns} \n'
+                f"{'-' * 30}\n")
+
 
 @gin.configurable
 class BakeStationValues:
@@ -322,10 +341,10 @@ class StandardScale(BaseScaler):
 
     def __repr__(self):
         return (f"{'-' * 30} \n"
-               f"{self.__class__.__name__} with scaling_parameters: drop_old={self.drop_old}, "
-               f"with_mean={self.with_mean},with_std={self.with_std} \n"
-               f"{'-' * 30} \n" 
-               f" Mean: {self.scaler.mean_} \n Var: {self.scaler.var_} \n Scale: {self.scaler.scale_} ")
+                f"{self.__class__.__name__} with scaling_parameters: drop_old={self.drop_old}, "
+                f"with_mean={self.with_mean},with_std={self.with_std} \n"
+                f"{'-' * 30} \n"
+                f" Mean: {self.scaler.mean_} \n Var: {self.scaler.var_} \n Scale: {self.scaler.scale_} ")
 
 
 @gin.configurable
@@ -338,7 +357,6 @@ class MinMaxScale(BaseScaler):
     """
 
     def __init__(self, drop_old=True, feature_range=(0, 1), columns=('x', 'y', 'z')):
-
         assert feature_range[0] < feature_range[1], 'minimum is not smaller value then maximum'
         self.feature_range = feature_range
         self.scaler = MinMaxScaler(feature_range=feature_range)
@@ -418,7 +436,6 @@ class ConstraintsNormalize(BaseTransformer):
                         assert constraint[col][0] < constraint[col][
                             1], f'Minimum is not smaller than maximum for column {col} and station {key}'
 
-
     def __call__(self, data):
         """
         # Args:
@@ -439,11 +456,11 @@ class ConstraintsNormalize(BaseTransformer):
             data = super().transform_data(data, [x_norm, y_norm, z_norm])
         else:
             ##assert all([station in data['station'].unique() for station in
-             #           self.constraints.keys()]), "Some station keys in constraints are not presented in data. Keys: " \
+            #           self.constraints.keys()]), "Some station keys in constraints are not presented in data. Keys: " \
             #                                       f"{data['station'].unique()}; data keys: {self.constraints.keys()}"
 
             for station in list(data['station'].unique()):
-                #print(data['station'].unique())
+                # print(data['station'].unique())
                 group = data.loc[data['station'] == station,]
                 x_norm, y_norm, z_norm = self.normalize(group, self.constraints[station])
                 data.loc[data['station'] == station, :] = \
@@ -491,8 +508,8 @@ class ConstraintsNormalize(BaseTransformer):
                 f"{self.__class__.__name__} with parameters: "
                 f"drop_old={self.drop_old}, "
                 f"use_global_constraints={self.use_global_constraints}\n"
-                f"{' '*20}margin={self.margin}, columns={self.columns}\n"
-                f"{'-'*30}\nconstraints are: {self.constraints}")
+                f"{' ' * 20}margin={self.margin}, columns={self.columns}\n"
+                f"{'-' * 30}\nconstraints are: {self.constraints}")
 
 
 @gin.configurable
@@ -506,7 +523,8 @@ class DropShort(BaseFilter):
         event_column (str, 'event' by default): Station column in data
     """
 
-    def __init__(self, num_stations=None, keep_filtered=True, station_col='station', track_col='track', event_col='event'):
+    def __init__(self, num_stations=None, keep_filtered=True, station_col='station', track_col='track',
+                 event_col='event'):
         self.num_stations = num_stations
         self.broken_tracks_ = None
         self.num_broken_tracks_ = None
@@ -514,14 +532,14 @@ class DropShort(BaseFilter):
         super().__init__(self.filter, num_stations=num_stations, station_col=station_col, track_col=track_col,
                          event_col=event_col, keep_filtered=keep_filtered)
 
-
     def __repr__(self):
-        return(f'{"-" * 30}\n'
-               f'{self.__class__.__name__} with parameters: num_stations={self.num_stations}, '
-               f'    track_column={self.track_column}, station_column={self.station_column}, '
-               f'event_column={self.event_column}\n'
-               f'{"-" * 30}\n'
-               f'Number of broken tracks: {self.get_num_broken()} \n')
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with parameters: num_stations={self.num_stations}, '
+                f'    track_column={self.track_column}, station_column={self.station_column}, '
+                f'event_column={self.event_column}\n'
+                f'{"-" * 30}\n'
+                f'Number of broken tracks: {self.get_num_broken()} \n')
+
 
 @gin.configurable
 class DropEmpty(object):
@@ -537,6 +555,9 @@ class DropEmpty(object):
         result = group.filter(lambda e: not e[e[self.track_column] != -1].empty)
         return result
 
+    def __repr__(self):
+        return self.__class__.__name__
+
 @gin.configurable
 class DropSpinningTracks(BaseFilter):
     """Drops tracks with points on same stations (e.g. (2,2,2) or (1,2,1)).
@@ -548,17 +569,17 @@ class DropSpinningTracks(BaseFilter):
     """
 
     def __init__(self, keep_filtered=True, station_col='station', track_col='track', event_col='event'):
-
         self.filter = lambda x: x[self.station_column].unique().shape[0] == x[self.station_column].shape[0]
         super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
                          keep_filtered=keep_filtered)
 
     def __repr__(self):
-        return(f'{"-" * 30}\n'
-               f'{self.__class__.__name__} with parameters:'
-               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
-               f'{"-" * 30}\n'
-               f'Number of broken tracks: {self.get_num_broken()} \n')
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with parameters:'
+                f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
+                f'{"-" * 30}\n'
+                f'Number of broken tracks: {self.get_num_broken()} \n')
+
 
 @gin.configurable
 class UnspinSpinningTracks(BaseFilter):
@@ -569,6 +590,7 @@ class UnspinSpinningTracks(BaseFilter):
         track_col(str, 'track' by default): Track column in data
         event_col (str, 'event' by default): Station column in data
     """
+
     def check_spinning(self, x):
         if x[self.station_column].unique().shape[0] != x[self.station_column].shape[0]:
             for station in x[self.station_column].unique():
@@ -576,14 +598,16 @@ class UnspinSpinningTracks(BaseFilter):
                 if len(z_values) > 1:
                     if len(z_values.unique()) > 1:
                         for col in self.columns:
-                            x.loc[x[self.station_column] == station, col] = np.mean(x.loc[x[self.station_column] == station, col])
+                            x.loc[x[self.station_column] == station, col] = np.mean(
+                                x.loc[x[self.station_column] == station, col])
                         print(x.loc[x[self.station_column] == station].index)
                         x.drop(x.loc[x[self.station_column] == station].index[:-1], inplace=True)
                     else:
                         return False
         return True
 
-    def __init__(self, keep_filtered=True, columns=('x', 'y', 'z'), z_column='z', station_col='station', track_col='track', event_col='event'):
+    def __init__(self, keep_filtered=True, columns=('x', 'y', 'z'), z_column='z', station_col='station',
+                 track_col='track', event_col='event'):
 
         self.z_column = z_column
         self.columns = columns
@@ -592,11 +616,12 @@ class UnspinSpinningTracks(BaseFilter):
                          keep_filtered=keep_filtered)
 
     def __repr__(self):
-        return(f'{"-" * 30}\n'
-               f'{self.__class__.__name__} with parameters:'
-               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
-               f'{"-" * 30}\n'
-               f'Number of broken tracks: {self.get_num_broken()} \n')
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with parameters:'
+                f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
+                f'{"-" * 30}\n'
+                f'Number of broken tracks: {self.get_num_broken()} \n')
+
 
 @gin.configurable
 class DropTracksWithHoles(BaseFilter):
@@ -614,18 +639,17 @@ class DropTracksWithHoles(BaseFilter):
                  track_col='track',
                  event_col='event',
                  min_station_num=0):
-
         self.filter = lambda x: x[self.station_column].values.shape[0] == \
-                                len(np.arange(min_station_num, int(x[self.station_column].max())))+1
+                                len(np.arange(min_station_num, int(x[self.station_column].max()))) + 1
         super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
                          keep_filtered=keep_filtered)
 
     def __repr__(self):
-        return(f'{"-" * 30}\n'
-               f'{self.__class__.__name__} with parameters:'
-               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
-               f'{"-" * 30}\n'
-               f'Number of broken tracks: {self.get_num_broken()} \n')
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with parameters:'
+                f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
+                f'{"-" * 30}\n'
+                f'Number of broken tracks: {self.get_num_broken()} \n')
 
 
 @gin.configurable
@@ -639,7 +663,6 @@ class DropFakes(BaseTransformer):
         super().__init__(track_col=track_col)
         self._num_fakes = None
         self.track_col = track_col
-
 
     def __call__(self, data):
         """"
@@ -670,8 +693,10 @@ class ToCylindrical(BaseCoordConverter):
        New "z" column (same value for each station) will be r for cylindrical chamber.
     """
 
-    def __init__(self, drop_old=False, cart_columns=('x', 'y', 'z'), polar_columns=('r', 'phi', 'z'), postfix='before_cyl'):
-        super().__init__(self.convert, drop_old=drop_old, from_columns=cart_columns, to_columns=polar_columns, postfix=postfix)
+    def __init__(self, drop_old=False, cart_columns=('x', 'y', 'z'), polar_columns=('r', 'phi', 'z'),
+                 postfix='before_cyl'):
+        super().__init__(self.convert, drop_old=drop_old, from_columns=cart_columns, to_columns=polar_columns,
+                         postfix=postfix)
 
     def convert(self, data):
         r = np.sqrt(data[self.from_columns[0]] ** 2 + data[self.from_columns[1]] ** 2)
@@ -711,7 +736,7 @@ class ToCartesian(BaseCoordConverter):
 
     def __repr__(self):
         return (f'{"-" * 30}\n'
-                f'{self.__class__.__name__} with parameters: ' 
+                f'{self.__class__.__name__} with parameters: '
                 f'drop_old={self.drop_old}, phi_col={self.to_columns[1]}, r_col={self.to_columns[0]}\n'
                 f'{"-" * 30}\n'
                 f'Ranges: {self.get_ranges_str()}')
@@ -744,7 +769,7 @@ class ToBuckets(BaseTransformer):
         self.flat = flat
         self.shuffle = shuffle
         self.random_state = random_state
-        self.max_num_stations=max_stations
+        self.max_num_stations = max_stations
         self.keep_fakes = keep_fakes
         self.max_bucket_size = max_bucket_size
 
@@ -767,7 +792,7 @@ class ToBuckets(BaseTransformer):
         subbuckets = {}
         res = {}
         val_cnt = groupby.size().unique()  # get all unique track lens (in BES3 all are 3)
-        val_cnt = range(minlen, max(maxlen+1, val_cnt.max()))
+        val_cnt = range(minlen, max(maxlen + 1, val_cnt.max()))
         print(val_cnt)
         for length in val_cnt:
             this_len = groupby.filter(lambda x: x.shape[0] == length)
@@ -783,10 +808,10 @@ class ToBuckets(BaseTransformer):
         print(bsize)
         if self.max_bucket_size is not None:
             bsize = min(bsize, self.max_bucket_size)
-        buckets = {i: [] for i in range(3, self.max_num_stations+1)}
+        buckets = {i: [] for i in range(3, self.max_num_stations + 1)}
         print(buckets)
         # reverse loop until two points
-        for n_points in range(self.max_num_stations, minlen-1, -1):
+        for n_points in range(self.max_num_stations, minlen - 1, -1):
             print(n_points, maxlen)
             # while bucket is not full
             k = n_points
@@ -817,21 +842,21 @@ class ToBuckets(BaseTransformer):
                     # increment index
                 k += 1
                 print(buckets)
-                if all([len(subbuckets[i]) == 0 for i in range(n_points, maxlen+1) if i in subbuckets.keys()]):
+                if all([len(subbuckets[i]) == 0 for i in range(n_points, maxlen + 1) if i in subbuckets.keys()]):
                     break
 
             if all([len(subbuckets[i]) == 0 for i in subbuckets.keys()]):
                 break
-        #append unappended items
+        # append unappended items
         for i, k in subbuckets.items():
             if len(k) > 0:
                 try:
-                    append_len = int(len(k)/(i-2))
+                    append_len = int(len(k) / (i - 2))
                     begin = 0
-                    for j in range(i-1, min(list(buckets.keys()))-1, -1):
-                        print(k[begin:begin+append_len])
-                        buckets[j].extend(k[begin:begin+append_len, :j])
-                        begin = begin+append_len
+                    for j in range(i - 1, min(list(buckets.keys())) - 1, -1):
+                        print(k[begin:begin + append_len])
+                        buckets[j].extend(k[begin:begin + append_len, :j])
+                        begin = begin + append_len
                 except:
                     print('alert!')
         buckets = {k: np.concatenate(i) for k, i in buckets.items() if len(i) > 0}
@@ -867,5 +892,5 @@ class ToBuckets(BaseTransformer):
     def __repr__(self):
         return (f'{"-" * 30}\n'
                 f'{self.__class__.__name__} with parameters: flat={self.flat}, '
-                f'random_state={self.random_state}, shuffle={self.shuffle}, keep_fakes={self.keep_fakes}\n' 
+                f'random_state={self.random_state}, shuffle={self.shuffle}, keep_fakes={self.keep_fakes}\n'
                 f'{"-" * 30}\n')

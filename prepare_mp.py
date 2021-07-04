@@ -3,6 +3,7 @@ import multiprocessing
 import os
 import os.path
 
+from ariadne_v2 import jit_cacher
 from ariadne_v2.inference import IPreprocessor, Transformer, IPostprocessor
 from ariadne_v2.preprocessing import DataChunk
 
@@ -64,14 +65,18 @@ class EventProcessor:
         self.target_processor = target_processor
         self.target_postprocessor = target_postprocessor
 
+        with jit_cacher.instance() as cacher:
+            os.makedirs(os.path.join(cacher.cache_path_dir, output_dir), exist_ok=True)
+
     def __call__(self, data):
         ev_id, event = data
-        idx = os.path.join(self.output_dir, f"graph_{self.basename}_{ev_id}")
         chunk = DataChunk.from_df(event)
         processed = self.target_processor(chunk)
         if processed is None:
             return False, ev_id
-        postprocessed = self.target_postprocessor(processed, idx)
+
+        idx = f"graph_{self.basename}_{ev_id}"
+        postprocessed = self.target_postprocessor(self.output_dir, processed, idx)
         return True, ev_id
 
 
@@ -96,14 +101,15 @@ def preprocess_mp(
     LOGGER.info(f"Running with the {process_num} processes with chunk_size={chunk_size}")
     pool = multiprocessing.Pool(processes=process_num)
 
-    for data_df, basename in parse():
+    for data_df, basename, df_hash in parse():
         LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
         processor = EventProcessor(
                  output_dir,
                  basename,
                  target_processor,
                  target_postprocessor)
-        data_df = transformer(data_df)
+
+        data_df = transformer(DataChunk.from_df(data_df, df_hash))
         with tqdm(total=int(data_df.event.nunique())) as pbar:
             for ret in pool.imap_unordered(processor, data_df.groupby('event'), chunksize=chunk_size):
                 pbar.update()

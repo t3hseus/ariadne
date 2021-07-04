@@ -11,6 +11,7 @@ dependencies:
   - pyyaml
   - pandas
   - scikit-learn
+  - h5py
   - nose=1.3.7
   - notebook
   - torchvision

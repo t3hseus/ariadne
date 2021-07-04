@@ -37,7 +37,7 @@ class IEvaluator(metaclass=ABCMeta):
 
 class IPostprocessor(metaclass=ABCMeta):
     @abstractmethod
-    def __call__(self, out: Tuple, idx: str):
+    def __call__(self, out_dir:str, out: Tuple, idx: str):
         pass
 
 

@@ -6,11 +6,14 @@ A Graph is a namedtuple of matrices X, Ri, Ro, y.
 from collections import namedtuple
 from typing import List
 
+import h5py
 import numpy as np
 
-
 # A Graph is a namedtuple of matrices (X, Ri, Ro, y)
+from ariadne_v2 import jit_cacher
+
 Graph = namedtuple('Graph', ['X', 'Ri', 'Ro', 'y'])
+
 
 def graph_to_sparse(graph):
     Ri_rows, Ri_cols = graph.Ri.nonzero()
@@ -33,6 +36,28 @@ def save_graph(graph, filename):
     """Write a single graph to an NPZ file archive"""
     np.savez(filename, **graph_to_sparse(graph))
 
+
+def save_graph_hdf5_custom(db: h5py.File, path, graph: Graph):
+    if f"{path}" in db:
+        del db[f"{path}"]
+    db.create_dataset(f"{path}/X", data=graph.X, shape=graph.X.shape, compression="gzip")
+    db.create_dataset(f"{path}/y", data=graph.y, shape=graph.y.shape, compression="gzip")
+    db.create_dataset(f"{path}/Ri", data=graph.Ri, shape=graph.Ri.shape, compression="gzip")
+    db.create_dataset(f"{path}/Ro", data=graph.Ro, shape=graph.Ro.shape, compression="gzip")
+
+def read_graph_hdf5_custom(db: h5py.File, path, graph: Graph):
+    return Graph(X=db[f"{path}/X"][()],
+                 y=db[f"{path}/y"][()],
+                 Ri=db[f"{path}/Ri"][()],
+                 Ro=db[f"{path}/Ro"][()])
+
+def save_graph_hdf5(db, graph, filename):
+    with jit_cacher.instance() as cacher:
+        cacher.store_custom(db, filename, graph, save_graph_hdf5_custom)
+
+def read_graph_hdf5(db, filename):
+    with jit_cacher.instance() as cacher:
+        return cacher.read_custom(db, filename, read_graph_hdf5_custom)
 
 def save_graphs(graphs, filenames):
     for graph, filename in zip(graphs, filenames):

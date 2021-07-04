@@ -4,24 +4,8 @@ import pandas as pd
 from typing import List, Iterable, Set
 from abc import ABCMeta, abstractmethod
 
+from ariadne_v2.data_chunk import DataChunk
 from ariadne_v2.transformations import Compose, BaseTransformer
-
-
-class DataChunk(metaclass=ABCMeta):
-    def __init__(self,
-                 np_index: np.ndarray,
-                 np_chunk_data: np.ndarray,
-                 columns: List[str]):
-        self.index = np_index
-        self.np_chunk_data = np_chunk_data
-        self.columns = columns
-
-    @staticmethod
-    def from_df(df: pd.DataFrame):
-        return DataChunk(np_chunk_data=df.values, np_index=df.index.values, columns=list(df.columns))
-
-    def as_df(self):
-        return pd.DataFrame(self.np_chunk_data, index=self.index, columns=self.columns)
 
 class ProcessedDataChunk(metaclass=ABCMeta):
     def __init__(self,
@@ -45,7 +29,7 @@ class DataProcessor(metaclass=ABCMeta):
         self.transformer = Compose(transforms)
 
     @abstractmethod
-    def  construct_chunk(self, chunk: DataChunk)->DataChunk:
+    def construct_chunk(self, chunk: DataChunk) -> DataChunk:
         pass
 
     @abstractmethod

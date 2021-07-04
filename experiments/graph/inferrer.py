@@ -1,11 +1,13 @@
 import logging
+import os
+import pathlib
 from typing import Tuple, Dict
 
 import pandas as pd
 
 from ariadne_v2.inference import IPreprocessor, IPostprocessor
 from ariadne_v2.preprocessing import DataChunk
-from .graph_utils.graph import save_graphs_new, save_graph
+from .graph_utils.graph import save_graphs_new, save_graph, save_graph_hdf5
 from .graph_utils.graph_prepare_utils import to_pandas_graph_from_df, get_pd_line_graph, apply_nodes_restrictions, \
     apply_edge_restriction, construct_output_graph
 
@@ -58,7 +60,7 @@ class GraphPreprocessor(IPreprocessor):
 
 class SaveGraphs(IPostprocessor):
 
-    def __call__(self, out: Tuple, idx:str):
+    def __call__(self, out_dir:str, out: Tuple, idx:str):
         if out is None:
             return False
         ret = construct_output_graph(
@@ -67,5 +69,20 @@ class SaveGraphs(IPostprocessor):
             feature_names=['y_p', 'y_c', 'z_p', 'z_c', 'z'],
             feature_scale=[1., 1., 1., 1., 1.],
         )
-        save_graph(ret, idx)
+        save_graph(ret, os.path.join(out_dir, idx))
+        return True
+
+class SaveGraphsHDF5(IPostprocessor):
+
+    def __call__(self, out_dir, out: Tuple, idx:str):
+        if out is None:
+            return False
+        ret = construct_output_graph(
+            hits=out[0].as_df(),
+            edges=out[1].as_df(),
+            feature_names=['y_p', 'y_c', 'z_p', 'z_c', 'z'],
+            feature_scale=[1., 1., 1., 1., 1.],
+        )
+
+        save_graph_hdf5(out_dir, ret, idx)
         return True
