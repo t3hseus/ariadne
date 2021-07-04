@@ -67,6 +67,7 @@ class EventProcessor(multiprocessing.Process):
                  work_slice,
                  idx,
                  result_queue: multiprocessing.Queue,
+                 message_queue: multiprocessing.Queue,
                  global_lock: multiprocessing.Lock(),
                  **kwargs):
         super(EventProcessor, self).__init__(**kwargs)
@@ -78,6 +79,7 @@ class EventProcessor(multiprocessing.Process):
         self.df_hash = df_hash
         self.work_slice = work_slice
         self.result_queue = result_queue
+        self.message_queue = message_queue
         self.global_lock = global_lock
 
     def run(self):
@@ -86,6 +88,9 @@ class EventProcessor(multiprocessing.Process):
         with jit_cacher.instance() as cacher:
             cacher.init()
             data_df = cacher.read_df(self.df_hash)
+            if data_df.empty:
+                self.result_queue.put([self.idx])
+                return
 
         old_path = self.main_dataset.dataset_path
         with self.main_dataset.create(cacher, old_path + f"_p{self.idx}", ) as process_dataset:
@@ -103,7 +108,9 @@ class EventProcessor(multiprocessing.Process):
                     stack = traceback.format_exc()
                     print(f"Exception in process {os.getpid()}! details below: {stack}")
                     self.result_queue.put([-2, stack])
-                    return
+                    break
+                if not self.message_queue.empty:
+                    break
 
             process_dataset.dataset_path = old_path
             process_dataset.submit(f"p_{self.idx}")
@@ -150,7 +157,8 @@ def preprocess_mp(
         with jit_cacher.instance() as cacher:
             cacher.init()
 
-        target_dataset.create(cacher)
+        with target_dataset.create(cacher) as ds:
+            target_dataset = ds
 
     target_dataset.meta["cfg"] = gin.config_str()
 
@@ -172,6 +180,7 @@ def preprocess_mp(
             chunk_size = 1
 
         result_queue = multiprocessing.Queue()
+        message_queue = multiprocessing.Queue()
         workers = []
         for i in range(0, process_num):
             work_slice = (i * chunk_size, (i + 1) * chunk_size)
@@ -179,22 +188,27 @@ def preprocess_mp(
                                           basename,
                                           target_processor,
                                           target_postprocessor,
-                                          target_dataset, work_slice, i, result_queue, global_lock))
+                                          target_dataset, work_slice, i, result_queue, message_queue, global_lock))
             workers[-1].start()
 
-        with tqdm(total=int(data_df.event.nunique())) as pbar:
-            while any(workers) > 0:
-                obj = result_queue.get()
-                if obj[0] == -1:
-                    pbar.update()
-                elif obj[0] == -2:
-                    LOGGER.info(f"Process got exception: {obj[1]}.")
-                    return
-                else:
-                    LOGGER.info(f"Process idx={obj} has finished processing. joining...")
-                    workers[obj].join()
-                    workers[obj].close()
-                    workers[obj] = False
+        try:
+            with tqdm(total=int(data_df.event.nunique())) as pbar:
+                while any(workers) > 0:
+                    obj = result_queue.get()
+                    if obj[0] == -1:
+                        pbar.update()
+                    elif obj[0] == -2:
+                        LOGGER.info(f"Process got exception: {obj[1]}.")
+                        return
+                    else:
+                        LOGGER.info(f"Process idx={obj} has finished processing. joining...")
+                        workers[obj].join()
+                        workers[obj].close()
+                        workers[obj] = False
+        except KeyboardInterrupt:
+            LOGGER.info("KeyboardInterrupt! terminating all processes....")
+            message_queue.put(1)
+            [worker.join() for worker in workers if worker]
 
         # with tqdm(total=int(data_df.event.nunique())) as pbar:
         #     for ret in pool.imap_unordered(processor, data_df.groupby('event'), chunksize=chunk_size):

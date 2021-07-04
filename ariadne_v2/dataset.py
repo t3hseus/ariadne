@@ -120,14 +120,17 @@ class AriadneDataset(object):
 
     def __create(self, cacher:Cacher, dataset_path):
         if dataset_path is not None:
+            temp_cache_dir = os.path.join(cacher.cache_path_dir, dataset_path)
+            os.makedirs(temp_cache_dir, exist_ok=True)
             self.dataset_path = dataset_path
             self.is_forked = True
             self.cacher = cacher
-            self.db_conn = cacher.raw_handle(self.dataset_path, mode='w')
-        temp_cache_dir = os.path.join(cacher.cache_path_dir, self.dataset_path)
-        self.temp_dir = temp_cache_dir
+            self.db_conn = cacher.raw_handle(dataset_path, mode='w')
+            self.temp_dir = temp_cache_dir
+        else:
+            temp_cache_dir = os.path.join(cacher.cache_path_dir, self.dataset_path)
+            os.makedirs(temp_cache_dir, exist_ok=True)
 
-        os.makedirs(temp_cache_dir, exist_ok=True)
         self.meta.drop(cacher)
         self.meta[self.LEN_KEY] = 0
         return self
@@ -136,9 +139,10 @@ class AriadneDataset(object):
         if self.cacher:
             self.cacher = None
         if self.db_conn:
+            self.db_conn.flush()
             self.db_conn.close()
             self.db_conn = None
-
+        self.temp_dir = None
         self.is_forked = False
 
     def add(self, key, values: Dict):

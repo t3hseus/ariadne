@@ -127,7 +127,9 @@ class Cacher():
         if not self.cache[self.cache.hash == args_hash].empty:
             # if we hit the same hash, it means it is already stored
             if os.path.exists(self.cache[self.cache.hash == args_hash].data_path.values[0]):
-                return
+                with h5py.File(self.cache.data_path.values[0], 'r', libver='latest') as db_conn:
+                    if self.cache.key.values[0] in db_conn:
+                        return
 
         db_path = self.cache_db_path if db is None else self.__to_db_path(db)
         key = save_func(data, db_path, args_hash)
@@ -138,8 +140,9 @@ class Cacher():
                             'type': CACHE_DATA_TYPES.Dataframe,
                             'commit': self.rev})
 
-    def __to_db_path(self, db:str):
-        return os.path.join(self.cache_path_dir, db + "/db.h5") if os.path.isdir(db) else db
+    def __to_db_path(self, db: str):
+        new_path = os.path.join(self.cache_path_dir, db)
+        return new_path + "/db.h5" if os.path.isdir(new_path) else db
 
     def _read_entry(self, args_hash, load_func: Callable, db: Union[str, None]):
         if not self.cache[self.cache.hash == args_hash].empty:
@@ -215,7 +218,7 @@ class Cacher():
         return self.read_custom(db, key, load_method=None)
 
     @contextmanager
-    def handle(self, db_path: str, mode:str = 'a') -> h5py.File:
+    def handle(self, db_path: str, mode: str = 'a') -> h5py.File:
         db_path = self.__to_db_path(db_path)
         db = h5py.File(db_path, mode=mode, libver='latest')
         try:
@@ -223,7 +226,7 @@ class Cacher():
         finally:
             db.close()
 
-    def raw_handle(self, db_path: str, mode:str = 'a') -> h5py.File:
+    def raw_handle(self, db_path: str, mode: str = 'a') -> h5py.File:
         db_path = self.__to_db_path(db_path)
         return h5py.File(db_path, mode=mode, libver='latest')
 

@@ -47,7 +47,6 @@ class Compose:
                     else:
                         return dc.as_df(), hash
 
-
         data = data.as_df()
         if preserve_index:
             data['index'] = data.index
