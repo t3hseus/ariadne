@@ -67,5 +67,5 @@ class Transformer(ITransformer):
     def __init__(self, transforms: List[BaseTransformer]):
         self.transforms = Compose(transforms)
 
-    def __call__(self, df) -> DFDataChunk:
-        return self.transforms(df)
+    def __call__(self, df, return_hash=False) -> DFDataChunk:
+        return self.transforms(df, return_hash=return_hash)

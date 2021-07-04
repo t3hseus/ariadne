@@ -108,7 +108,7 @@ class GraphDataset(AriadneDataset):
         for k, v in values.items():
             self.infos[k].append(v.shape[0])
 
-    def _submit_local_data(self, cacher: Cacher):
+    def _submit_local_data(self, prefix):
         def update(df):
             new_df = pd.DataFrame.from_dict(self.infos)
             return pd.concat([df, new_df], ignore_index=True)
@@ -127,7 +127,7 @@ class SaveGraphsToDataset(IPostprocessor):
             feature_names=['y_p', 'y_c', 'z_p', 'z_c', 'z'],
             feature_scale=[1., 1., 1., 1., 1.],
         )
-
+        #save_graph(ret, os.path.join(ds.temp_dir, idx))
         ds.add(idx, graph_to_sparse(ret))
 
         return True

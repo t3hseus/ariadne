@@ -34,7 +34,7 @@ class Compose:
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, data: DFDataChunk, preserve_index=True):
+    def __call__(self, data: DFDataChunk, preserve_index=True, return_hash=False):
         hash = None
         if data.cachable():
             rep = {f'tr_{idx}': ("%r" % t) for idx, t in enumerate(self.transforms)}
@@ -42,7 +42,11 @@ class Compose:
             with jit_cacher.instance() as cacher:
                 dc = cacher.read_datachunk(hash)
                 if dc:
-                    return dc.as_df()
+                    if not return_hash:
+                        return dc.as_df()
+                    else:
+                        return dc.as_df(), hash
+
 
         data = data.as_df()
         if preserve_index:
@@ -52,14 +56,20 @@ class Compose:
             if data.empty:
                 LOGGER.warning(f'{t.__class__.__name__} returned empty data. '
                                'Skipping all further transforms')
-                return data
+                if not return_hash:
+                    return data
+                else:
+                    return data, None
 
         if hash is not None:
             dc = DFDataChunk.from_df(data, hash)
             with jit_cacher.instance() as cacher:
                 cacher.store_datachunk(hash, dc)
 
-        return data
+        if not return_hash:
+            return data
+        else:
+            return data, hash
 
     def __repr__(self):
         """

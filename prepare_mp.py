@@ -1,3 +1,4 @@
+import copy
 import logging
 import multiprocessing
 import os
@@ -56,36 +57,72 @@ def setup_logger(logger_dir, preprocessor_name):
 LOGGER = logging.getLogger('ariadne.prepare')
 
 
-class EventProcessor:
+class EventProcessor(multiprocessing.Process):
     def __init__(self,
+                 df_hash,
                  basename,
                  target_processor,
                  target_postprocessor,
-                 target_dataset):
+                 main_dataset,
+                 work_slice,
+                 idx,
+                 result_queue: multiprocessing.Queue,
+                 global_lock: multiprocessing.Lock(),
+                 **kwargs):
+        super(EventProcessor, self).__init__(**kwargs)
+        self.idx = idx
         self.basename = basename
         self.target_processor = target_processor
         self.target_postprocessor = target_postprocessor
-        self.target_dataset = target_dataset
+        self.main_dataset = main_dataset
+        self.df_hash = df_hash
+        self.work_slice = work_slice
+        self.result_queue = result_queue
+        self.global_lock = global_lock
+
+    def run(self):
+        jit_cacher.init_locks(self.global_lock)
 
         with jit_cacher.instance() as cacher:
             cacher.init()
+            data_df = cacher.read_df(self.df_hash)
 
-    def __call__(self, data):
-        ev_id, event = data
-        try:
-            chunk = DFDataChunk.from_df(event)
-            processed = self.target_processor(chunk)
-            if processed is None:
-                return None, ev_id
+        old_path = self.main_dataset.dataset_path
+        with self.main_dataset.create(cacher, old_path + f"_p{self.idx}", ) as process_dataset:
+            data_df = data_df[(data_df.event >= self.work_slice[0]) & (data_df.event < self.work_slice[1])]
+            for ev_id, event in data_df.groupby('event'):
+                try:
+                    chunk = DFDataChunk.from_df(event)
+                    processed = self.target_processor(chunk)
+                    if processed is None:
+                        return None, ev_id
+                    idx = f"graph_{self.basename}_{ev_id}"
+                    postprocessed = self.target_postprocessor(processed, process_dataset, idx)
+                    self.result_queue.put([-1])
+                except:
+                    stack = traceback.format_exc()
+                    print(f"Exception in process {os.getpid()}! details below: {stack}")
+                    self.result_queue.put([-2, stack])
+                    return
 
-            idx = f"graph_{self.basename}_{ev_id}"
-            postprocessed = self.target_postprocessor(processed, self.target_dataset, idx)
-            return True, ev_id
-        except Exception as exc:
-            stack = traceback.format_exc()
-            LOGGER.info(f"Exception in process {os.getpid()}! details below: {stack}")
-            return False, ev_id, exc, stack
-
+            process_dataset.dataset_path = old_path
+            process_dataset.submit(f"p_{self.idx}")
+        self.result_queue.put([self.idx])
+        #
+        # ev_id, event = data
+        # try:
+        #     chunk = DFDataChunk.from_df(event)
+        #     processed = self.target_processor(chunk)
+        #     if processed is None:
+        #         return None, ev_id
+        #
+        #     idx = f"graph_{self.basename}_{ev_id}"
+        #     # postprocessed = self.target_postprocessor(processed, self.target_dataset, idx)
+        #     return True, ev_id
+        # except Exception as exc:
+        #     stack = traceback.format_exc()
+        #     LOGGER.info(f"Exception in process {os.getpid()}! details below: {stack}")
+        #     return False, ev_id, exc, stack
 
     # def submit(self):
     #     self.target_dataset.submit()
@@ -93,12 +130,13 @@ class EventProcessor:
     # def __del__(self):
     #     print(f"ON FINI!!! my poc{os.getpid()}")
 
+
 @gin.configurable
 def preprocess_mp(
-        transformer: Transformer.__class__,
-        target_processor: IPreprocessor.__class__,
-        target_postprocessor: IPostprocessor.__class__,
-        target_dataset: AriadneDataset.__class__,
+        transformer: Transformer,
+        target_processor: IPreprocessor,
+        target_postprocessor: IPostprocessor,
+        target_dataset: AriadneDataset,
         process_num: int = None,
         chunk_size: int = 1
 ):
@@ -123,28 +161,51 @@ def preprocess_mp(
     process_num = multiprocessing.cpu_count() if process_num is None else process_num
     LOGGER.info(f"Running with the {process_num} processes with chunk_size={chunk_size}")
 
-    with multiprocessing.Pool(processes=process_num, initializer=jit_cacher.init_locks, initargs=(global_lock,)) as pool:
-        for data_df, basename, df_hash in parse():
-            LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
+    for data_df, basename, df_hash in parse():
+        LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
 
-            processor = EventProcessor(
-                basename,
-                target_processor,
-                target_postprocessor,
-                target_dataset)
+        data_df, hash = transformer(DFDataChunk.from_df(data_df, df_hash), return_hash=True)
+        event_count = data_df.event.nunique()
+        chunk_size = event_count // process_num
+        if event_count // process_num == 0:
+            process_num = 1
+            chunk_size = 1
 
-            data_df = transformer(DFDataChunk.from_df(data_df, df_hash))
+        result_queue = multiprocessing.Queue()
+        workers = []
+        for i in range(0, process_num):
+            work_slice = (i * chunk_size, (i + 1) * chunk_size)
+            workers.append(EventProcessor(hash,
+                                          basename,
+                                          target_processor,
+                                          target_postprocessor,
+                                          target_dataset, work_slice, i, result_queue, global_lock))
+            workers[-1].start()
 
-            with tqdm(total=int(data_df.event.nunique())) as pbar:
-                for ret in pool.imap_unordered(processor, data_df.groupby('event'), chunksize=chunk_size):
+        with tqdm(total=int(data_df.event.nunique())) as pbar:
+            while any(workers) > 0:
+                obj = result_queue.get()
+                if obj[0] == -1:
                     pbar.update()
-                    if ret[0] == False:
-                        LOGGER.info(f"[Preprocess]: exception in event {ret[1]}.\n"
-                                    f"Exc: {ret[2]}\n"
-                                    f"Stack: {ret[3]}")
-                        return
-                    if ret[0] is None:
-                        LOGGER.info(f"[Preprocess]: bad event {ret[1]}")
+                elif obj[0] == -2:
+                    LOGGER.info(f"Process got exception: {obj[1]}.")
+                    return
+                else:
+                    LOGGER.info(f"Process idx={obj} has finished processing. joining...")
+                    workers[obj].join()
+                    workers[obj].close()
+                    workers[obj] = False
+
+        # with tqdm(total=int(data_df.event.nunique())) as pbar:
+        #     for ret in pool.imap_unordered(processor, data_df.groupby('event'), chunksize=chunk_size):
+        #         pbar.update()
+        #         if ret[0] == False:
+        #             LOGGER.info(f"[Preprocess]: exception in event {ret[1]}.\n"
+        #                         f"Exc: {ret[2]}\n"
+        #                         f"Stack: {ret[3]}")
+        #             return
+        #         if ret[0] is None:
+        #             LOGGER.info(f"[Preprocess]: bad event {ret[1]}")
 
 
 def main(argv):

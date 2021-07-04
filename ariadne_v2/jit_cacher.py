@@ -223,6 +223,10 @@ class Cacher():
         finally:
             db.close()
 
+    def raw_handle(self, db_path: str, mode:str = 'a') -> h5py.File:
+        db_path = self.__to_db_path(db_path)
+        return h5py.File(db_path, mode=mode, libver='latest')
+
     @staticmethod
     def build_hash(*args, **kwargs) -> str:
         return Cacher.generate_unique_key(*args, salt=Cacher.VERSION, **kwargs)
@@ -270,9 +274,15 @@ def cache_result_df():
 
 
 @contextmanager
-def instance() -> Cacher:
-    __g_cacher_lock.acquire()
-    try:
-        yield __cacher
-    finally:
-        __g_cacher_lock.release()
+def instance(existing=None) -> Cacher:
+    if existing is not None:
+        try:
+            yield existing
+        finally:
+            pass
+    else:
+        __g_cacher_lock.acquire()
+        try:
+            yield __cacher
+        finally:
+            __g_cacher_lock.release()

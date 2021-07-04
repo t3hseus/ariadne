@@ -57,6 +57,9 @@ class DFDataChunk(DataChunk):
         columns = list(self.columns)
         ndarr = self.np_arr
         idx = self.index
+        if f"{path}" in db:
+            del db[f"{path}"]
+
         db.create_dataset(f"{path}/val", shape=ndarr.shape, data=ndarr, compression="gzip")
         db[f"{path}/col"] = columns
         db[f"{path}/idx"] = idx
