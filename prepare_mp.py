@@ -100,7 +100,7 @@ class EventProcessor(multiprocessing.Process):
                     chunk = DFDataChunk.from_df(event)
                     processed = self.target_processor(chunk)
                     if processed is None:
-                        return None, ev_id
+                        continue
                     idx = f"graph_{self.basename}_{ev_id}"
                     postprocessed = self.target_postprocessor(processed, process_dataset, idx)
                     self.result_queue.put([-1])
@@ -202,9 +202,9 @@ def preprocess_mp(
                         return
                     else:
                         LOGGER.info(f"Process idx={obj} has finished processing. joining...")
-                        workers[obj].join()
-                        workers[obj].close()
-                        workers[obj] = False
+                        workers[obj[0]].join()
+                        workers[obj[0]].close()
+                        workers[obj[0]] = False
         except KeyboardInterrupt:
             LOGGER.info("KeyboardInterrupt! terminating all processes....")
             message_queue.put(1)
