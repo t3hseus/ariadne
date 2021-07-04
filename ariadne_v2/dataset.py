@@ -105,9 +105,9 @@ class AriadneDataset(object):
         self.dataset_path = dataset_path
 
     def create(self, cacher:Cacher):
+        os.makedirs(os.path.join(cacher.cache_path_dir, self.dataset_path), exist_ok=True)
         self.meta.drop(cacher)
         self.meta[self.LEN_KEY] = 0
-        os.makedirs(os.path.join(cacher.cache_path_dir, self.dataset_path), exist_ok=True)
 
     def add(self, key, values: Dict):
         with jit_cacher.instance() as cacher:

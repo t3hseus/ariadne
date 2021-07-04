@@ -76,7 +76,7 @@ class EventProcessor:
             chunk = DFDataChunk.from_df(event)
             processed = self.target_processor(chunk)
             if processed is None:
-                return False, ev_id
+                return None, ev_id
 
             idx = f"graph_{self.basename}_{ev_id}"
             postprocessed = self.target_postprocessor(processed, self.target_dataset, idx)

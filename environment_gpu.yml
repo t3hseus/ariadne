@@ -10,7 +10,7 @@ dependencies:
   - matplotlib
   - pyyaml
   - pandas
-  - h5py
+  - h5py<3.2
   - scikit-learn
   - nose=1.3.7
   - notebook
