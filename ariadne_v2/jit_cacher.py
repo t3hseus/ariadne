@@ -162,7 +162,9 @@ class Cacher():
         return None
 
     def read_df(self, args_hash, db=None):
-        return self._read_entry(args_hash, self.__load_as_np_arr, db=db)
+        df = self._read_entry(args_hash, self.__load_as_np_arr, db=db)
+        if not isinstance(df, pd.DataFrame):
+            return df.as_df()
 
     def store_df(self, args_hash, df: pd.DataFrame, db=None):
         return self._store_entry(args_hash, self.__save_as_np_arr, df, db=db)
