@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import datetime
+import time
 from contextlib import contextmanager
 
 from typing import Dict, Callable, Any, Union
@@ -49,8 +50,7 @@ class Cacher():
         self.df_compression_level = df_compression_level
         self.cache_db_path = os.path.join(self.cache_path_dir, self.CACHE_DB_FILE)
         self.with_stats = with_stats
-
-        self.cache: pd.DataFrame = pd.DataFrame(columns=self.COLUMNS)
+        self.cache = None
         self.cached_data = {}
 
         try:
@@ -58,6 +58,8 @@ class Cacher():
         except Exception as ex:
             LOGGER.error('Exception when trying to get git hash... bad!')
             self.rev = 'no revision'
+
+    def init(self):
         self._build_cache()
 
     @staticmethod
@@ -76,6 +78,8 @@ class Cacher():
     def _build_cache(self):
         if os.path.exists(self.cache_info_path):
             self.cache = pd.read_csv(self.cache_info_path, names=self.COLUMNS, sep='\t', encoding='utf-8')
+        else:
+            self.cache = pd.DataFrame(columns=self.COLUMNS)
         self._save()
 
     def _append_cache(self, dict_to_append: Dict):
@@ -94,6 +98,7 @@ class Cacher():
             path = f'dc/{hash}'
             dc.to_hdf5(db, hash, path)
             db.flush()
+            return path
 
     @staticmethod
     def __save_as_np_arr(df: pd.DataFrame, db_path: str, hash):
@@ -101,34 +106,34 @@ class Cacher():
             path = f'df/{hash}'
             DataChunk.from_df(df).to_hdf5(db, hash, path)
             db.flush()
+            return path
 
     @staticmethod
-    def __load_as_np_arr(db_path: str, hash) -> pd.DataFrame:
+    def __load_as_np_arr(db_path: str, key) -> pd.DataFrame:
         with h5py.File(db_path, 'r', libver='latest') as db:
-            path = f'df/{hash}'
-            if path in db:
-                return DataChunk.from_hdf5(db, hash, path).as_df()
+            if key in db:
+                return DataChunk.from_hdf5(db, hash, key).as_df()
             return pd.DataFrame()
 
     @staticmethod
-    def __load_as_datachunk(db_path: str, hash) -> Union[DataChunk, None]:
+    def __load_as_datachunk(db_path: str, key) -> Union[DataChunk, None]:
         with h5py.File(db_path, 'r', libver='latest') as db:
-            path = f'dc/{hash}'
-            if path in db:
-                return DataChunk.from_hdf5(db, hash, path)
+            if key in db:
+                return DataChunk.from_hdf5(db, hash, key)
             return None
 
     def _store_entry(self, args_hash: str, save_func: Callable, data: Any, key_override=None):
         if key_override is not None:
             key, db = key_override
             save_func(data, db, key)
+            return
 
         if not self.cache[self.cache.hash == args_hash].empty:
             # if we hit the same hash, it means it is already stored
             if os.path.exists(self.cache[self.cache.hash == args_hash].data_path.values[0]):
                 return
 
-        save_func(data, self.cache_db_path, args_hash)
+        key = save_func(data, self.cache_db_path, args_hash)
         self._append_cache({'hash': args_hash,
                             'date': str(datetime.datetime.now()),
                             'key': key,
@@ -188,6 +193,7 @@ class Cacher():
             db_path = os.path.join(self.cache_path_dir, db_path+"/db.h5") if os.path.isdir(db_path) else db_path
             with h5py.File(db_path, 'a', libver='latest') as db:
                 store_method(db, f"custom/{key}", data)
+                db.flush()
 
         return self._store_entry('', store_override, data, key_override=(key, db))
 
@@ -195,10 +201,14 @@ class Cacher():
     def build_hash(*args, **kwargs) -> str:
         return Cacher.generate_unique_key(*args, salt=Cacher.VERSION, **kwargs)
 
-
 __cacher = Cacher()
-__cacher_lock = multiprocessing.Lock()
 
+def init_locks(new_lock):
+    global __g_cacher_lock
+    __g_cacher_lock = new_lock
+
+    with __g_cacher_lock:
+        __cacher.init()
 
 # csv_path_key can be used to store the path to file
 def cache_result_df():
@@ -232,8 +242,8 @@ def cache_result_df():
 
 @contextmanager
 def instance():
-    __cacher_lock.acquire()
+    __g_cacher_lock.acquire()
     try:
         yield __cacher
     finally:
-        __cacher_lock.release()
+        __g_cacher_lock.release()

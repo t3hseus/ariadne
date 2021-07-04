@@ -66,6 +66,7 @@ class EventProcessor:
         self.target_postprocessor = target_postprocessor
 
         with jit_cacher.instance() as cacher:
+            cacher.init()
             os.makedirs(os.path.join(cacher.cache_path_dir, output_dir), exist_ok=True)
 
     def __call__(self, data):
@@ -93,13 +94,20 @@ def preprocess_mp(
     os.makedirs(output_dir, exist_ok=True)
     setup_logger(output_dir, target_processor.__class__.__name__)
 
+    global_lock = multiprocessing.Lock()
+    jit_cacher.init_locks(global_lock)
+    with jit_cacher.instance() as cacher:
+        cacher.init()
+
+    pool = multiprocessing.Pool(processes=process_num, initializer=jit_cacher.init_locks, initargs=(global_lock,))
+
     # warnings to exceptions:
     pd.set_option('mode.chained_assignment', 'raise')
 
     LOGGER.info("GOT config: \n======config======\n %s \n========config=======" % gin.config_str())
     process_num = multiprocessing.cpu_count() if process_num is None else process_num
     LOGGER.info(f"Running with the {process_num} processes with chunk_size={chunk_size}")
-    pool = multiprocessing.Pool(processes=process_num)
+
 
     for data_df, basename, df_hash in parse():
         LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
@@ -110,6 +118,7 @@ def preprocess_mp(
                  target_postprocessor)
 
         data_df = transformer(DataChunk.from_df(data_df, df_hash))
+
         with tqdm(total=int(data_df.event.nunique())) as pbar:
             for ret in pool.imap_unordered(processor, data_df.groupby('event'), chunksize=chunk_size):
                 pbar.update()
