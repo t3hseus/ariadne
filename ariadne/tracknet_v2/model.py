@@ -29,10 +29,10 @@ class TrackNETv2(nn.Module):
         _rnn_layer = getattr(nn, rnn_type)
         if use_causalconv:
             self.conv = nn.Sequential(
-                nn.CausalConv1d(input_features, conv_features,
-                                kernel_size=3,
-                                stride=1,
-                                bias=False),
+                CausalConv1d(input_features, conv_features,
+                             kernel_size=3,
+                             stride=1,
+                             bias=False),
                 nn.ReLU(),
                 nn.BatchNorm1d(conv_features)
             )
