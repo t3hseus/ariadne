@@ -36,14 +36,20 @@ class TrackNETv2(nn.Module):
                 nn.ReLU(),
                 nn.BatchNorm1d(conv_features)
             )
+            self.rnn = _rnn_layer(
+                input_size=conv_features,
+                hidden_size=conv_features,
+                num_layers=2,
+                batch_first=batch_first
+            )
         else:
             self.conv = None
-        self.rnn = _rnn_layer(
-            input_size=input_features,
-            hidden_size=conv_features,
-            num_layers=2,
-            batch_first=batch_first
-        )
+            self.rnn = _rnn_layer(
+                input_size=input_features,
+                hidden_size=conv_features,
+                num_layers=2,
+                batch_first=batch_first
+            )
         # outputs
         self.xy_coords = nn.Sequential(
             nn.Linear(conv_features, 2)
