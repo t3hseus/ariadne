@@ -175,8 +175,6 @@ def apply_edge_restriction(pd_edges_df: pd.DataFrame,
     assert 'weight' in pd_edges_df
     return pd_edges_df[pd_edges_df.weight < edge_restriction]
 
-
-
 def construct_output_graph(hits,
                            edges,
                            feature_names,

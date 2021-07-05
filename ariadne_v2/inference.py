@@ -1,7 +1,8 @@
-from typing import List, Iterable, Callable, Union, Tuple
+from typing import List, Iterable, Callable, Union, Tuple, Any
 from abc import ABCMeta, abstractmethod
 
-from ariadne_v2.preprocessing import DataChunk
+from ariadne_v2.dataset import AriadneDataset
+from ariadne_v2.preprocessing import DFDataChunk
 from ariadne_v2.transformations import BaseTransformer, Compose
 
 
@@ -13,13 +14,13 @@ class IInferrer(metaclass=ABCMeta):
 
 class ITransformer(metaclass=ABCMeta):
     @abstractmethod
-    def __call__(self, chunk: DataChunk) -> DataChunk:
+    def __call__(self, chunk: DFDataChunk) -> DFDataChunk:
         pass
 
 
 class IPreprocessor(metaclass=ABCMeta):
     @abstractmethod
-    def __call__(self, chunk: DataChunk) -> Union[tuple, None]:
+    def __call__(self, chunk: DFDataChunk) -> Union[tuple, None]:
         pass
 
 
@@ -37,7 +38,7 @@ class IEvaluator(metaclass=ABCMeta):
 
 class IPostprocessor(metaclass=ABCMeta):
     @abstractmethod
-    def __call__(self, out: Tuple, idx: str):
+    def __call__(self, data:Any, ds: AriadneDataset, idx:str):
         pass
 
 
@@ -66,5 +67,5 @@ class Transformer(ITransformer):
     def __init__(self, transforms: List[BaseTransformer]):
         self.transforms = Compose(transforms)
 
-    def __call__(self, df) -> DataChunk:
-        return self.transforms(df)
+    def __call__(self, df, return_hash=False) -> DFDataChunk:
+        return self.transforms(df, return_hash=return_hash)
