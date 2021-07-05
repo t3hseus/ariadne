@@ -36,6 +36,8 @@ class TrackNETv2(nn.Module):
                 nn.ReLU(),
                 nn.BatchNorm1d(conv_features)
             )
+        else:
+            self.conv = None
         self.rnn = _rnn_layer(
             input_size=input_features,
             hidden_size=conv_features,
