@@ -1,6 +1,7 @@
 import gin
 import torch
 import torch.nn as nn
+from ariadne.layers import CausalConv1d
 
 
 ALLOWED_RNN_TYPES = ['GRU', 'LSTM']
@@ -17,7 +18,8 @@ class TrackNETv2(nn.Module):
                  input_features=4,
                  conv_features=32,
                  rnn_type='gru',
-                 batch_first=True):
+                 batch_first=True,
+                 use_causalconv=False):
         super().__init__()
         self.input_features = input_features
         rnn_type = rnn_type.upper()
@@ -25,15 +27,15 @@ class TrackNETv2(nn.Module):
             raise ValueError(f'RNN type {rnn_type} is not supported. '
                              f'Choose one of {ALLOWED_RNN_TYPES}')
         _rnn_layer = getattr(nn, rnn_type)
-        self.conv = nn.Sequential(
-            nn.Conv1d(input_features, conv_features,
-                      kernel_size=3,
-                      stride=1,
-                      padding=1,
-                      bias=False),
-            nn.ReLU(),
-            nn.BatchNorm1d(conv_features)
-        )
+        if use_causalconv:
+            self.conv = nn.Sequential(
+                nn.CausalConv1d(input_features, conv_features,
+                                kernel_size=3,
+                                stride=1,
+                                bias=False),
+                nn.ReLU(),
+                nn.BatchNorm1d(conv_features)
+            )
         self.rnn = _rnn_layer(
             input_size=input_features,
             hidden_size=conv_features,
@@ -50,11 +52,16 @@ class TrackNETv2(nn.Module):
         )
 
     def forward(self, inputs, input_lengths, return_gru_states=False):
-        # BxTxC -> BxCxT
-        #inputs = inputs.transpose(1, 2).float()
         input_lengths = input_lengths.int().cpu()
-        # x = self.conv(inputs)
         x = inputs
+
+        if self.conv:
+            # BxTxC -> BxCxT
+            inputs = inputs.transpose(1, 2).float()
+            x = self.conv(inputs)
+            # BxCxT -> BxTxC
+            x = x.transpose(1, 2)
+
         # Pack padded batch of sequences for RNN module
         packed = torch.nn.utils.rnn.pack_padded_sequence(
         x, input_lengths, enforce_sorted=False, batch_first=True)
