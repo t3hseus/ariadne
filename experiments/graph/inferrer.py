@@ -110,6 +110,7 @@ class GraphDataset(AriadneDataset):
 
     def _submit_local_data(self, prefix):
         def update(df):
+            df = df if df is not None else pd.DataFrame()
             new_df = pd.DataFrame.from_dict(self.infos)
             return pd.concat([df, new_df], ignore_index=True)
         self.meta.update_df('shape0', update)

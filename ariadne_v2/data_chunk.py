@@ -60,15 +60,18 @@ class DFDataChunk(DataChunk):
         if f"{path}" in db:
             del db[f"{path}"]
 
-        db.create_dataset(f"{path}/val", shape=ndarr.shape, data=ndarr, compression="gzip")
-        db[f"{path}/col"] = columns
-        db[f"{path}/idx"] = idx
-        db[f"{path}/dtype"] = self.dtypes
+        db.create_dataset(f"{path}/idx", data=idx, compression='gzip')
+        db[f"{path}"].attrs["col"] = columns
+        db[f"{path}"].attrs["dtype"] = self.dtypes
+        for idx, col in enumerate(columns):
+            tgt = ndarr[:, idx].astype(self.dtypes[idx])
+            db.create_dataset(f"{path}/objs/{idx}/{columns[idx]}", data=tgt, shape=tgt.shape, compression="gzip")
+
 
     @staticmethod
     def from_hdf5(db, hash, path):
-        np_chunk_data = db[f"{path}/val"][()]
-        columns = [column.decode('utf-8') for column in db[f"{path}/col"]]
-        dtypes = [dtype.decode('utf-8') for dtype in db[f"{path}/dtype"]]
         index = db[f"{path}/idx"][()]
-        return DFDataChunk(index, np_chunk_data, columns, dtypes, source=hash)
+        vals = {}
+        for idx, col in enumerate(db[path].attrs['col']):
+            vals[col] = db[f"{path}/objs/{idx}/{col}"][()]
+        return DFDataChunk(index, pd.DataFrame.from_dict(vals).values, db[path].attrs['col'], db[path].attrs['dtype'], source=hash)
