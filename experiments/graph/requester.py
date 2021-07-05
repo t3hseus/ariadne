@@ -27,8 +27,8 @@ def save_graphs_to_dataset():
     return SaveGraphsToDataset()
 
 @gin.configurable
-def graphs_dataset(output_dir):
-    return GraphDataset(output_dir)
+def graphs_dataset(dataset_name):
+    return GraphDataset(dataset_name)
 
 @gin.configurable
 def transformer(transforms: List[BaseTransformer]):

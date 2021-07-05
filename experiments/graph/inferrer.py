@@ -1,10 +1,11 @@
 import logging
 import os
 import pathlib
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
 
 import pandas as pd
 
+from ariadne_v2 import jit_cacher
 from ariadne_v2.dataset import AriadneDataset
 from ariadne_v2.inference import IPreprocessor, IPostprocessor
 from ariadne_v2.jit_cacher import Cacher
@@ -94,11 +95,11 @@ class SaveGraphsHDF5(IPostprocessor):
 
 
 class GraphDataset(AriadneDataset):
-
+    INFO_DF_NAME = 'shape0'
     DATA_COLUMNS = ["X", "y", "Ri_rows", "Ro_rows", "Ri_cols", "Ro_cols"]
 
-    def __init__(self, dataset_path):
-        super(GraphDataset, self).__init__(dataset_path)
+    def __init__(self, dataset_name):
+        super(GraphDataset, self).__init__(dataset_name)
 
         self.infos = {col:[] for col in ["name"] + self.DATA_COLUMNS}
 
@@ -108,13 +109,16 @@ class GraphDataset(AriadneDataset):
         for k, v in values.items():
             self.infos[k].append(v.shape[0])
 
-    def _submit_local_data(self, prefix):
-        def update(df):
+    def _submit_local_data(self):
+        def update(df, cacher):
             df = df if df is not None else pd.DataFrame()
             new_df = pd.DataFrame.from_dict(self.infos)
             return pd.concat([df, new_df], ignore_index=True)
-        self.meta.update_df('shape0', update)
+        self.meta.update_df(self.INFO_DF_NAME, update)
 
+    def _gather_local_data(self, datasets:List[str]):
+        for idx, ds_name in enumerate(datasets):
+            self.add_dataset_reference(ds_name)
 
 class SaveGraphsToDataset(IPostprocessor):
 

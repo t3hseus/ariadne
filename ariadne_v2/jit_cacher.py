@@ -42,7 +42,7 @@ class Cacher():
     COLUMNS = ['hash', 'date', 'key', 'data_path', 'type', 'commit']
 
     def __init__(self,
-                 cache_path='.jit',
+                 cache_path='_jit',
                  df_compression_level=5,
                  with_stats=True):
         self.cache_path_dir = cache_path
@@ -124,14 +124,16 @@ class Cacher():
             return None
 
     def _store_entry(self, args_hash: str, save_func: Callable, data: Any, db: Union[str, None]):
-        if not self.cache[self.cache.hash == args_hash].empty:
+        exist_entry = self.cache[self.cache.hash == args_hash]
+        if not exist_entry.empty:
             # if we hit the same hash, it means it is already stored
-            if os.path.exists(self.cache[self.cache.hash == args_hash].data_path.values[0]):
-                with h5py.File(self.cache.data_path.values[0], 'r', libver='latest') as db_conn:
-                    if self.cache.key.values[0] in db_conn:
+            db_path = exist_entry.data_path.values[0]
+            if os.path.exists(db_path):
+                with h5py.File(db_path, 'r', libver='latest') as db_conn:
+                    if exist_entry.key.values[0] in db_conn:
                         return
 
-        db_path = self.cache_db_path if db is None else self.__to_db_path(db)
+        db_path = self.cache_db_path if db is None else self.to_db_path(db)
         key = save_func(data, db_path, args_hash)
         self._append_cache({'hash': args_hash,
                             'date': str(datetime.datetime.now()),
@@ -140,7 +142,7 @@ class Cacher():
                             'type': CACHE_DATA_TYPES.Dataframe,
                             'commit': self.rev})
 
-    def __to_db_path(self, db: str):
+    def to_db_path(self, db: str):
         new_path = os.path.join(self.cache_path_dir, db)
         return new_path + "/db.h5" if os.path.isdir(new_path) else db
 
@@ -151,7 +153,7 @@ class Cacher():
             path = self.cache[self.cache.hash == args_hash].data_path.values[0]
             key = self.cache[self.cache.hash == args_hash].key.values[0]
             try:
-                db_path = self.cache_db_path if db is None else self.__to_db_path(db)
+                db_path = self.cache_db_path if db is None else self.to_db_path(db)
                 result = load_func(db_path, key)
                 self.cached_data[args_hash] = result
             except Exception as ex:
@@ -163,8 +165,9 @@ class Cacher():
 
     def read_df(self, args_hash, db=None):
         df = self._read_entry(args_hash, self.__load_as_np_arr, db=db)
-        if not isinstance(df, pd.DataFrame):
+        if isinstance(df, DFDataChunk):
             return df.as_df()
+        return df
 
     def store_df(self, args_hash, df: pd.DataFrame, db=None):
         return self._store_entry(args_hash, self.__save_as_np_arr, df, db=db)
@@ -179,7 +182,7 @@ class Cacher():
                       update_method: Union[Callable[[h5py.File, str], Any], None],
                       update_attr: Union[Callable[[Any], Any], None]) -> Union[None, Any]:
         assert update_method or update_attr, "no methods provided for update"
-        db_path = self.__to_db_path(db)
+        db_path = self.to_db_path(db)
         with h5py.File(db_path, 'a', libver='latest') as db:
             if update_method is None:
                 val = db.attrs[key] if key in db.attrs else None
@@ -191,7 +194,7 @@ class Cacher():
 
     def read_custom(self, db: str, key,
                     load_method: Union[Callable[[h5py.File, str], Any], None]) -> Union[None, Any]:
-        db_path = self.__to_db_path(db)
+        db_path = self.to_db_path(db)
         with h5py.File(db_path, 'r', libver='latest') as db:
             if load_method is None:
                 if key in db.attrs:
@@ -202,7 +205,7 @@ class Cacher():
 
     def store_custom(self, db: str, key: str, data: Any,
                      store_method: Union[Callable[[h5py.File, str, Any], Any], None]):
-        db_path = self.__to_db_path(db)
+        db_path = self.to_db_path(db)
         with h5py.File(db_path, 'a', libver='latest') as db:
             if store_method is None:
                 db.attrs[key] = data
@@ -221,7 +224,7 @@ class Cacher():
 
     @contextmanager
     def handle(self, db_path: str, mode: str = 'a') -> h5py.File:
-        db_path = self.__to_db_path(db_path)
+        db_path = self.to_db_path(db_path)
         db = h5py.File(db_path, mode=mode, libver='latest')
         try:
             yield db
@@ -229,7 +232,7 @@ class Cacher():
             db.close()
 
     def raw_handle(self, db_path: str, mode: str = 'a') -> h5py.File:
-        db_path = self.__to_db_path(db_path)
+        db_path = self.to_db_path(db_path)
         return h5py.File(db_path, mode=mode, libver='latest')
 
     @staticmethod
@@ -247,6 +250,9 @@ def init_locks(new_lock):
     with __g_cacher_lock:
         __cacher.init()
 
+def fini_locks():
+    del globals()['__cacher']
+    del globals()['__g_cacher_lock']
 
 # csv_path_key can be used to store the path to file
 def cache_result_df():
