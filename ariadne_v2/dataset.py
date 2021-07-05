@@ -113,27 +113,28 @@ class AriadneDataset(object):
         self.db_conn:Union[h5py.File, Any] = None
 
     @contextmanager
-    def open_dataset(self, cacher:Cacher, dataset_path=None):
+    def open_dataset(self, cacher:Cacher, dataset_path=None, drop_old=True):
         try:
-            yield self.__create(cacher, dataset_path)
+            yield self.__create(cacher, dataset_path, drop_old)
         finally:
             self.__close()
 
-    def __create(self, cacher:Cacher, dataset_path):
+    def __create(self, cacher:Cacher, dataset_path:str, drop_old:bool):
         if dataset_path is not None:
             temp_cache_dir = os.path.join(cacher.cache_path_dir, dataset_path)
             os.makedirs(temp_cache_dir, exist_ok=True)
             self.dataset_name = dataset_path
             self.is_forked = True
             self.cacher = cacher
-            self.db_conn = cacher.raw_handle(dataset_path, mode='w')
+            self.db_conn = cacher.raw_handle(dataset_path, mode='w' if drop_old else 'a')
         else:
             temp_cache_dir = os.path.join(cacher.cache_path_dir, self.dataset_name)
             os.makedirs(temp_cache_dir, exist_ok=True)
 
-        self.meta.drop(cacher)
-        self.meta[self.LEN_KEY] = 0
-        self.meta[self.REFS_KEY] = [self.dataset_name]
+        if drop_old:
+            self.meta.drop(cacher)
+            self.meta[self.LEN_KEY] = 0
+            self.meta[self.REFS_KEY] = [self.dataset_name]
         return self
 
     def __close(self):
@@ -149,7 +150,7 @@ class AriadneDataset(object):
         for k, v in values.items():
             self.db_conn.create_dataset(name=f'data/{key}/{k}', data=v, shape=v.shape, compression="gzip")
         print(f"got here, cur:{self.db_conn.attrs['len']}, pid:{os.getpid()}")
-        self.db_conn.attrs["len"] = self.db_conn.attrs["len"] + 1
+        self.db_conn.attrs[self.LEN_KEY] = self.db_conn.attrs["len"] + 1
 
     def add_dataset_reference(self, other_ds_path):
         assert other_ds_path not in self.db_conn.attrs, "double reference add"
@@ -169,5 +170,7 @@ class AriadneDataset(object):
 
     def global_submit(self, datasets:List[str]):
         self._gather_local_data(datasets)
-        self.db_conn.attrs[self.LEN_KEY] = sum([self.db_conn[self.REFS_KEY][ds_name].attrs['len'] for ds_name in datasets])
+        self.db_conn.attrs[self.LEN_KEY] = self.db_conn.attrs[self.LEN_KEY] + \
+                                           sum([self.db_conn[self.REFS_KEY][ds_name].attrs['len']
+                                                for ds_name in datasets])
 

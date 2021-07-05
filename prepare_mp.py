@@ -93,7 +93,7 @@ class EventProcessor(multiprocessing.Process):
                 return
 
         old_path = self.main_dataset.dataset_name
-        new_path = old_path + f"_p{self.idx}"
+        new_path = old_path + f"_{self.basename}_p{self.idx}"
         with self.main_dataset.open_dataset(cacher, new_path, ) as process_dataset:
             data_df = data_df[(data_df.event >= self.work_slice[0]) & (data_df.event < self.work_slice[1])]
             print(f"DATA_DF: {data_df.event.nunique()} pid:{os.getpid()}, slice: {self.work_slice}")
@@ -179,7 +179,7 @@ def preprocess_mp(
                                           target_postprocessor,
                                           target_dataset, work_slice, i, result_queue, message_queue, global_lock))
             workers[-1].start()
-
+        canceled = False
         try:
             pbar = tqdm(total=len(events))
             while any(workers):
@@ -200,6 +200,7 @@ def preprocess_mp(
             LOGGER.info("KeyboardInterrupt! terminating all processes....")
             message_queue.put(1)
             [worker.join() for worker in workers if worker]
+            canceled = True
 
         LOGGER.info("Finished processing. Merging results....")
         while not result_queue.empty():
@@ -207,8 +208,11 @@ def preprocess_mp(
             if obj[0] >= 0:
                 workers_result[obj[0]] = obj[1]
 
-        with target_dataset.open_dataset(cacher, target_dataset.dataset_name) as ds:
+        with target_dataset.open_dataset(cacher, target_dataset.dataset_name, drop_old=False) as ds:
             ds.global_submit(workers_result)
+
+        if canceled:
+            break
 
 
 def main(argv):
