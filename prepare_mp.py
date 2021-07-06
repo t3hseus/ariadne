@@ -89,10 +89,10 @@ class EventProcessor(multiprocessing.Process):
 
             with jit_cacher.instance() as cacher:
                 cacher.init()
-                data_df = cacher.read_df(self.df_hash)
-                if data_df.empty:
-                    self.result_queue.put([self.idx, ''])
-                    return
+            data_df = cacher.read_df(self.df_hash)
+            if data_df.empty:
+                self.result_queue.put([self.idx, ''])
+                return
 
             old_path = self.main_dataset.dataset_name
             new_path = old_path + f"_{self.basename}_p{self.idx}"

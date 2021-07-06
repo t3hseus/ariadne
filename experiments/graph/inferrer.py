@@ -125,15 +125,15 @@ class GraphDataset(AriadneDataset):
         LOGGER.info(f"Total amount of collected events: {self.meta[self.LEN_KEY]}")
         info_df = self.meta.get_df(self.INFO_DF_NAME)
         assert info_df is not None and not info_df.empty
-        info_df['valid'] = True
-        for row_id, row in tqdm(info_df.iterrows()):
-            key = row['name']
-            if key not in self.db_conn[f'{self.REFS_KEY}']:
-                LOGGER.info(f'Path {key} is not valid! erasing')
-                info_df.loc[row_id, 'valid'] = False
+        # info_df['valid'] = True
+        # for row_id, row in tqdm(info_df.iterrows()):
+        #     key = row['name']
+        #     if key not in self.db_conn[f'{self.REFS_KEY}']:
+        #         LOGGER.info(f'Path {key} is not valid! erasing')
+        #         info_df.loc[row_id, 'valid'] = False
 
-        info_df = info_df[info_df.valid]
-        self.meta.set_df(self.INFO_DF_NAME, info_df)
+        # info_df = info_df[info_df.valid]
+        # self.meta.set_df(self.INFO_DF_NAME, info_df)
 
         LOGGER.info(f"Merged info to the info df:\n {self.meta.get_df(self.INFO_DF_NAME)}")
 
