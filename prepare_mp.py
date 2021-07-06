@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import os.path
 import traceback
+import _gin_bugfix
 
 from ariadne_v2 import jit_cacher
 from ariadne_v2.dataset import AriadneDataset

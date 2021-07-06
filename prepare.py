@@ -5,6 +5,7 @@ import os.path
 from typing import Dict
 
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
+import _gin_bugfix
 
 import gin
 import pandas as pd

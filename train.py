@@ -3,6 +3,7 @@ import logging
 import os
 import traceback
 
+import _gin_bugfix
 import gin
 import numpy as np
 import torch

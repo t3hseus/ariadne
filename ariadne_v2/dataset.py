@@ -18,12 +18,12 @@ class AriadneDataset(object):
             self.__props = {}
             self.__dfs = {}
 
-        def get_df(self, df_name, force=False):
+        def get_df(self, df_name):
             if df_name not in self.__dfs:
                 db = self.ds.dataset_name
                 hash = Cacher.build_hash(name=df_name, db=db)
                 with jit_cacher.instance(self.ds.cacher) as cacher:
-                    df = cacher.read_df(hash, db=db, force_read_from_disk=force)
+                    df = cacher.read_df(hash, db=db)
                 self.__dfs[df_name] = df
 
             return self.__dfs[df_name]
@@ -32,7 +32,7 @@ class AriadneDataset(object):
             db = self.ds.dataset_name
             hash = Cacher.build_hash(name=df_name, db=db)
             with jit_cacher.instance(self.ds.cacher) as cacher:
-                df = cacher.read_df(hash, db=db, force_read_from_disk=True)
+                df = cacher.read_df(hash, db=db)
                 df = df_update(df, cacher)
                 cacher.store_df(hash, df, db)
 
@@ -47,7 +47,7 @@ class AriadneDataset(object):
             db = self.ds.dataset_name
             hash = Cacher.build_hash(name=df_name, db=db)
             with jit_cacher.instance(self.ds.cacher) as cacher:
-                df = cacher.store_df(hash, df, db=db)
+                cacher.store_df(hash, df, db=db)
             self.__dfs[df_name] = df
 
         def __setitem__(self, key, item):

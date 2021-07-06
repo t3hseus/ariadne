@@ -136,7 +136,7 @@ class Cacher():
         new_path = os.path.join(self.cache_path_dir, db)
         return new_path + "/db.h5" if os.path.isdir(new_path) else db
 
-    def _read_entry(self, args_hash, load_func: Callable, db: Union[str, None], force_read_from_disk:bool):
+    def _read_entry(self, args_hash, load_func: Callable, db: Union[str, None]):
         if not self.cache[self.cache.hash == args_hash].empty:
             path = self.cache[self.cache.hash == args_hash].data_path.values[0]
             key = self.cache[self.cache.hash == args_hash].key.values[0]
@@ -150,8 +150,8 @@ class Cacher():
             return result
         return None
 
-    def read_df(self, args_hash, db=None, force_read_from_disk=False):
-        df = self._read_entry(args_hash, self.__load_as_np_arr, db=db, force_read_from_disk=force_read_from_disk)
+    def read_df(self, args_hash, db=None):
+        df = self._read_entry(args_hash, self.__load_as_np_arr, db=db)
         if isinstance(df, DFDataChunk):
             return df.as_df()
         return df
@@ -159,8 +159,8 @@ class Cacher():
     def store_df(self, args_hash, df: pd.DataFrame, db=None):
         return self._store_entry(args_hash, self.__save_as_np_arr, df, db=db)
 
-    def read_datachunk(self, args_hash, db=None, force_read_from_disk=False) -> Union[None, DFDataChunk]:
-        return self._read_entry(args_hash, self.__load_as_datachunk, db=db, force_read_from_disk=force_read_from_disk)
+    def read_datachunk(self, args_hash, db=None) -> Union[None, DFDataChunk]:
+        return self._read_entry(args_hash, self.__load_as_datachunk, db=db)
 
     def store_datachunk(self, args_hash, dc: DFDataChunk, db=None):
         return self._store_entry(args_hash, self.__save_as_datachunk, dc, db=db)
