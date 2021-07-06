@@ -95,6 +95,8 @@ class AriadneDataset(object):
         def refresh_all(self):
             self.__props = {}
             self.__dfs = {}
+            if self.ds.connected:
+                self.ds.db_conn.flush()
 
         def drop(self, cacher):
             assert self.ds.connected or multiprocessing.parent_process() is None, \

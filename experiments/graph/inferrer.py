@@ -4,6 +4,7 @@ import pathlib
 from typing import Tuple, Dict, Any, List
 
 import pandas as pd
+from tqdm import tqdm
 
 from ariadne_v2 import jit_cacher
 from ariadne_v2.dataset import AriadneDataset
@@ -126,7 +127,7 @@ class GraphDataset(AriadneDataset):
         info_df = self.meta.get_df(self.INFO_DF_NAME)
         assert info_df is not None and not info_df.empty
         info_df['valid'] = True
-        for row_id, row in info_df.iterrows():
+        for row_id, row in tqdm(info_df.iterrows()):
             key = row['name']
             if key not in self.db_conn[f'{self.REFS_KEY}']:
                 LOGGER.info(f'Path {key} is not valid! erasing')
