@@ -115,7 +115,6 @@ class AriadneDataset(object):
         self.connected = False
         self.cacher = None
         self.db_conn: Union[h5py.File, Any] = None
-        self.mode = None
 
     @property
     def dataset_name(self):
@@ -147,7 +146,6 @@ class AriadneDataset(object):
             self.cacher = cacher
             mode = mode if mode is not None else 'w' if drop_old else 'a'
             self.db_conn = cacher.open_raw_handle(dataset_path, mode=mode)
-            self.mode = mode
         else:
             temp_cache_dir = os.path.join(cacher.cache_path_dir, self.dataset_name)
             os.makedirs(temp_cache_dir, exist_ok=True)
@@ -159,7 +157,7 @@ class AriadneDataset(object):
 
     def disconnect(self):
         if self.db_conn:
-            self.cacher.close_raw_handle(self.dataset_name, self.mode)
+            self.cacher.close_raw_handle(self.dataset_name)
             self.db_conn = None
 
         if self.cacher:

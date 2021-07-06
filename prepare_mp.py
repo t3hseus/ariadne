@@ -154,8 +154,8 @@ def preprocess_mp(
         process_num: int = None,
         chunk_size: int = 1
 ):
-    os.makedirs(target_dataset.dataset_name, exist_ok=True)
-    setup_logger(target_dataset.dataset_name, target_processor.__class__.__name__)
+    os.makedirs(f"output/{target_dataset.dataset_name}", exist_ok=True)
+    setup_logger(f"output/{target_dataset.dataset_name}", target_processor.__class__.__name__)
 
     global_lock = multiprocessing.Lock()
     jit_cacher.init_locks(global_lock)
@@ -206,21 +206,21 @@ def preprocess_mp(
             workers[-1].start()
         canceled = False
         try:
-            pbar = tqdm(total=len(events))
-            while any(workers):
-                obj = result_queue.get()
-                if obj[0] == -1:
-                    pbar.update()
-                elif obj[0] == -2:
-                    LOGGER.info(f"Process got exception: {obj[1]}.")
-                    return
-                else:
-                    pbar.update()
-                    LOGGER.debug(f"Process idx={obj} has finished processing. joining...")
-                    workers[obj[0]].join()
-                    workers[obj[0]].close()
-                    workers[obj[0]] = False
-                    workers_result[obj[0]] = obj[1]
+            with tqdm(total=len(events)) as pbar:
+                while any(workers):
+                    obj = result_queue.get()
+                    if obj[0] == -1:
+                        pbar.update()
+                    elif obj[0] == -2:
+                        LOGGER.info(f"Process got exception: {obj[1]}.")
+                        return
+                    else:
+                        pbar.update()
+                        LOGGER.debug(f"Process idx={obj} has finished processing. joining...")
+                        workers[obj[0]].join()
+                        workers[obj[0]].close()
+                        workers[obj[0]] = False
+                        workers_result[obj[0]] = obj[1]
         except KeyboardInterrupt:
             LOGGER.info("KeyboardInterrupt! terminating all processes....")
             message_queue.put(1)
@@ -246,6 +246,7 @@ def preprocess_mp(
                 LOGGER.info(f"Worker {worker_id} failed...")
 
         workers_result = [worker_result for worker_result in workers_result if worker_result != '']
+
         with target_dataset.open_dataset(cacher, target_dataset.dataset_name, drop_old=False) as ds:
             ds.global_submit(workers_result)
 

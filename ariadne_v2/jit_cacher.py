@@ -41,6 +41,9 @@ class Cacher():
 
     COLUMNS = ['hash', 'date', 'key', 'data_path', 'type', 'commit']
 
+    DF_KEY = staticmethod(lambda key: f"df/{key}")
+    DC_KEY = staticmethod(lambda key: f"dc/{key}")
+
     def __init__(self,
                  cache_path='_jit',
                  df_compression_level=5,
@@ -64,11 +67,10 @@ class Cacher():
 
     def __del__(self):
         if len(self.opened_handles) > 0:
-            for db, (h, m) in self.opened_handles:
-                for handle, mode in h:
-                    LOGGER.error(f"Not closed handle '{mode}' to db '{db}'")
-                    handle.flush()
-                    handle.close()
+            for db, handle in self.opened_handles:
+                LOGGER.error(f"Not closed handle to db '{db}'")
+                handle.flush()
+                handle.close()
             self.opened_handles = {}
 
     @staticmethod
@@ -104,7 +106,7 @@ class Cacher():
     @staticmethod
     def __save_as_datachunk(self,dc: DFDataChunk, db_path: str, hash):
         with self.__open_db(db_path, 'a') as db:
-            path = f'dc/{hash}'
+            path = self.DC_KEY(hash)
             dc.to_hdf5(db, hash, path)
             db.flush()
             return path
@@ -112,7 +114,7 @@ class Cacher():
     @staticmethod
     def __save_as_np_arr(self,df: pd.DataFrame, db_path: str, hash):
         with self.__open_db(db_path, 'a') as db:
-            path = f'df/{hash}'
+            path = self.DF_KEY(hash)
             DFDataChunk.from_df(df).to_hdf5(db, hash, path)
             db.flush()
             return path
@@ -145,7 +147,7 @@ class Cacher():
         new_path = os.path.join(self.cache_path_dir, db)
         return new_path + "/db.h5" if os.path.isdir(new_path) else db
 
-    def _read_entry(self, args_hash, load_func: Callable, db: Union[str, None]):
+    def _read_entry(self, args_hash, load_func: Callable, db: Union[str, None], key_func):
         if not self.cache[self.cache.hash == args_hash].empty:
             path = self.cache[self.cache.hash == args_hash].data_path.values[0]
             key = self.cache[self.cache.hash == args_hash].key.values[0]
@@ -157,10 +159,14 @@ class Cacher():
 
                 return None
             return result
-        return None
+        else:
+            key = key_func(args_hash)
+            db_path = self.cache_db_path if db is None else self.to_db_path(db)
+            result = load_func(self, db_path, key)
+        return result
 
     def read_df(self, args_hash, db=None):
-        df = self._read_entry(args_hash, self.__load_as_np_arr, db=db)
+        df = self._read_entry(args_hash, self.__load_as_np_arr, db=db, key_func=self.DF_KEY)
         if isinstance(df, DFDataChunk):
             return df.as_df()
         return df
@@ -169,7 +175,7 @@ class Cacher():
         return self._store_entry(args_hash, self.__save_as_np_arr, df, db=db)
 
     def read_datachunk(self, args_hash, db=None) -> Union[None, DFDataChunk]:
-        return self._read_entry(args_hash, self.__load_as_datachunk, db=db)
+        return self._read_entry(args_hash, self.__load_as_datachunk, db=db, key_func=self.DC_KEY)
 
     def store_datachunk(self, args_hash, dc: DFDataChunk, db=None):
         return self._store_entry(args_hash, self.__save_as_datachunk, dc, db=db)
@@ -191,10 +197,8 @@ class Cacher():
     @contextmanager
     def __open_db(self, db_path, mode):
         if db_path in self.opened_handles:
-            for (h, m) in self.opened_handles[db_path]:
-                if m == mode:
-                    yield h
-                    return
+            yield self.opened_handles[db_path]
+            return
 
         h = h5py.File(db_path, mode=mode, libver='latest')
         try:
@@ -244,31 +248,17 @@ class Cacher():
     def open_raw_handle(self, db_path: str, mode: str = 'a') -> h5py.File:
         db_path = self.to_db_path(db_path)
         if db_path not in self.opened_handles:
-            self.opened_handles[db_path] = [(h5py.File(db_path, mode=mode, libver='latest'), mode)]
+            self.opened_handles[db_path] = h5py.File(db_path, mode=mode, libver='latest')
 
-        for h, m in self.opened_handles[db_path]:
-            if m == mode:
-                return h
+        return self.opened_handles[db_path]
 
-        self.opened_handles[db_path].append((h5py.File(db_path, mode=mode, libver='latest'), mode))
-        return self.opened_handles[db_path][-1][0]
-
-    def close_raw_handle(self, db_path, mode):
+    def close_raw_handle(self, db_path):
         db_path = self.to_db_path(db_path)
         assert db_path in self.opened_handles
-        found = -1
-        for idx, (h, m) in enumerate(self.opened_handles[db_path]):
-            if m == mode:
-                h.flush()
-                h.close()
-                found = idx
 
-        assert found >= 0
-        d = self.opened_handles[db_path]
-        del d[found]
-        self.opened_handles[db_path] = d
-        if len(d) == 0:
-            del self.opened_handles[db_path]
+        self.opened_handles[db_path].flush()
+        self.opened_handles[db_path].close()
+        del self.opened_handles[db_path]
 
     @staticmethod
     def build_hash(*args, **kwargs) -> str:

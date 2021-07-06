@@ -109,6 +109,9 @@ class GraphDataset(AriadneDataset):
         for k, v in values.items():
             self.infos[k].append(v.shape[0])
 
+    def connect(self, cacher: Cacher, dataset_path: str, drop_old: bool, mode: str = None):
+        super().connect(cacher, dataset_path, drop_old, mode)
+
     def _submit_local_data(self):
         def update(df, cacher):
             df = df if df is not None else pd.DataFrame()
@@ -132,7 +135,7 @@ class GraphDataset(AriadneDataset):
         info_df = info_df[info_df.valid]
         self.meta.set_df(self.INFO_DF_NAME, info_df)
 
-        LOGGER.info(f"Merged info to the info df: {self.meta.get_df(self.INFO_DF_NAME)}")
+        LOGGER.info(f"Merged info to the info df:\n {self.meta.get_df(self.INFO_DF_NAME)}")
 
 
 
