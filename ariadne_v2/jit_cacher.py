@@ -52,7 +52,6 @@ class Cacher():
         self.cache_db_path = os.path.join(self.cache_path_dir, self.CACHE_DB_FILE)
         self.with_stats = with_stats
         self.cache = None
-        self.cached_data = {}
 
         try:
             self.rev = self.get_git_revision_hash()
@@ -124,7 +123,6 @@ class Cacher():
             return None
 
     def _store_entry(self, args_hash: str, save_func: Callable, data: Any, db: Union[str, None]):
-        exist_entry = self.cache[self.cache.hash == args_hash]
         db_path = self.cache_db_path if db is None else self.to_db_path(db)
         key = save_func(data, db_path, args_hash)
         self._append_cache({'hash': args_hash,
@@ -140,14 +138,11 @@ class Cacher():
 
     def _read_entry(self, args_hash, load_func: Callable, db: Union[str, None], force_read_from_disk:bool):
         if not self.cache[self.cache.hash == args_hash].empty:
-            if args_hash in self.cached_data and not force_read_from_disk:
-                return self.cached_data[args_hash]
             path = self.cache[self.cache.hash == args_hash].data_path.values[0]
             key = self.cache[self.cache.hash == args_hash].key.values[0]
             try:
                 db_path = self.cache_db_path if db is None else self.to_db_path(db)
                 result = load_func(db_path, key)
-                self.cached_data[args_hash] = result
             except Exception as ex:
                 LOGGER.exception(f'Exception when trying to read cache with path {path}!:\n {ex}')
 

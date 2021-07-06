@@ -102,7 +102,7 @@ class EventProcessor(multiprocessing.Process):
             return
 
         try:
-            process_dataset = None
+            process_dataset: AriadneDataset = None
             with self.main_dataset.open_dataset(cacher, new_path) as process_dataset:
                 data_df = data_df[(data_df.event >= self.work_slice[0]) & (data_df.event < self.work_slice[1])]
                 for ev_id, event in data_df.groupby('event'):

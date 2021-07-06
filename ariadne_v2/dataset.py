@@ -28,7 +28,7 @@ class AriadneDataset(object):
 
             return self.__dfs[df_name]
 
-        def update_df(self, df_name, df_update:Callable[[Any, Cacher], pd.DataFrame]):
+        def update_df(self, df_name, df_update: Callable[[Any, Cacher], pd.DataFrame]):
             db = self.ds.dataset_name
             hash = Cacher.build_hash(name=df_name, db=db)
             with jit_cacher.instance(self.ds.cacher) as cacher:
@@ -41,7 +41,7 @@ class AriadneDataset(object):
             return df
 
         def set_df(self, df_name, df):
-            assert self.ds.is_forked or multiprocessing.parent_process() is None, \
+            assert self.ds.connected or multiprocessing.parent_process() is None, \
                 "Direct write to the metainfo from child process is forbidden and error-prone, " \
                 "consider using modify_attr"
             db = self.ds.dataset_name
@@ -51,7 +51,7 @@ class AriadneDataset(object):
             self.__dfs[df_name] = df
 
         def __setitem__(self, key, item):
-            assert self.ds.is_forked or multiprocessing.parent_process() is None, \
+            assert self.ds.connected or multiprocessing.parent_process() is None, \
                 "Direct write to the metainfo from child process is forbidden and error-prone, " \
                 "consider using modify_attr"
 
@@ -97,7 +97,7 @@ class AriadneDataset(object):
             self.__dfs = {}
 
         def drop(self, cacher):
-            assert self.ds.is_forked or multiprocessing.parent_process() is None, \
+            assert self.ds.connected or multiprocessing.parent_process() is None, \
                 "drop should be run from the main process"
             if not self.ds.db_conn:
                 with cacher.handle(self.ds.dataset_name, mode='w') as f:
@@ -109,18 +109,19 @@ class AriadneDataset(object):
     def __init__(self, dataset_name: str):
         self.meta = self.KVStorage(self)
         self.dataset_name = dataset_name
-        self.is_forked = False
+        self.connected = False
         self.cacher = None
-        self.db_conn:Union[h5py.File, Any] = None
+        self.db_conn: Union[h5py.File, Any] = None
 
     @contextmanager
-    def open_dataset(self, cacher:Cacher, dataset_path=None, drop_old=True):
+    def open_dataset(self, cacher: Cacher, dataset_path=None, drop_old=True):
         try:
-            yield self.__create(cacher, dataset_path, drop_old)
+            self.connect(cacher, dataset_path, drop_old)
+            yield self
         finally:
-            self.__close()
+            self.disconnect()
 
-    def __create(self, cacher:Cacher, dataset_path:str, drop_old:bool):
+    def connect(self, cacher: Cacher, dataset_path: str, drop_old: bool, mode: str = None):
         # unix fork issue: erase dicts allocated from the parent process
         self.meta.refresh_all()
 
@@ -128,9 +129,10 @@ class AriadneDataset(object):
             temp_cache_dir = os.path.join(cacher.cache_path_dir, dataset_path)
             os.makedirs(temp_cache_dir, exist_ok=True)
             self.dataset_name = dataset_path
-            self.is_forked = True
+            self.connected = True
             self.cacher = cacher
-            self.db_conn = cacher.raw_handle(dataset_path, mode='w' if drop_old else 'a')
+            mode = mode if mode is not None else 'w' if drop_old else 'a'
+            self.db_conn = cacher.raw_handle(dataset_path, mode=mode)
         else:
             temp_cache_dir = os.path.join(cacher.cache_path_dir, self.dataset_name)
             os.makedirs(temp_cache_dir, exist_ok=True)
@@ -139,16 +141,18 @@ class AriadneDataset(object):
             self.meta.drop(cacher)
             self.meta[self.LEN_KEY] = 0
             self.meta[self.REFS_KEY] = [self.dataset_name]
-        return self
 
-    def __close(self):
+    def disconnect(self):
         if self.cacher:
             self.cacher = None
         if self.db_conn:
             self.db_conn.flush()
             self.db_conn.close()
             self.db_conn = None
-        self.is_forked = False
+        self.connected = False
+
+    def get(self, key):
+        return self.db_conn[f'{self.REFS_KEY}/{key}']
 
     def add(self, key, values: Dict):
         for k, v in values.items():
@@ -161,22 +165,22 @@ class AriadneDataset(object):
 
         refs = self.db_conn.attrs[self.REFS_KEY]
         self.db_conn.attrs[self.REFS_KEY] = np.append(refs, [other_ds_path])
-        self.db_conn[f'{self.REFS_KEY}/{other_ds_path}'] = h5py.ExternalLink(filename=self.cacher.to_db_path(other_ds_path),
-                                                                                  path='/')
+        self.db_conn[f'{self.REFS_KEY}/{other_ds_path}'] = h5py.ExternalLink(
+            filename=self.cacher.to_db_path(other_ds_path),
+            path='/')
 
     def _submit_local_data(self):
         pass
 
-    def _gather_local_data(self, datasets:List[str]):
+    def _gather_local_data(self, datasets: List[str]):
         pass
 
     def local_submit(self):
         self._submit_local_data()
 
-    def global_submit(self, datasets:List[str]):
+    def global_submit(self, datasets: List[str]):
         self._gather_local_data(datasets)
         self.db_conn.attrs[self.LEN_KEY] = self.db_conn.attrs[self.LEN_KEY] + \
                                            sum([self.db_conn[self.REFS_KEY][ds_name].attrs['len']
                                                 for ds_name in datasets])
         self.meta.refresh_all()
-
