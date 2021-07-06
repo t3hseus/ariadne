@@ -3,6 +3,7 @@ import pandas as pd
 
 from torch.utils.data import Dataset
 
+from ariadne.graph_net.dataset import SubsetWithItemLen
 from ariadne_v2.jit_cacher import Cacher
 from experiments.graph.graph_utils.graph import sparse_to_graph
 from experiments.graph.inferrer import GraphDataset
@@ -39,3 +40,16 @@ class TorchGraphDataset(GraphDataset, Dataset):
         if self.len_override:
             return self.len_override
         return len(self.events_db_df)
+
+    def get_item_length(self, item_index):
+        assert self.connected
+        return self.events_db_df.iloc[item_index]['y']
+
+
+@gin.configurable(allowlist=[])
+class SubsetTorchGraphDataset(SubsetWithItemLen):
+    def __init__(self, dataset: TorchGraphDataset, indices):
+        super(SubsetWithItemLen, self).__init__(dataset, indices)
+
+    def get_item_length(self, item_index):
+        return self.dataset.get_item_length(self.indices[item_index])
