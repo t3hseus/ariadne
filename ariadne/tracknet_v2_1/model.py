@@ -17,21 +17,21 @@ class TrackNetClassifier(nn.Module):
     """
     def __init__(self, gru_size=32, coord_size=3, num_gru_states=1, z_values=None):
         super().__init__()
-        self.gru_feat_block = nn.Sequential(nn.Linear(gru_size*num_gru_states, 30),
+        self.gru_feat_block = nn.Sequential(nn.Linear(gru_size*num_gru_states, 40),
                                        #nn.BatchNorm1d(30),
                                        nn.ReLU(),
-                                       nn.Linear(30, 15)
+                                       nn.Linear(40, 20)
                                        )
         self.coord_feat_block = nn.Sequential(
-            nn.Linear(coord_size, 20),
+            nn.Linear(coord_size, 40),
             #nn.BatchNorm1d(30),
             nn.ReLU(),
-            nn.Linear(20, 15)
+            nn.Linear(40, 20)
         )
-        self.classifier = nn.Sequential(nn.Linear(30, 20),
+        self.classifier = nn.Sequential(nn.Linear(40, 25),
                                         #nn.BatchNorm1d(20),
                                         nn.ReLU(),
-                                        nn.Linear(20, 1))
+                                        nn.Linear(25, 1))
 
     def forward(self, gru_features, coord_features):
         """
@@ -39,7 +39,7 @@ class TrackNetClassifier(nn.Module):
         gru_x: GRU output of base model
         coord_x: coordinates of predicted point (found as last hit) 
         """
-        gru_features = gru_features.contiguous().view(gru_features.size()[0], -1)
+        gru_features = gru_features.contiguous()#.view(gru_features.size()[0], -1)
         x1 = self.gru_feat_block(gru_features.float())
         x2 = self.coord_feat_block(coord_features.float())
         x = torch.cat((x1, x2), dim=1)

@@ -1,7 +1,7 @@
 import gin
 import torch
 import torch.nn as nn
-
+import math
 
 ALLOWED_RNN_TYPES = ['GRU', 'LSTM']
 
@@ -135,4 +135,80 @@ class TrackNETv2BES(nn.Module):
         outputs = torch.cat([xy_coords, r1_r2], dim=-1)
         if return_gru_states:
             return outputs, gru_outs
+        return outputs
+
+@gin.configurable
+class PositionalEncoding(nn.Module):
+    def __init__(self,
+                 d_model: int,
+                 dropout: float,
+                 max_len: int = 9):
+        super(PositionalEncoding, self).__init__()
+        den = torch.exp(- torch.arange(0, d_model, 2) * math.log(10000) / d_model)
+        pos = torch.arange(0, max_len).reshape(max_len, 1)
+        pos_embedding = torch.zeros((max_len, d_model))
+        pos_embedding[:, 0::2] = torch.sin(pos * den)
+        pos_embedding[:, 1::2] = torch.cos(pos * den)
+        pos_embedding = pos_embedding.unsqueeze(-2)
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer('pos_embedding', pos_embedding)
+
+    def forward(self, token_embedding):
+        return self.dropout(token_embedding +
+                            self.pos_embedding[:token_embedding.size(0), :].repeat(1,
+                                                                                   token_embedding.shape[1],
+                                                                                   1))
+
+@gin.configurable
+class TrackNETv2Attention(nn.Module):
+    """Builds TrackNETv2 model
+
+    # Arguments
+        input_features: number of input features (channels)
+        rnn_type: type of the rnn unit, one of [`lstm`, `gru`]
+    """
+    def __init__(self,
+                 input_features=4,
+                 conv_features=32,
+                 use_pos_encoder=True,
+                 dropout=0.1,
+                 n_encoders=1
+                 ):
+        super().__init__()
+        self.input_features = input_features
+        self.use_pos_encoder = use_pos_encoder
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=self.input_features,
+            nhead=3,
+            dim_feedforward=conv_features,
+            dropout=dropout
+        )
+        norm = nn.LayerNorm(self.input_features)
+        self.encoder_layer = nn.TransformerEncoder(encoder_layer, num_layers=n_encoders, norm=norm)
+        if self.use_pos_encoder:
+            self.position_encoder = PositionalEncoding(d_model=self.input_features, dropout=dropout, max_len=9)
+        # outputs
+        self.xy_coords = nn.Linear(self.input_features, 2)
+        self.r1_r2 = nn.Sequential(
+            nn.Linear(self.input_features, 2),
+            nn.Softplus()
+        )
+
+    def generate_square_subsequent_mask(self, max_len):
+        mask = torch.triu(torch.ones(max_len, max_len), 1).bool()
+        return mask
+
+    def forward(self, inputs, input_lengths, return_gru_states=False):
+        # BxTxC -> TxBxC
+        inputs = inputs.transpose(0, 1).float()
+        src_mask = self.generate_square_subsequent_mask(inputs.size(0)).to(inputs.device)
+        if self.use_pos_encoder:
+            inputs = self.pos_encoder(inputs)
+        x = self.encoder_layer(inputs, src_mask)
+        x = x.transpose(0, 1)
+        xy_coords = self.xy_coords(x)
+        r1_r2 = self.r1_r2(x)
+        outputs = torch.cat([xy_coords, r1_r2], dim=-1)
+        if return_gru_states:
+            return outputs, x
         return outputs
