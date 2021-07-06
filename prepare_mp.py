@@ -102,31 +102,38 @@ class EventProcessor(multiprocessing.Process):
             jit_cacher.fini_locks()
             return
 
+        current_work = []
+        try:
+            data_df = data_df[(data_df.event >= self.work_slice[0]) & (data_df.event < self.work_slice[1])]
+            for ev_id, event in data_df.groupby('event'):
+                try:
+                    #chunk = DFDataChunk.from_df(event)
+                    processed = self.target_processor(event)
+                    if processed is None:
+                        continue
+                    idx = f"graph_{self.basename}_{ev_id}"
+                    current_work.append((processed, idx))
+                    #postprocessed = self.target_postprocessor(processed, process_dataset, idx)
+                    if ev_id % 10 == 0:
+                        self.result_queue.put([-1])
+                except KeyboardInterrupt:
+                    raise KeyboardInterrupt
+                except:
+                    stack = traceback.format_exc()
+                    print(f"Exception in process {os.getpid()}! details below: {stack}")
+                    self.result_queue.put([-2, stack])
+                    break
+                if not self.message_queue.empty:
+                    break
+        except KeyboardInterrupt:
+            print(f"KeyboardInterrupt in process {os.getpid()}.")
         try:
             process_dataset: AriadneDataset = None
             with self.main_dataset.open_dataset(cacher, new_path) as process_dataset:
-                data_df = data_df[(data_df.event >= self.work_slice[0]) & (data_df.event < self.work_slice[1])]
-                for ev_id, event in data_df.groupby('event'):
-                    try:
-                        chunk = DFDataChunk.from_df(event)
-                        processed = self.target_processor(chunk)
-                        if processed is None:
-                            continue
-                        idx = f"graph_{self.basename}_{ev_id}"
-                        postprocessed = self.target_postprocessor(processed, process_dataset, idx)
-                        self.result_queue.put([-1])
-                    except KeyboardInterrupt:
-                        raise KeyboardInterrupt
-                    except:
-                        stack = traceback.format_exc()
-                        print(f"Exception in process {os.getpid()}! details below: {stack}")
-                        self.result_queue.put([-2, stack])
-                        break
-                    if not self.message_queue.empty:
-                        break
+                for (processed, idx) in current_work:
+                    self.target_postprocessor(processed, process_dataset, idx)
         except KeyboardInterrupt:
             print(f"KeyboardInterrupt in process {os.getpid()}.")
-
         try:
             print(f"Submitting data to the main storage for process {os.getpid()}...")
             if process_dataset is None:
@@ -210,7 +217,7 @@ def preprocess_mp(
                 while any(workers):
                     obj = result_queue.get()
                     if obj[0] == -1:
-                        pbar.update()
+                        pbar.update(n=10)
                     elif obj[0] == -2:
                         LOGGER.info(f"Process got exception: {obj[1]}.")
                         return

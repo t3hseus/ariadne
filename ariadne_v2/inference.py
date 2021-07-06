@@ -1,3 +1,5 @@
+import pandas as pd
+
 from typing import List, Iterable, Callable, Union, Tuple, Any
 from abc import ABCMeta, abstractmethod
 
@@ -20,7 +22,7 @@ class ITransformer(metaclass=ABCMeta):
 
 class IPreprocessor(metaclass=ABCMeta):
     @abstractmethod
-    def __call__(self, chunk: DFDataChunk) -> Union[tuple, None]:
+    def __call__(self, chunk: pd.DataFrame) -> Union[tuple, None]:
         pass
 
 

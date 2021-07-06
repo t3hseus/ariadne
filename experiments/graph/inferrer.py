@@ -28,8 +28,8 @@ class GraphPreprocessor(IPreprocessor):
         self._suffixes_df = _suffixes_df
         self.kwargs = kwargs
 
-    def __call__(self, chunk: DFDataChunk):
-        chunk_df = chunk.as_df()
+    def __call__(self, chunk: pd.DataFrame):
+        chunk_df = chunk
 
         if chunk_df.empty:
             return None
@@ -60,7 +60,7 @@ class GraphPreprocessor(IPreprocessor):
 
         # here we are filtering out superedges, trying to leave true superedges as much as we can
         edges_filtered = apply_edge_restriction(edges_t, **self.kwargs['apply_edge_restriction'])
-        return DFDataChunk.from_df(nodes_t), DFDataChunk.from_df(edges_filtered)
+        return nodes_t, edges_filtered
 
 
 class SaveGraphs(IPostprocessor):
@@ -147,8 +147,8 @@ class SaveGraphsToDataset(IPostprocessor):
             return False
 
         ret = construct_output_graph(
-            hits=out[0].as_df(),
-            edges=out[1].as_df(),
+            hits=out[0],
+            edges=out[1],
             feature_names=['y_p', 'y_c', 'z_p', 'z_c', 'z'],
             feature_scale=[1., 1., 1., 1., 1.],
         )
