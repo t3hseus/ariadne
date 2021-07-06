@@ -18,12 +18,12 @@ class AriadneDataset(object):
             self.__props = {}
             self.__dfs = {}
 
-        def get_df(self, df_name):
+        def get_df(self, df_name, force=False):
             if df_name not in self.__dfs:
                 db = self.ds.dataset_name
                 hash = Cacher.build_hash(name=df_name, db=db)
                 with jit_cacher.instance(self.ds.cacher) as cacher:
-                    df = cacher.read_df(hash, db=db)
+                    df = cacher.read_df(hash, db=db, force_read_from_disk=force)
                 self.__dfs[df_name] = df
 
             return self.__dfs[df_name]

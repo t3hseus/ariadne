@@ -122,7 +122,7 @@ class GraphDataset(AriadneDataset):
 
     def global_submit(self, datasets: List[str]):
         super().global_submit(datasets)
-        LOGGER.info(f"Merged info to the info df:{self.meta.get_df(self.INFO_DF_NAME)}")
+        LOGGER.info(f"Merged info to the info df:{self.meta.get_df(self.INFO_DF_NAME, force=True)}")
         LOGGER.info(f"Total amount of collected events: {self.meta[self.LEN_KEY]}")
 
 

@@ -105,7 +105,6 @@ class EventProcessor(multiprocessing.Process):
             process_dataset = None
             with self.main_dataset.open_dataset(cacher, new_path) as process_dataset:
                 data_df = data_df[(data_df.event >= self.work_slice[0]) & (data_df.event < self.work_slice[1])]
-                # print(f"DATA_DF: {data_df.event.nunique()} pid:{os.getpid()}, slice: {self.work_slice}")
                 for ev_id, event in data_df.groupby('event'):
                     try:
                         chunk = DFDataChunk.from_df(event)
