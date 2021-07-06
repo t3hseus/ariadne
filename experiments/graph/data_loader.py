@@ -35,7 +35,7 @@ class GraphDataLoader_NEW(BaseDataLoader):
 
         assert len(self.dataset) > 0, f"empty dataset {self.dataset.dataset_name}"
         n_train = int(len(self.dataset) * 0.8)
-        n_valid = int(len(self.dataset) * 0.2)
+        n_valid = len(self.dataset) - n_train
 
         LOGGER.info(f"Initializing dataloader with {self.dataset.__class__.__name__}. Len = {len(self.dataset)}.")
         LOGGER.info(f"Num train samples: {n_train}")
