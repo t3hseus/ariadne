@@ -94,7 +94,7 @@ class TrackNetV21ProcessorWithModel(TrackNetV21Processor):
         last_station_index = store_in_index(np.ascontiguousarray(last_station), n_dim=3)
         nearest_hits_index = search_in_index(new_prediction[:, :3],
                                              last_station_index,
-                                             10,
+                                             2,
                                              n_dim=3)
         nearest_hits = last_station[nearest_hits_index]
         nearest_hits, in_ellipse = filter_hits_in_ellipses(new_prediction,

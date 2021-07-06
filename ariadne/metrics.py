@@ -25,7 +25,8 @@ def precision(preds, target, activation=False, is_softmax=False):
         target=target,
         is_softmax=is_softmax,
         metric_func=metrics.precision,
-        is_multiclass=False
+        is_multiclass=False,
+        activation=activation
     )
 
 @gin.configurable('recall', allowlist=['is_softmax','activation'])
@@ -69,7 +70,8 @@ def precision_new(preds, target, activation=False, is_softmax=False):
         target=target,
         is_softmax=is_softmax,
         metric_func=torchmetrics.functional.precision,
-        multiclass=False
+        multiclass=False,
+        activation=activation
     )
 
 @gin.configurable('new_recall', allowlist=['is_softmax','activation'])

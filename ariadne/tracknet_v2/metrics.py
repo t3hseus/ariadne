@@ -111,7 +111,7 @@ def calc_metrics(inputs, model, tracklen=None):
         tracklen = inputs_val.size(1)
 
     # run from the first station to the last
-    for i in range(2, tracklen):
+    for i in range(1, tracklen):
         # cut off all track-candidates
         inputs_part = inputs_val[:, :i]
         # x, y coords of the next hit in a track
