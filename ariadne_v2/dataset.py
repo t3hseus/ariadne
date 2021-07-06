@@ -5,6 +5,7 @@ from typing import Callable, Any, Dict, Union, List
 
 import h5py
 import numpy as np
+import pandas as pd
 
 from ariadne_v2 import jit_cacher
 from ariadne_v2.jit_cacher import Cacher
@@ -27,11 +28,11 @@ class AriadneDataset(object):
 
             return self.__dfs[df_name]
 
-        def update_df(self, df_name, df_update:Callable):
+        def update_df(self, df_name, df_update:Callable[[Any, Cacher], pd.DataFrame]):
             db = self.ds.dataset_name
             hash = Cacher.build_hash(name=df_name, db=db)
             with jit_cacher.instance(self.ds.cacher) as cacher:
-                df = cacher.read_df(hash, db=db)
+                df = cacher.read_df(hash, db=db, force_read_from_disk=True)
                 df = df_update(df, cacher)
                 cacher.store_df(hash, df, db)
 
@@ -149,11 +150,12 @@ class AriadneDataset(object):
     def add(self, key, values: Dict):
         for k, v in values.items():
             self.db_conn.create_dataset(name=f'data/{key}/{k}', data=v, shape=v.shape, compression="gzip")
-        print(f"got here, cur:{self.db_conn.attrs['len']}, pid:{os.getpid()}")
         self.db_conn.attrs[self.LEN_KEY] = self.db_conn.attrs["len"] + 1
 
     def add_dataset_reference(self, other_ds_path):
-        assert other_ds_path not in self.db_conn.attrs, "double reference add"
+        valid = other_ds_path not in self.db_conn.attrs.keys()
+        assert valid, "double reference add"
+
         refs = self.db_conn.attrs[self.REFS_KEY]
         self.db_conn.attrs[self.REFS_KEY] = np.append(refs, [other_ds_path])
         self.db_conn[f'{self.REFS_KEY}/{other_ds_path}'] = h5py.ExternalLink(filename=self.cacher.to_db_path(other_ds_path),
@@ -173,4 +175,5 @@ class AriadneDataset(object):
         self.db_conn.attrs[self.LEN_KEY] = self.db_conn.attrs[self.LEN_KEY] + \
                                            sum([self.db_conn[self.REFS_KEY][ds_name].attrs['len']
                                                 for ds_name in datasets])
+        self.meta.refresh_all()
 

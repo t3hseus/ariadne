@@ -125,14 +125,6 @@ class Cacher():
 
     def _store_entry(self, args_hash: str, save_func: Callable, data: Any, db: Union[str, None]):
         exist_entry = self.cache[self.cache.hash == args_hash]
-        if not exist_entry.empty:
-            # if we hit the same hash, it means it is already stored
-            db_path = exist_entry.data_path.values[0]
-            if os.path.exists(db_path):
-                with h5py.File(db_path, 'r', libver='latest') as db_conn:
-                    if exist_entry.key.values[0] in db_conn:
-                        return
-
         db_path = self.cache_db_path if db is None else self.to_db_path(db)
         key = save_func(data, db_path, args_hash)
         self._append_cache({'hash': args_hash,
@@ -146,9 +138,9 @@ class Cacher():
         new_path = os.path.join(self.cache_path_dir, db)
         return new_path + "/db.h5" if os.path.isdir(new_path) else db
 
-    def _read_entry(self, args_hash, load_func: Callable, db: Union[str, None]):
+    def _read_entry(self, args_hash, load_func: Callable, db: Union[str, None], force_read_from_disk:bool):
         if not self.cache[self.cache.hash == args_hash].empty:
-            if args_hash in self.cached_data:
+            if args_hash in self.cached_data and not force_read_from_disk:
                 return self.cached_data[args_hash]
             path = self.cache[self.cache.hash == args_hash].data_path.values[0]
             key = self.cache[self.cache.hash == args_hash].key.values[0]
@@ -163,8 +155,8 @@ class Cacher():
             return result
         return None
 
-    def read_df(self, args_hash, db=None):
-        df = self._read_entry(args_hash, self.__load_as_np_arr, db=db)
+    def read_df(self, args_hash, db=None, force_read_from_disk=False):
+        df = self._read_entry(args_hash, self.__load_as_np_arr, db=db, force_read_from_disk=force_read_from_disk)
         if isinstance(df, DFDataChunk):
             return df.as_df()
         return df
@@ -172,8 +164,8 @@ class Cacher():
     def store_df(self, args_hash, df: pd.DataFrame, db=None):
         return self._store_entry(args_hash, self.__save_as_np_arr, df, db=db)
 
-    def read_datachunk(self, args_hash, db=None) -> Union[None, DFDataChunk]:
-        return self._read_entry(args_hash, self.__load_as_datachunk, db=db)
+    def read_datachunk(self, args_hash, db=None, force_read_from_disk=False) -> Union[None, DFDataChunk]:
+        return self._read_entry(args_hash, self.__load_as_datachunk, db=db, force_read_from_disk=force_read_from_disk)
 
     def store_datachunk(self, args_hash, dc: DFDataChunk, db=None):
         return self._store_entry(args_hash, self.__save_as_datachunk, dc, db=db)
@@ -198,7 +190,7 @@ class Cacher():
         with h5py.File(db_path, 'r', libver='latest') as db:
             if load_method is None:
                 if key in db.attrs:
-                    return db.attrs
+                    return db.attrs[key]
                 return None
             else:
                 load_method(db, f"custom/{key}")

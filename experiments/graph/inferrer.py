@@ -93,7 +93,6 @@ class SaveGraphsHDF5(IPostprocessor):
         return True
 
 
-
 class GraphDataset(AriadneDataset):
     INFO_DF_NAME = 'shape0'
     DATA_COLUMNS = ["X", "y", "Ri_rows", "Ro_rows", "Ri_cols", "Ro_cols"]
@@ -101,11 +100,11 @@ class GraphDataset(AriadneDataset):
     def __init__(self, dataset_name):
         super(GraphDataset, self).__init__(dataset_name)
 
-        self.infos = {col:[] for col in ["name"] + self.DATA_COLUMNS}
+        self.infos = {col: [] for col in ["name"] + self.DATA_COLUMNS}
 
     def add(self, key, values: Dict):
         super().add(key, values)
-        self.infos["name"].append(key)
+        self.infos["name"].append(f"{self.dataset_name}/data/{key}")
         for k, v in values.items():
             self.infos[k].append(v.shape[0])
 
@@ -114,15 +113,22 @@ class GraphDataset(AriadneDataset):
             df = df if df is not None else pd.DataFrame()
             new_df = pd.DataFrame.from_dict(self.infos)
             return pd.concat([df, new_df], ignore_index=True)
+
         self.meta.update_df(self.INFO_DF_NAME, update)
 
-    def _gather_local_data(self, datasets:List[str]):
+    def _gather_local_data(self, datasets: List[str]):
         for idx, ds_name in enumerate(datasets):
             self.add_dataset_reference(ds_name)
 
+    def global_submit(self, datasets: List[str]):
+        super().global_submit(datasets)
+        LOGGER.info(f"Merged info to the info df:{self.meta.get_df(self.INFO_DF_NAME)}")
+        LOGGER.info(f"Total amount of collected events: {self.meta[self.LEN_KEY]}")
+
+
 class SaveGraphsToDataset(IPostprocessor):
 
-    def __call__(self, out:Any, ds:GraphDataset, idx: str):
+    def __call__(self, out: Any, ds: GraphDataset, idx: str):
         if out is None:
             return False
 
@@ -132,7 +138,7 @@ class SaveGraphsToDataset(IPostprocessor):
             feature_names=['y_p', 'y_c', 'z_p', 'z_c', 'z'],
             feature_scale=[1., 1., 1., 1., 1.],
         )
-        #save_graph(ret, os.path.join(ds.temp_dir, idx))
+        # save_graph(ret, os.path.join(ds.temp_dir, idx))
         ds.add(idx, graph_to_sparse(ret))
 
         return True

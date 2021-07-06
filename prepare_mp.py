@@ -83,41 +83,53 @@ class EventProcessor(multiprocessing.Process):
         self.global_lock = global_lock
 
     def run(self):
-        jit_cacher.init_locks(self.global_lock)
+        try:
+            jit_cacher.init_locks(self.global_lock)
 
-        with jit_cacher.instance() as cacher:
-            cacher.init()
-            data_df = cacher.read_df(self.df_hash)
-            if data_df.empty:
-                self.result_queue.put([self.idx])
-                return
+            with jit_cacher.instance() as cacher:
+                cacher.init()
+                data_df = cacher.read_df(self.df_hash)
+                if data_df.empty:
+                    self.result_queue.put([self.idx, ''])
+                    return
 
-        old_path = self.main_dataset.dataset_name
-        new_path = old_path + f"_{self.basename}_p{self.idx}"
-        with self.main_dataset.open_dataset(cacher, new_path, ) as process_dataset:
-            data_df = data_df[(data_df.event >= self.work_slice[0]) & (data_df.event < self.work_slice[1])]
-            print(f"DATA_DF: {data_df.event.nunique()} pid:{os.getpid()}, slice: {self.work_slice}")
-            for ev_id, event in data_df.groupby('event'):
-                try:
-                    chunk = DFDataChunk.from_df(event)
-                    processed = self.target_processor(chunk)
-                    if processed is None:
-                        continue
-                    idx = f"graph_{self.basename}_{ev_id}"
-                    postprocessed = self.target_postprocessor(processed, process_dataset, idx)
-                    self.result_queue.put([-1])
-                except:
-                    stack = traceback.format_exc()
-                    print(f"Exception in process {os.getpid()}! details below: {stack}")
-                    self.result_queue.put([-2, stack])
-                    break
-                if not self.message_queue.empty:
-                    break
+            old_path = self.main_dataset.dataset_name
+            new_path = old_path + f"_{self.basename}_p{self.idx}"
+        except KeyboardInterrupt:
+            print(f"KeyboardInterrupt in process {os.getpid()}. No result will be returned.")
+            self.result_queue.put([self.idx, ''])
+            jit_cacher.fini_locks()
+            return
 
-            process_dataset.dataset_name = old_path
-            process_dataset.local_submit()
+        try:
+            with self.main_dataset.open_dataset(cacher, new_path) as process_dataset:
+                data_df = data_df[(data_df.event >= self.work_slice[0]) & (data_df.event < self.work_slice[1])]
+                # print(f"DATA_DF: {data_df.event.nunique()} pid:{os.getpid()}, slice: {self.work_slice}")
+                for ev_id, event in data_df.groupby('event'):
+                    try:
+                        chunk = DFDataChunk.from_df(event)
+                        processed = self.target_processor(chunk)
+                        if processed is None:
+                            continue
+                        idx = f"graph_{self.basename}_{ev_id}"
+                        postprocessed = self.target_postprocessor(processed, process_dataset, idx)
+                        self.result_queue.put([-1])
+                    except KeyboardInterrupt:
+                        raise KeyboardInterrupt
+                    except:
+                        stack = traceback.format_exc()
+                        print(f"Exception in process {os.getpid()}! details below: {stack}")
+                        self.result_queue.put([-2, stack])
+                        break
+                    if not self.message_queue.empty:
+                        break
+        except KeyboardInterrupt:
+            print(f"KeyboardInterrupt in process {os.getpid()}.")
 
-        #finish signal
+        process_dataset.dataset_name = old_path
+        process_dataset.local_submit()
+
+        # finish signal
         self.result_queue.put([self.idx, new_path])
 
         jit_cacher.fini_locks()
@@ -170,9 +182,12 @@ def preprocess_mp(
         workers = []
         workers_result = [""] * process_num
         for i in range(0, process_num):
-            work_slice = (events[i * chunk_size], events[(i + 1) * chunk_size])
-            if i == process_num-1:
+
+            if i == process_num - 1:
                 work_slice = (events[i * chunk_size], 1e10)
+            else:
+                work_slice = (events[i * chunk_size], events[(i + 1) * chunk_size])
+
             workers.append(EventProcessor(hash,
                                           basename,
                                           target_processor,
@@ -203,11 +218,17 @@ def preprocess_mp(
             canceled = True
 
         LOGGER.info("Finished processing. Merging results....")
+
         while not result_queue.empty():
             obj = result_queue.get()
             if obj[0] >= 0:
                 workers_result[obj[0]] = obj[1]
 
+        for worker_id, worker_result in enumerate(workers_result):
+            if worker_result == "":
+                LOGGER.info(f"Worker {worker_id} failed...")
+
+        workers_result = [worker_result for worker_result in workers_result if worker_result != '']
         with target_dataset.open_dataset(cacher, target_dataset.dataset_name, drop_old=False) as ds:
             ds.global_submit(workers_result)
 
