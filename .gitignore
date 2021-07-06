@@ -141,3 +141,4 @@ slurm-*.out
 lightning_logs
 .idea
 /.jit/
+/_jit/
