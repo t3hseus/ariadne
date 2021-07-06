@@ -102,6 +102,7 @@ class EventProcessor(multiprocessing.Process):
             return
 
         try:
+            process_dataset = None
             with self.main_dataset.open_dataset(cacher, new_path) as process_dataset:
                 data_df = data_df[(data_df.event >= self.work_slice[0]) & (data_df.event < self.work_slice[1])]
                 # print(f"DATA_DF: {data_df.event.nunique()} pid:{os.getpid()}, slice: {self.work_slice}")
@@ -126,8 +127,17 @@ class EventProcessor(multiprocessing.Process):
         except KeyboardInterrupt:
             print(f"KeyboardInterrupt in process {os.getpid()}.")
 
-        process_dataset.dataset_name = old_path
-        process_dataset.local_submit()
+        try:
+            print(f"Submitting data to the main storage for process {os.getpid()}...")
+            if process_dataset is None:
+                self.result_queue.put([self.idx, ''])
+                return
+
+            process_dataset.dataset_name = old_path
+            process_dataset.local_submit()
+        except KeyboardInterrupt:
+            print(f"KeyboardInterrupt while merging data in process {os.getpid()}. No result will be returned.")
+            new_path = ''
 
         # finish signal
         self.result_queue.put([self.idx, new_path])
@@ -214,13 +224,20 @@ def preprocess_mp(
         except KeyboardInterrupt:
             LOGGER.info("KeyboardInterrupt! terminating all processes....")
             message_queue.put(1)
-            [worker.join() for worker in workers if worker]
+            try:
+                [worker.join() for worker in workers if worker]
+            except KeyboardInterrupt:
+                LOGGER.info("KeyboardInterrupt! seems like a deadlock...")
             canceled = True
 
         LOGGER.info("Finished processing. Merging results....")
 
         while not result_queue.empty():
-            obj = result_queue.get()
+            try:
+                obj = result_queue.get()
+            except EOFError:
+                LOGGER.info("Weird EOFError...")
+                break
             if obj[0] >= 0:
                 workers_result[obj[0]] = obj[1]
 

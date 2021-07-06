@@ -121,6 +121,9 @@ class AriadneDataset(object):
             self.__close()
 
     def __create(self, cacher:Cacher, dataset_path:str, drop_old:bool):
+        # unix fork issue: erase dicts allocated from the parent process
+        self.meta.refresh_all()
+
         if dataset_path is not None:
             temp_cache_dir = os.path.join(cacher.cache_path_dir, dataset_path)
             os.makedirs(temp_cache_dir, exist_ok=True)
