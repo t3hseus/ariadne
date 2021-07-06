@@ -117,10 +117,6 @@ class GraphDataset(AriadneDataset):
 
         self.meta.update_df(self.INFO_DF_NAME, update)
 
-    def _gather_local_data(self, datasets: List[str]):
-        for idx, ds_name in enumerate(datasets):
-            self.add_dataset_reference(ds_name)
-
     def global_submit(self, datasets: List[str]):
         super().global_submit(datasets)
         LOGGER.info(f"Total amount of collected events: {self.meta[self.LEN_KEY]}")

@@ -105,15 +105,27 @@ class AriadneDataset(object):
                 with cacher.handle(self.ds.dataset_name, mode='w') as f:
                     f.flush()
 
+
     LEN_KEY = "len"
     REFS_KEY = "refs"
 
     def __init__(self, dataset_name: str):
         self.meta = self.KVStorage(self)
-        self.dataset_name = dataset_name
+        self.__dataset_name = dataset_name
         self.connected = False
         self.cacher = None
         self.db_conn: Union[h5py.File, Any] = None
+        self.mode = None
+
+    @property
+    def dataset_name(self):
+        return self.__dataset_name
+
+    @dataset_name.setter
+    def dataset_name(self, value):
+        if self.db_conn:
+            assert False, "changing name while connected"
+        self.__dataset_name = value
 
     @contextmanager
     def open_dataset(self, cacher: Cacher, dataset_path=None, drop_old=True):
@@ -134,7 +146,8 @@ class AriadneDataset(object):
             self.connected = True
             self.cacher = cacher
             mode = mode if mode is not None else 'w' if drop_old else 'a'
-            self.db_conn = cacher.raw_handle(dataset_path, mode=mode)
+            self.db_conn = cacher.open_raw_handle(dataset_path, mode=mode)
+            self.mode = mode
         else:
             temp_cache_dir = os.path.join(cacher.cache_path_dir, self.dataset_name)
             os.makedirs(temp_cache_dir, exist_ok=True)
@@ -145,13 +158,15 @@ class AriadneDataset(object):
             self.meta[self.REFS_KEY] = [self.dataset_name]
 
     def disconnect(self):
+        if self.db_conn:
+            self.cacher.close_raw_handle(self.dataset_name, self.mode)
+            self.db_conn = None
+
         if self.cacher:
             self.cacher = None
-        if self.db_conn:
-            self.db_conn.flush()
-            self.db_conn.close()
-            self.db_conn = None
+
         self.connected = False
+        self.meta.refresh_all()
 
     def get(self, key):
         return self.db_conn[f'{self.REFS_KEY}/{key}']
@@ -175,7 +190,8 @@ class AriadneDataset(object):
         pass
 
     def _gather_local_data(self, datasets: List[str]):
-        pass
+        for idx, ds_name in enumerate(datasets):
+            self.add_dataset_reference(ds_name)
 
     def local_submit(self):
         self._submit_local_data()
