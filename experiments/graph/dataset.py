@@ -43,7 +43,7 @@ class TorchGraphDataset(GraphDataset, Dataset):
 
     def get_item_length(self, item_index):
         assert self.connected
-        return self.events_db_df.iloc[item_index]['y']
+        return self.events_db_df.iloc[item_index]['X']
 
 
 @gin.configurable(allowlist=[])
