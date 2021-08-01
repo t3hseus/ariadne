@@ -49,7 +49,7 @@ class DFDataChunk(DataChunk):
 
     def as_df(self):
         return pd.DataFrame({
-            column: self.np_arr[:, idx].astype(self.dtypes[idx])
+            column: self.np_arr[:, idx].astype(self.dtypes[idx] if self.dtypes[idx] != '|O' else 'str')
             for idx, column in enumerate(self.columns)},
             index=self.index)
 

@@ -113,7 +113,6 @@ class GraphsDatasetMemory(MemoryDataset, ItemLengthGetter):
     def __len__(self):
         return len(self.filenames)
 
-
 class SubsetWithItemLen(Subset, ItemLengthGetter):
     def __init__(self, dataset, indices):
         super(SubsetWithItemLen, self).__init__(dataset, indices)
@@ -151,16 +150,7 @@ class GraphBatchBucketSampler(Sampler):
             else:
                 self.buckets[len_].append(key)
 
-        if not self.zero_pad_available:
-            raise NotImplementedError
-
-            for len_, objs in self.buckets.items():
-                if len(objs) < self.batch_size:
-                    self.buckets[len_] = []
-
-            self.buckets = {len_: objs[:len(objs) - (len(objs) % self.batch_size)]
-                            for len_, objs in self.buckets.items() if len(objs) >= self.batch_size}
-            self.indices = [[item for item in objs] for len_, objs in self.buckets.items()]
+        assert self.zero_pad_available
 
         logging.info("_build buckets end")
         self._store_indices()

@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import os.path
 import traceback
+import _gin_bugfix
 
 from ariadne_v2 import jit_cacher
 from ariadne_v2.dataset import AriadneDataset
@@ -83,29 +84,40 @@ class EventProcessor(multiprocessing.Process):
         self.global_lock = global_lock
 
     def run(self):
-        jit_cacher.init_locks(self.global_lock)
+        try:
+            jit_cacher.init_locks(self.global_lock)
 
-        with jit_cacher.instance() as cacher:
-            cacher.init()
+            with jit_cacher.instance() as cacher:
+                cacher.init()
             data_df = cacher.read_df(self.df_hash)
             if data_df.empty:
-                self.result_queue.put([self.idx])
+                self.result_queue.put([self.idx, ''])
                 return
 
-        old_path = self.main_dataset.dataset_name
-        new_path = old_path + f"_{self.basename}_p{self.idx}"
-        with self.main_dataset.open_dataset(cacher, new_path, ) as process_dataset:
+            old_path = self.main_dataset.dataset_name
+            new_path = old_path + f"_{self.basename}_p{self.idx}"
+        except KeyboardInterrupt:
+            print(f"KeyboardInterrupt in process {os.getpid()}. No result will be returned.")
+            self.result_queue.put([self.idx, ''])
+            jit_cacher.fini_locks()
+            return
+
+        current_work = []
+        try:
             data_df = data_df[(data_df.event >= self.work_slice[0]) & (data_df.event < self.work_slice[1])]
-            print(f"DATA_DF: {data_df.event.nunique()} pid:{os.getpid()}, slice: {self.work_slice}")
             for ev_id, event in data_df.groupby('event'):
                 try:
-                    chunk = DFDataChunk.from_df(event)
-                    processed = self.target_processor(chunk)
+                    #chunk = DFDataChunk.from_df(event)
+                    processed = self.target_processor(event)
                     if processed is None:
                         continue
                     idx = f"graph_{self.basename}_{ev_id}"
-                    postprocessed = self.target_postprocessor(processed, process_dataset, idx)
-                    self.result_queue.put([-1])
+                    current_work.append((processed, idx))
+                    #postprocessed = self.target_postprocessor(processed, process_dataset, idx)
+                    if ev_id % 10 == 0:
+                        self.result_queue.put([-1])
+                except KeyboardInterrupt:
+                    raise KeyboardInterrupt
                 except:
                     stack = traceback.format_exc()
                     print(f"Exception in process {os.getpid()}! details below: {stack}")
@@ -113,11 +125,28 @@ class EventProcessor(multiprocessing.Process):
                     break
                 if not self.message_queue.empty:
                     break
+        except KeyboardInterrupt:
+            print(f"KeyboardInterrupt in process {os.getpid()}.")
+        try:
+            process_dataset: AriadneDataset = None
+            with self.main_dataset.open_dataset(cacher, new_path) as process_dataset:
+                for (processed, idx) in current_work:
+                    self.target_postprocessor(processed, process_dataset, idx)
+        except KeyboardInterrupt:
+            print(f"KeyboardInterrupt in process {os.getpid()}.")
+        try:
+            print(f"Submitting data to the main storage for process {os.getpid()}...")
+            if process_dataset is None:
+                self.result_queue.put([self.idx, ''])
+                return
 
             process_dataset.dataset_name = old_path
             process_dataset.local_submit()
+        except KeyboardInterrupt:
+            print(f"KeyboardInterrupt while merging data in process {os.getpid()}. No result will be returned.")
+            new_path = ''
 
-        #finish signal
+        # finish signal
         self.result_queue.put([self.idx, new_path])
 
         jit_cacher.fini_locks()
@@ -132,8 +161,8 @@ def preprocess_mp(
         process_num: int = None,
         chunk_size: int = 1
 ):
-    os.makedirs(target_dataset.dataset_name, exist_ok=True)
-    setup_logger(target_dataset.dataset_name, target_processor.__class__.__name__)
+    os.makedirs(f"output/{target_dataset.dataset_name}", exist_ok=True)
+    setup_logger(f"output/{target_dataset.dataset_name}", target_processor.__class__.__name__)
 
     global_lock = multiprocessing.Lock()
     jit_cacher.init_locks(global_lock)
@@ -170,9 +199,12 @@ def preprocess_mp(
         workers = []
         workers_result = [""] * process_num
         for i in range(0, process_num):
-            work_slice = (events[i * chunk_size], events[(i + 1) * chunk_size])
-            if i == process_num-1:
+
+            if i == process_num - 1:
                 work_slice = (events[i * chunk_size], 1e10)
+            else:
+                work_slice = (events[i * chunk_size], events[(i + 1) * chunk_size])
+
             workers.append(EventProcessor(hash,
                                           basename,
                                           target_processor,
@@ -181,32 +213,46 @@ def preprocess_mp(
             workers[-1].start()
         canceled = False
         try:
-            pbar = tqdm(total=len(events))
-            while any(workers):
-                obj = result_queue.get()
-                if obj[0] == -1:
-                    pbar.update()
-                elif obj[0] == -2:
-                    LOGGER.info(f"Process got exception: {obj[1]}.")
-                    return
-                else:
-                    pbar.update()
-                    LOGGER.debug(f"Process idx={obj} has finished processing. joining...")
-                    workers[obj[0]].join()
-                    workers[obj[0]].close()
-                    workers[obj[0]] = False
-                    workers_result[obj[0]] = obj[1]
+            with tqdm(total=len(events)) as pbar:
+                while any(workers):
+                    obj = result_queue.get()
+                    if obj[0] == -1:
+                        pbar.update(n=10)
+                    elif obj[0] == -2:
+                        LOGGER.info(f"Process got exception: {obj[1]}.")
+                        return
+                    else:
+                        pbar.update()
+                        LOGGER.debug(f"Process idx={obj} has finished processing. joining...")
+                        workers[obj[0]].join()
+                        workers[obj[0]].close()
+                        workers[obj[0]] = False
+                        workers_result[obj[0]] = obj[1]
         except KeyboardInterrupt:
             LOGGER.info("KeyboardInterrupt! terminating all processes....")
             message_queue.put(1)
-            [worker.join() for worker in workers if worker]
+            try:
+                [worker.join() for worker in workers if worker]
+            except KeyboardInterrupt:
+                LOGGER.info("KeyboardInterrupt! seems like a deadlock...")
             canceled = True
 
         LOGGER.info("Finished processing. Merging results....")
+
         while not result_queue.empty():
-            obj = result_queue.get()
+            try:
+                obj = result_queue.get()
+            except EOFError:
+                LOGGER.info("Weird EOFError...")
+                break
             if obj[0] >= 0:
                 workers_result[obj[0]] = obj[1]
+
+        for worker_id, worker_result in enumerate(workers_result):
+            if worker_result == "":
+                LOGGER.info(f"Worker {worker_id} failed...")
+
+        workers_result = [worker_result for worker_result in workers_result if worker_result != '']
 
         with target_dataset.open_dataset(cacher, target_dataset.dataset_name, drop_old=False) as ds:
             ds.global_submit(workers_result)

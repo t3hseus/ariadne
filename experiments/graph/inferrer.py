@@ -4,6 +4,7 @@ import pathlib
 from typing import Tuple, Dict, Any, List
 
 import pandas as pd
+from tqdm import tqdm
 
 from ariadne_v2 import jit_cacher
 from ariadne_v2.dataset import AriadneDataset
@@ -27,8 +28,8 @@ class GraphPreprocessor(IPreprocessor):
         self._suffixes_df = _suffixes_df
         self.kwargs = kwargs
 
-    def __call__(self, chunk: DFDataChunk):
-        chunk_df = chunk.as_df()
+    def __call__(self, chunk: pd.DataFrame):
+        chunk_df = chunk
 
         if chunk_df.empty:
             return None
@@ -59,7 +60,7 @@ class GraphPreprocessor(IPreprocessor):
 
         # here we are filtering out superedges, trying to leave true superedges as much as we can
         edges_filtered = apply_edge_restriction(edges_t, **self.kwargs['apply_edge_restriction'])
-        return DFDataChunk.from_df(nodes_t), DFDataChunk.from_df(edges_filtered)
+        return nodes_t, edges_filtered
 
 
 class SaveGraphs(IPostprocessor):
@@ -93,7 +94,6 @@ class SaveGraphsHDF5(IPostprocessor):
         return True
 
 
-
 class GraphDataset(AriadneDataset):
     INFO_DF_NAME = 'shape0'
     DATA_COLUMNS = ["X", "y", "Ri_rows", "Ro_rows", "Ri_cols", "Ro_cols"]
@@ -101,38 +101,58 @@ class GraphDataset(AriadneDataset):
     def __init__(self, dataset_name):
         super(GraphDataset, self).__init__(dataset_name)
 
-        self.infos = {col:[] for col in ["name"] + self.DATA_COLUMNS}
+        self.infos = {col: [] for col in ["name"] + self.DATA_COLUMNS}
 
     def add(self, key, values: Dict):
         super().add(key, values)
-        self.infos["name"].append(key)
+        self.infos["name"].append(f"{self.dataset_name}/data/{key}")
         for k, v in values.items():
             self.infos[k].append(v.shape[0])
+
+    def connect(self, cacher: Cacher, dataset_path: str, drop_old: bool, mode: str = None):
+        super().connect(cacher, dataset_path, drop_old, mode)
 
     def _submit_local_data(self):
         def update(df, cacher):
             df = df if df is not None else pd.DataFrame()
             new_df = pd.DataFrame.from_dict(self.infos)
             return pd.concat([df, new_df], ignore_index=True)
+
         self.meta.update_df(self.INFO_DF_NAME, update)
 
-    def _gather_local_data(self, datasets:List[str]):
-        for idx, ds_name in enumerate(datasets):
-            self.add_dataset_reference(ds_name)
+    def global_submit(self, datasets: List[str]):
+        super().global_submit(datasets)
+        LOGGER.info(f"Total amount of collected events: {self.meta[self.LEN_KEY]}")
+        info_df = self.meta.get_df(self.INFO_DF_NAME)
+        assert info_df is not None and not info_df.empty
+        # info_df['valid'] = True
+        # for row_id, row in tqdm(info_df.iterrows()):
+        #     key = row['name']
+        #     if key not in self.db_conn[f'{self.REFS_KEY}']:
+        #         LOGGER.info(f'Path {key} is not valid! erasing')
+        #         info_df.loc[row_id, 'valid'] = False
+
+        # info_df = info_df[info_df.valid]
+        # self.meta.set_df(self.INFO_DF_NAME, info_df)
+
+        LOGGER.info(f"Merged info to the info df:\n {self.meta.get_df(self.INFO_DF_NAME)}")
+
+
+
 
 class SaveGraphsToDataset(IPostprocessor):
 
-    def __call__(self, out:Any, ds:GraphDataset, idx: str):
+    def __call__(self, out: Any, ds: GraphDataset, idx: str):
         if out is None:
             return False
 
         ret = construct_output_graph(
-            hits=out[0].as_df(),
-            edges=out[1].as_df(),
+            hits=out[0],
+            edges=out[1],
             feature_names=['y_p', 'y_c', 'z_p', 'z_c', 'z'],
             feature_scale=[1., 1., 1., 1., 1.],
         )
-        #save_graph(ret, os.path.join(ds.temp_dir, idx))
+        # save_graph(ret, os.path.join(ds.temp_dir, idx))
         ds.add(idx, graph_to_sparse(ret))
 
         return True
