@@ -1,6 +1,7 @@
+import numpy as np
 import pandas as pd
 
-from typing import List, Iterable, Callable, Union, Tuple, Any
+from typing import List, Iterable, Callable, Union, Tuple, Any, Dict
 from abc import ABCMeta, abstractmethod
 
 from ariadne_v2.dataset import AriadneDataset
@@ -28,7 +29,7 @@ class IPreprocessor(metaclass=ABCMeta):
 
 class IModelLoader(metaclass=ABCMeta):
     @abstractmethod
-    def __call__(self, *args, **kwargs):
+    def __call__(self) -> Tuple[Dict, Any]:
         pass
 
 
@@ -40,13 +41,15 @@ class IEvaluator(metaclass=ABCMeta):
 
 class IPostprocessor(metaclass=ABCMeta):
     @abstractmethod
-    def __call__(self, data:Any, ds: AriadneDataset, idx:str):
+    def __call__(self, data: Any, ds: AriadneDataset, idx: str):
         pass
 
 
 class EventInferrer(IInferrer):
     @abstractmethod
-    def __call__(self, *args, **kwargs):
+    def __call__(self,
+                 model_state: Any,
+                 events_chunk: List[Union[tuple, None]]):
         pass
 
 

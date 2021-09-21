@@ -7,6 +7,7 @@ import gin
 import numpy as np
 import pandas as pd
 
+import ariadne_v2.jit_cacher
 from ariadne_v2.jit_cacher import cache_result_df
 
 LOGGER = logging.getLogger('ariadne.parsing')
@@ -44,6 +45,7 @@ def parse(input_file_mask,
     for idx, elem in enumerate(files_list):
         LOGGER.info("[Parse]: started parsing CSV #%d (%s):" % (idx, elem))
         parsed_df, hash = parse_df(elem, **csv_params)
+        hash = ariadne_v2.jit_cacher.Cacher.build_hash(events_quantity, hash)
         if filter_func:
             parsed_df = filter_func(parsed_df)
             hash = None

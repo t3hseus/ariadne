@@ -167,12 +167,11 @@ def preprocess_mp(
     global_lock = multiprocessing.Lock()
     jit_cacher.init_locks(global_lock)
 
-    if True:
-        with jit_cacher.instance() as cacher:
-            cacher.init()
+    with jit_cacher.instance() as cacher:
+        cacher.init()
 
-        with target_dataset.open_dataset(cacher) as ds:
-            target_dataset = ds
+    with target_dataset.open_dataset(cacher) as ds:
+        target_dataset = ds
 
     target_dataset.meta["cfg"] = gin.config_str()
 

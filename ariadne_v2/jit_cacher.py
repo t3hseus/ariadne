@@ -1,6 +1,7 @@
 import atexit
 import functools
 import hashlib
+import pathlib
 import logging
 import os
 import datetime
@@ -44,11 +45,14 @@ class Cacher():
     DF_KEY = staticmethod(lambda key: f"df/{key}")
     DC_KEY = staticmethod(lambda key: f"dc/{key}")
 
+    ROOT_PATH = os.path.dirname(pathlib.Path(__file__).parent.resolve())
+
     def __init__(self,
-                 cache_path='_jit',
+                 cache_path=os.path.join(ROOT_PATH, '_jit'),
                  df_compression_level=5,
                  with_stats=True):
         self.cache_path_dir = cache_path
+
         self.cache_info_path = os.path.join(self.cache_path_dir, self.CACHE_INFO_FILE)
         os.makedirs(self.cache_path_dir, exist_ok=True)
         self.df_compression_level = df_compression_level
@@ -92,6 +96,9 @@ class Cacher():
         else:
             self.cache = pd.DataFrame(columns=self.COLUMNS)
         self._save()
+        h = h5py.File(self.cache_db_path, mode='a', libver='latest')
+        h.close()
+
 
     def _append_cache(self, dict_to_append: Dict):
         assert 'hash' in dict_to_append
@@ -104,7 +111,7 @@ class Cacher():
         self._save()
 
     @staticmethod
-    def __save_as_datachunk(self,dc: DFDataChunk, db_path: str, hash):
+    def __save_as_datachunk(self, dc: DFDataChunk, db_path: str, hash):
         with self.__open_db(db_path, 'a') as db:
             path = self.DC_KEY(hash)
             dc.to_hdf5(db, hash, path)
@@ -112,7 +119,7 @@ class Cacher():
             return path
 
     @staticmethod
-    def __save_as_np_arr(self,df: pd.DataFrame, db_path: str, hash):
+    def __save_as_np_arr(self, df: pd.DataFrame, db_path: str, hash):
         with self.__open_db(db_path, 'a') as db:
             path = self.DF_KEY(hash)
             DFDataChunk.from_df(df).to_hdf5(db, hash, path)
@@ -127,7 +134,7 @@ class Cacher():
             return pd.DataFrame()
 
     @staticmethod
-    def __load_as_datachunk(self,db_path: str, key) -> Union[DFDataChunk, None]:
+    def __load_as_datachunk(self, db_path: str, key) -> Union[DFDataChunk, None]:
         with self.__open_db(db_path, 'r') as db:
             if key in db:
                 return DFDataChunk.from_hdf5(db, hash, key)
@@ -148,6 +155,7 @@ class Cacher():
         return new_path + "/db.h5" if os.path.isdir(new_path) else db
 
     def _read_entry(self, args_hash, load_func: Callable, db: Union[str, None], key_func):
+
         if not self.cache[self.cache.hash == args_hash].empty:
             path = self.cache[self.cache.hash == args_hash].data_path.values[0]
             key = self.cache[self.cache.hash == args_hash].key.values[0]
@@ -156,13 +164,20 @@ class Cacher():
                 result = load_func(self, db_path, key)
             except Exception as ex:
                 LOGGER.exception(f'Exception when trying to read cache with path {path}!:\n {ex}')
-
+                print(f"read entry {args_hash} miss")
                 return None
+            print(f"read entry {args_hash} hit")
             return result
         else:
             key = key_func(args_hash)
-            db_path = self.cache_db_path if db is None else self.to_db_path(db)
-            result = load_func(self, db_path, key)
+            try:
+                db_path = self.cache_db_path if db is None else self.to_db_path(db)
+                result = load_func(self, db_path, key)
+            except Exception as ex:
+                LOGGER.exception(f'Exception when trying to read cache with key {key}!:\n {ex}')
+                print(f"read entry {args_hash} miss")
+                return None
+        print(f"read entry {args_hash} hit")
         return result
 
     def read_df(self, args_hash, db=None):
@@ -172,6 +187,8 @@ class Cacher():
         return df
 
     def store_df(self, args_hash, df: pd.DataFrame, db=None):
+        if df.empty:
+            return
         return self._store_entry(args_hash, self.__save_as_np_arr, df, db=db)
 
     def read_datachunk(self, args_hash, db=None) -> Union[None, DFDataChunk]:
