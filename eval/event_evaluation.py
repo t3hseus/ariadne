@@ -95,7 +95,7 @@ class EventEvaluator:
     def run_model(self, model_preprocess_func, model_run_func):
         assert len(self.data_df_transformed) > 0 and self.loaded_model_state, "call prepare() first"
         print('[run model] start')
-        COLUMNS = ['event_id', 'track_pred'] + [f"hit_id_{n}" for n in range(self.n_stations)]
+        COLUMNS = ['event_id', 'track_pred', 'px', 'py', 'pz'] + [f"hit_id_{n}" for n in range(self.n_stations)]
         result_df_arr = []
         result_event_arr = []
 
@@ -144,14 +144,17 @@ class EventEvaluator:
                         continue
 
                     model_run_df['event_id'] = ev_id
-
+                    tracks = event_df[event_df.track != -1]
+                    model_run_df['px'] = tracks.px.min()
+                    model_run_df['py'] = tracks.py.min()
+                    model_run_df['pz'] = tracks.pz.min()
                     model_run_df['time'] = time_for_event
                     result_event_arr.append(pd.DataFrame({'event_id': ev_id, 'time': time_for_event}, index=[0]))
                     model_run_df = model_run_df[COLUMNS]
                     result_df_arr.append(model_run_df)
 
-        result_df = pd.concat(result_df_arr)
-        result_event_df = pd.concat(result_event_arr)
+        result_df = pd.concat(result_df_arr, ignore_index=True)
+        result_event_df = pd.concat(result_event_arr, ignore_index=True)
 
         store_df_from_hash(result_df, self._hash_run_model())
         store_df_from_hash(result_event_df, self._hash_run_model_events())
@@ -183,9 +186,9 @@ class EventEvaluator:
                         continue
                     ev_id_real = event.event.values[0]
 
-                    px_mean_general = event[event.track != -1].px.min()
-                    py_mean_general = event[event.track != -1].py.min()
-                    pz_mean_general = event[event.track != -1].pz.min()
+                    px_min_general = event[event.track != -1].px.min()
+                    py_min_general = event[event.track != -1].py.min()
+                    pz_min_general = event[event.track != -1].pz.min()
                     hits_in_event = set()
                     tracks_in_event = event[event.track != -1].track.nunique()
 
@@ -219,18 +222,51 @@ class EventEvaluator:
                         'event_id': int(ev_id_real),
                         'multiplicity': int(tracks_in_event),
                         'pred': 0,
-                        'time': 0
+                        'time': 0,
+                        'px_min': px_min_general,
+                        'py_min': py_min_general,
+                        'pz_min': pz_min_general,
                     }, index=[0]))
 
-        all_tracks_df = pd.concat(true_tracks_arr)
-        all_events_df = pd.concat(all_events_arr)
+        all_tracks_df = pd.concat(true_tracks_arr, ignore_index=True)
+        all_events_df = pd.concat(all_events_arr, ignore_index=True)
 
         store_df_from_hash(all_tracks_df, self._hash_all_tracks_df())
         store_df_from_hash(all_events_df, self._hash_all_events_df())
         print('[build_all_tracks] cache miss, finish')
         return all_tracks_df, all_events_df
 
-    def solve_results(self):
+    def solve_results(self, model_results, all_data):
         print('[solve results] start')
+        STATION_COLUMNS = [f"hit_id_{n}" for n in range(self.n_stations)]
 
-        pass
+        all_tracks, all_events = all_data
+        reco_tracks, reco_events = model_results
+
+        # TODO: how to solve ghost hits?
+        tracks_pred = reco_tracks[reco_tracks.track_pred]
+        reco_tracks_impulses = tracks_pred[['px', 'py', 'pz']]
+        reco_tracks_preds = tracks_pred[['event_id', 'track_pred'] + STATION_COLUMNS]
+        reco_tracks_preds['idx_old'] = tracks_pred.index
+
+        results = pd.merge(all_tracks, reco_tracks_preds, how='outer',
+                           on=['event_id'] + STATION_COLUMNS)
+
+        not_found_tracks = (results.track_pred != False) & (results.track_pred != True)
+        results.loc[not_found_tracks, 'track_pred'] = False
+
+        results.loc[results.track_pred, ['pred']] = 1
+
+        ghosts_idx_all = pd.isna(results.track)
+        ghosts_idx_reco = results[ghosts_idx_all].idx_old.astype('int')
+        ghosts_impulses = reco_tracks_impulses.loc[ghosts_idx_reco]
+        results.loc[ghosts_idx_all, ['px', 'py', 'pz']] = ghosts_impulses[['px', 'py', 'pz']].values
+        results.loc[ghosts_idx_all, 'track'] = -1
+        results.loc[ghosts_idx_all, 'pred'] = -1
+        results = results.drop(['track_pred', 'idx_old'], axis=1)
+        results['pred'] = results['pred'].astype('int')
+        results['track'] = results['track'].astype('int')
+
+        return results
+
+
