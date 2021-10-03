@@ -1,6 +1,7 @@
 import atexit
 import functools
 import hashlib
+import inspect
 import pathlib
 import logging
 import os
@@ -8,7 +9,7 @@ import datetime
 import time
 from contextlib import contextmanager
 
-from typing import Dict, Callable, Any, Union
+from typing import Dict, Callable, Any, Union, List
 
 import subprocess
 
@@ -281,6 +282,13 @@ class Cacher():
     def build_hash(*args, **kwargs) -> str:
         return Cacher.generate_unique_key(*args, salt=Cacher.VERSION, **kwargs)
 
+    @staticmethod
+    def build_hash_callable(methods: List[Callable], *args, **kwargs) -> str:
+        code_hash = [callee.__code__.__hash__()
+                     if inspect.ismethod(callee) or inspect.isfunction(callee)
+                     else callee.__call__.__code__.__hash__()
+                     for callee in methods]
+        return Cacher.generate_unique_key(*args,*code_hash, salt=Cacher.VERSION, **kwargs)
 
 __cacher = Cacher()
 

@@ -11,6 +11,7 @@ from abc import ABCMeta, abstractmethod
 from typing import Dict, Callable
 
 import gin
+import numpy as np
 import pandas as pd
 
 from tqdm import tqdm
@@ -45,6 +46,7 @@ class EventEvaluator:
 
         self.parse_cfg = parse_cfg
         self.loaded_model_state = None
+        self.model_loader = None
 
         self.n_stations = n_stations
 
@@ -69,19 +71,18 @@ class EventEvaluator:
             self.data_df_hashes.append(hash)
         print("[prepare] finished")
         print("[prepare] loading your model(s)...")
-        self.loaded_model_state = model_loader()
+        self.model_loader = model_loader
+        self.loaded_model_state = self.model_loader()
         print("[prepare] finished loading your model(s)...")
         return self.data_df_transformed
 
-    def _hash_run_model(self):
+    def _hash_run_model(self, funcs):
         assert len(self.data_df_hashes) > 0 and self.loaded_model_state, "call prepare() first"
-        assert isinstance(self.loaded_model_state[0], dict), "return a unique dict representation of your trained model"
-        return Cacher.build_hash(*self.data_df_hashes, state=self.loaded_model_state[0], hits='hits')
+        return Cacher.build_hash_callable(funcs, *self.data_df_hashes, hits='hits', **self.loaded_model_state[0])
 
-    def _hash_run_model_events(self):
+    def _hash_run_model_events(self, funcs):
         assert len(self.data_df_hashes) > 0 and self.loaded_model_state, "call prepare() first"
-        assert isinstance(self.loaded_model_state[0], dict), "return a unique dict representation of your trained model"
-        return Cacher.build_hash(*self.data_df_hashes, state=self.loaded_model_state[0], events='events')
+        return Cacher.build_hash_callable(funcs, *self.data_df_hashes, events='events', **self.loaded_model_state[0])
 
     def _hash_all_tracks_df(self):
         assert len(self.data_df_hashes) > 0 and self.loaded_model_state, "call prepare() first"
@@ -98,9 +99,10 @@ class EventEvaluator:
         COLUMNS = ['event_id', 'track_pred', 'px', 'py', 'pz'] + [f"hit_id_{n}" for n in range(self.n_stations)]
         result_df_arr = []
         result_event_arr = []
-
-        result_df = read_df_from_hash(self._hash_run_model())
-        result_event_df = read_df_from_hash(self._hash_run_model_events())
+        run_model_hash = self._hash_run_model([self.model_loader, model_run_func, model_preprocess_func])
+        result_df = read_df_from_hash(run_model_hash)
+        events_hash = self._hash_run_model_events([self.model_loader, model_run_func, model_preprocess_func])
+        result_event_df = read_df_from_hash(events_hash)
         if result_df is not None and result_event_df is not None:
             print('[run model] cache hit, finish')
             return result_df, result_event_df
@@ -111,12 +113,13 @@ class EventEvaluator:
                 for ev_id, event_df in events.groupby('event'):
                     pbar.set_description('processed: %d' % ev_id)
                     pbar.update(1)
-                    time_for_event = 0.0
+                    cpu_time_for_event = 0.0
+                    gpu_time_for_event = 0.0
                     try:
                         start = timer()
                         preprocess_result = model_preprocess_func(event_df)
                         end = timer()
-                        time_for_event += end - start
+                        cpu_time_for_event = end - start
 
                         if preprocess_result is None:
                             continue
@@ -133,7 +136,7 @@ class EventEvaluator:
                         start = timer()
                         model_run_df = model_run_func(preprocess_result, self.loaded_model_state[1])
                         end = timer()
-                        time_for_event += end - start
+                        gpu_time_for_event = end - start
 
                     except KeyboardInterrupt as ex:
                         break
@@ -148,16 +151,20 @@ class EventEvaluator:
                     model_run_df['px'] = tracks.px.min()
                     model_run_df['py'] = tracks.py.min()
                     model_run_df['pz'] = tracks.pz.min()
-                    model_run_df['time'] = time_for_event
-                    result_event_arr.append(pd.DataFrame({'event_id': ev_id, 'time': time_for_event}, index=[0]))
+
+                    result_event_arr.append(pd.DataFrame({
+                        'event_id': ev_id,
+                        'cpu_time': cpu_time_for_event,
+                        'gpu_time': gpu_time_for_event,
+                        'multiplicity':tracks.track.nunique()}, index=[0]))
                     model_run_df = model_run_df[COLUMNS]
                     result_df_arr.append(model_run_df)
 
         result_df = pd.concat(result_df_arr, ignore_index=True)
         result_event_df = pd.concat(result_event_arr, ignore_index=True)
 
-        store_df_from_hash(result_df, self._hash_run_model())
-        store_df_from_hash(result_event_df, self._hash_run_model_events())
+        store_df_from_hash(result_df, run_model_hash)
+        store_df_from_hash(result_event_df, events_hash)
         print('[run model] cache miss, finish')
         return result_df, result_event_df
 
@@ -267,6 +274,36 @@ class EventEvaluator:
         results['pred'] = results['pred'].astype('int')
         results['track'] = results['track'].astype('int')
 
-        return results
+        print('[solve results] finish')
+        print('[solve results] final stats:')
+        print('=' * 10 + 'EVALUATION RESULTS' + '=' * 10)
+
+        all_tracks = results[results.pred != -1]
+        true_tracks = results[results.pred == 1]
+        efficiency = len(true_tracks) / float(len(all_tracks))
+        print(f'Track Efficiency (recall): {efficiency:.4f} ')
+
+        reco_tracks = results[results.pred != 0]
+        true_tracks = results[results.pred == 1]
+        purity = len(true_tracks) / float(len(reco_tracks))
+        print(f'Track Purity (precision): {purity:.4f} ')
+
+        all_tracks = results[results.pred != -1]
+        true_unique = all_tracks[['track', 'event_id']].groupby('event_id').nunique()
+
+        reco_tracks = results[results.pred == 1]
+        reco_unique = reco_tracks[['track', 'event_id']].groupby('event_id').nunique()
+
+        not_recostructed = reco_unique['track'].values == true_unique['track'].values
+        event_efficiency = np.count_nonzero(not_recostructed) / len(true_unique['track'].values)
+        print(f'Fully reconstructed event ratio: {event_efficiency:.4f}')
+
+        print(f'Mean cpu time per event: {reco_events["cpu_time"].mean():.4f} sec'
+              f' ({1./reco_events["cpu_time"].mean():.2f} events per second) ')
+
+        print(f'Mean gpu time per event: {reco_events["gpu_time"].mean():.4f} sec'
+              f' ({1. / reco_events["gpu_time"].mean():.2f} events per second) ')
+        print('=' * 10 + 'EVALUATION RESULTS' + '=' * 10)
+        return results, reco_events
 
 
