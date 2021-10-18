@@ -10,6 +10,8 @@ dependencies:
   - matplotlib
   - pyyaml
   - pandas
+  - seaborn
+  - ipywidgets
   - scikit-learn
   - h5py<3.2
   - nose=1.3.7
