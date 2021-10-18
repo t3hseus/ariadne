@@ -277,8 +277,11 @@ class EventEvaluator:
         print('[solve results] finish')
         print('[solve results] final stats:')
         print('=' * 10 + 'EVALUATION RESULTS' + '=' * 10)
+        print(f'Total events evaluated: {results.event_id.nunique()}')
 
         all_tracks = results[results.pred != -1]
+        print(f'Total tracks evaluated: {len(all_tracks)}')
+
         true_tracks = results[results.pred == 1]
         efficiency = len(true_tracks) / float(len(all_tracks))
         print(f'Track Efficiency (recall): {efficiency:.4f} ')
