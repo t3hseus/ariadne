@@ -156,7 +156,7 @@ class EventEvaluator:
                         'event_id': ev_id,
                         'cpu_time': cpu_time_for_event,
                         'gpu_time': gpu_time_for_event,
-                        'multiplicity':tracks.track.nunique()}, index=[0]))
+                        'multiplicity': tracks.track.nunique()}, index=[0]))
                     model_run_df = model_run_df[COLUMNS]
                     result_df_arr.append(model_run_df)
 
@@ -294,16 +294,20 @@ class EventEvaluator:
         reco_tracks = results[results.pred == 1]
         reco_unique = reco_tracks[['track', 'event_id']].groupby('event_id').nunique()
 
-        not_recostructed = reco_unique['track'].values == true_unique['track'].values
-        event_efficiency = np.count_nonzero(not_recostructed) / len(true_unique['track'].values)
+        all_events = pd.merge(true_unique, reco_unique, on='event_id', how='outer')
+
+        missing_events = pd.isna(all_events.track_y)
+        all_events.loc[missing_events, 'track_y'] = -1
+        all_events.track_x = all_events.track_x.astype('int')
+        all_events.track_y = all_events.track_y.astype('int')
+
+        event_efficiency = len(all_events[all_events.track_x == all_events.track_y]) / len(all_events)
         print(f'Fully reconstructed event ratio: {event_efficiency:.4f}')
 
         print(f'Mean cpu time per event: {reco_events["cpu_time"].mean():.4f} sec'
-              f' ({1./reco_events["cpu_time"].mean():.2f} events per second) ')
+              f' ({1. / reco_events["cpu_time"].mean():.2f} events per second) ')
 
         print(f'Mean gpu time per event: {reco_events["gpu_time"].mean():.4f} sec'
               f' ({1. / reco_events["gpu_time"].mean():.2f} events per second) ')
         print('=' * 10 + 'EVALUATION RESULTS' + '=' * 10)
         return results, reco_events
-
-
