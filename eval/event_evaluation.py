@@ -230,6 +230,7 @@ class EventEvaluator:
                         'multiplicity': int(tracks_in_event),
                         'pred': 0,
                         'time': 0,
+                        'total_hits': len(event),
                         'px_min': px_min_general,
                         'py_min': py_min_general,
                         'pz_min': pz_min_general,
