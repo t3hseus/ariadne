@@ -40,7 +40,7 @@ class Cacher():
     VERSION = 1
     CACHE_INFO_FILE = 'cache_info.txt'
     CACHE_DB_FILE = 'ariadne_cache_db.h5'
-
+    DISABLE_CACHE = False
     COLUMNS = ['hash', 'date', 'key', 'data_path', 'type', 'commit']
 
     DF_KEY = staticmethod(lambda key: f"df/{key}")
@@ -156,7 +156,8 @@ class Cacher():
         return new_path + "/db.h5" if os.path.isdir(new_path) else db
 
     def _read_entry(self, args_hash, load_func: Callable, db: Union[str, None], key_func):
-
+        if self.DISABLE_CACHE:
+            return None
         if not self.cache[self.cache.hash == args_hash].empty:
             path = self.cache[self.cache.hash == args_hash].data_path.values[0]
             key = self.cache[self.cache.hash == args_hash].key.values[0]

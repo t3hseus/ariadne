@@ -14,6 +14,7 @@ import gin
 import numpy as np
 import pandas as pd
 
+from numpy import linalg as LA
 from tqdm import tqdm
 
 from ariadne_v2 import jit_cacher
@@ -21,7 +22,7 @@ from ariadne_v2.data_chunk import DFDataChunk
 from ariadne_v2.inference import Transformer, IPreprocessor, EventInferrer, IModelLoader
 from ariadne_v2.jit_cacher import Cacher
 from ariadne_v2.parsing import parse
-
+from ariadne_v2.utils.pt_builder import PtFromHelix
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 
 
@@ -37,6 +38,18 @@ def read_df_from_hash(hash):
             return result_df
     return None
 
+def calc_imp_3hits(track_cand):
+    pt = 1000. / PtFromHelix(track_cand)
+    cost = (track_cand[['z']].values / LA.norm(track_cand[['x', 'y', 'z']].values, axis=1,
+                                               keepdims=True)).mean()
+    aphi = np.arctan2(track_cand[['x']].values, track_cand[['y']].values).mean()
+    return [pt, cost, aphi]
+
+def calc_imp(row, event_df):
+    track_cand = event_df[(event_df.index_old == row.hit_id_0) |
+                          (event_df.index_old == row.hit_id_1) |
+                          (event_df.index_old == row.hit_id_2)]
+    return calc_imp_3hits(track_cand)
 
 class EventEvaluator:
     def __init__(self,
@@ -96,7 +109,7 @@ class EventEvaluator:
     def run_model(self, model_preprocess_func, model_run_func):
         assert len(self.data_df_transformed) > 0 and self.loaded_model_state, "call prepare() first"
         print('[run model] start')
-        COLUMNS = ['event_id', 'track_pred', 'px', 'py', 'pz'] + [f"hit_id_{n}" for n in range(self.n_stations)]
+        COLUMNS = ['event_id', 'track_pred'] + [f"hit_id_{n}" for n in range(self.n_stations)] + ['pt', 'cost', 'aphi']
         result_df_arr = []
         result_event_arr = []
         run_model_hash = self._hash_run_model([self.model_loader, model_run_func, model_preprocess_func])
@@ -148,9 +161,12 @@ class EventEvaluator:
 
                     model_run_df['event_id'] = ev_id
                     tracks = event_df[event_df.track != -1]
-                    model_run_df['px'] = tracks.px.min()
-                    model_run_df['py'] = tracks.py.min()
-                    model_run_df['pz'] = tracks.pz.min()
+
+                    true_tracks = model_run_df[model_run_df.track_pred]
+                    imps = true_tracks.apply(calc_imp, event_df=event_df, axis=1, result_type='expand')
+
+                    model_run_df[['pt', 'cost', 'aphi']] = -1.0
+                    model_run_df.loc[model_run_df.track_pred, ['pt', 'cost', 'aphi']] = imps.values
 
                     result_event_arr.append(pd.DataFrame({
                         'event_id': ev_id,
@@ -193,9 +209,6 @@ class EventEvaluator:
                         continue
                     ev_id_real = event.event.values[0]
 
-                    px_min_general = event[event.track != -1].px.min()
-                    py_min_general = event[event.track != -1].py.min()
-                    pz_min_general = event[event.track != -1].pz.min()
                     hits_in_event = set()
                     tracks_in_event = event[event.track != -1].track.nunique()
 
@@ -205,17 +218,19 @@ class EventEvaluator:
                             global_index_values = track.index_old.values
 
                             assert len(local_index_values) >= 3, f"track len <3 for event {idx} tr_id {tr_id}"
-                            px_py_pz = track[['px', 'py', 'pz']].values[0]
+                            #px_py_pz = track[['px', 'py', 'pz']].values[0]
                             hits_in_event.update(global_index_values)
 
+                            imps = calc_imp_3hits(track)
                             new_dict = {
                                 'event_id': int(ev_id_real),
                                 'track': int(tr_id),
-                                'px': px_py_pz[0],
-                                'py': px_py_pz[1],
-                                'pz': px_py_pz[2],
                                 'pred': int(0),
+                                'pt':imps[0],
+                                'cost':imps[1],
+                                'aphi':imps[2]
                             }
+
                             for station_id, col in enumerate(STATION_COLUMNS):
                                 new_dict[col] = -1
 
@@ -231,9 +246,6 @@ class EventEvaluator:
                         'pred': 0,
                         'time': 0,
                         'total_hits': len(event),
-                        'px_min': px_min_general,
-                        'py_min': py_min_general,
-                        'pz_min': pz_min_general,
                     }, index=[0]))
 
         all_tracks_df = pd.concat(true_tracks_arr, ignore_index=True)
@@ -253,7 +265,7 @@ class EventEvaluator:
 
         # TODO: how to solve ghost hits?
         tracks_pred = reco_tracks[reco_tracks.track_pred]
-        reco_tracks_impulses = tracks_pred[['px', 'py', 'pz']]
+        reco_tracks_impulses = tracks_pred[['pt', 'cost', 'aphi']]
         reco_tracks_preds = tracks_pred[['event_id', 'track_pred'] + STATION_COLUMNS]
         reco_tracks_preds['idx_old'] = tracks_pred.index
 
@@ -268,7 +280,7 @@ class EventEvaluator:
         ghosts_idx_all = pd.isna(results.track)
         ghosts_idx_reco = results[ghosts_idx_all].idx_old.astype('int')
         ghosts_impulses = reco_tracks_impulses.loc[ghosts_idx_reco]
-        results.loc[ghosts_idx_all, ['px', 'py', 'pz']] = ghosts_impulses[['px', 'py', 'pz']].values
+        results.loc[ghosts_idx_all, ['pt', 'cost', 'aphi']] = ghosts_impulses[['pt', 'cost', 'aphi']].values
         results.loc[ghosts_idx_all, 'track'] = -1
         results.loc[ghosts_idx_all, 'pred'] = -1
         results = results.drop(['track_pred', 'idx_old'], axis=1)
