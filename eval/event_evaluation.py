@@ -163,10 +163,10 @@ class EventEvaluator:
                     tracks = event_df[event_df.track != -1]
 
                     true_tracks = model_run_df[model_run_df.track_pred]
-                    imps = true_tracks.apply(calc_imp, event_df=event_df, axis=1, result_type='expand')
-
                     model_run_df[['pt', 'cost', 'aphi']] = -1.0
-                    model_run_df.loc[model_run_df.track_pred, ['pt', 'cost', 'aphi']] = imps.values
+                    if not true_tracks.empty:
+                        imps = true_tracks.apply(calc_imp, event_df=event_df, axis=1, result_type='expand')
+                        model_run_df.loc[model_run_df.track_pred, ['pt', 'cost', 'aphi']] = imps.values
 
                     result_event_arr.append(pd.DataFrame({
                         'event_id': ev_id,
