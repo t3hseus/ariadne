@@ -12,7 +12,9 @@ from typing import Dict, Callable
 
 import gin
 import numpy as np
+import math
 import pandas as pd
+from itertools import combinations
 
 from tqdm import tqdm
 
@@ -204,7 +206,7 @@ class EventEvaluator:
                             local_index_values = track.index.values
                             global_index_values = track.index_old.values
 
-                            assert len(local_index_values) >= 3, f"track len <3 for event {idx} tr_id {tr_id}"
+                            assert len(local_index_values) >= 3, f"track len <3 for event {ev_id_real} tr_id {tr_id}"
                             px_py_pz = track[['px', 'py', 'pz']].values[0]
                             hits_in_event.update(global_index_values)
 

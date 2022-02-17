@@ -72,6 +72,7 @@ class TrackNETv2RNN(nn.Module):
             return outputs, gru_outs
         return outputs
 
+
 @gin.configurable
 class TrackNETv2(nn.Module):
     """Builds TrackNETv2 model
@@ -85,10 +86,12 @@ class TrackNETv2(nn.Module):
                  conv_features=32,
                  rnn_type='gru',
                  batch_first=True,
-                 use_causalconv=False):
+                 use_causalconv=False,
+                 use_rnn=True):
         super().__init__()
         self.input_features = input_features
         rnn_type = rnn_type.upper()
+        assert use_causalconv + use_rnn, 'you need to use at least rnn or convolution'
         if rnn_type not in ALLOWED_RNN_TYPES:
             raise ValueError(f'RNN type {rnn_type} is not supported. '
                              f'Choose one of {ALLOWED_RNN_TYPES}')
@@ -102,20 +105,17 @@ class TrackNETv2(nn.Module):
                 nn.ReLU(),
                 nn.BatchNorm1d(conv_features)
             )
+        else:
+            self.conv = None
+        if use_rnn:
             self.rnn = _rnn_layer(
-                input_size=conv_features,
+                input_size=conv_features if use_causalconv else input_features,
                 hidden_size=conv_features,
                 num_layers=2,
                 batch_first=batch_first
             )
         else:
-            self.conv = None
-            self.rnn = _rnn_layer(
-                input_size=input_features,
-                hidden_size=conv_features,
-                num_layers=2,
-                batch_first=batch_first
-            )
+            self.rnn = None
         # outputs
         self.xy_coords = nn.Sequential(
             nn.Linear(conv_features, 2)
@@ -135,20 +135,20 @@ class TrackNETv2(nn.Module):
             x = self.conv(inputs)
             # BxCxT -> BxTxC
             x = x.transpose(1, 2)
-
-        # Pack padded batch of sequences for RNN module
-        packed = torch.nn.utils.rnn.pack_padded_sequence(
-        x, input_lengths, enforce_sorted=False, batch_first=True)
-        # forward pass trough rnn
-        x, _ = self.rnn(packed)
-        # unpack padding
-        gru_outs, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
+        if self.rnn:
+            # Pack padded batch of sequences for RNN module
+            packed = torch.nn.utils.rnn.pack_padded_sequence(
+            x, input_lengths, enforce_sorted=False, batch_first=True)
+            # forward pass trough rnn
+            x, _ = self.rnn(packed)
+            # unpack padding
+            x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
         # get result using only the output on the last timestep
-        xy_coords = self.xy_coords(gru_outs)
-        r1_r2 = self.r1_r2(gru_outs)
+        xy_coords = self.xy_coords(x)
+        r1_r2 = self.r1_r2(x)
         outputs = torch.cat([xy_coords, r1_r2], dim=-1)
-        if return_gru_states:
-            return outputs, gru_outs
+        if return_gru_states and self.rnn:
+            return outputs, x
         return outputs
 
 

@@ -328,7 +328,7 @@ class BakeStationValues:
 
     def __repr__(self):
         return (f'{"-" * 30}\n'
-                f'{self.__class__.__name__} with scaler: {self.scaler}'
+                f'{self.__class__.__name__}' #with scaler: {self.scaler}'
                 f'{"-" * 30}\n')
 
 
@@ -902,4 +902,33 @@ class ToBuckets(BaseTransformer):
         return (f'{"-" * 30}\n'
                 f'{self.__class__.__name__} with parameters: flat={self.flat}, '
                 f'random_state={self.random_state}, shuffle={self.shuffle}, keep_fakes={self.keep_fakes}\n'
+                f'{"-" * 30}\n')
+
+
+@gin.configurable
+class FixStationsBMN(BaseTransformer):
+    """Renumbers stations from local number by detector to global, use before other transforms.
+    Args:
+        det_col (str, 'det' by default): Detector column in data
+        station_col (str, 'station' by default): Station column in data
+    """
+    
+    def __init__(self, det_col='det', station_col='station'):
+        super().__init__(station_col=station_col)
+        self.det_col = det_col
+        self.station_col = station_col
+        
+    def __call__(self, data):
+        """
+        Args:
+            data (pd.DataFrame): to transform.
+        Returns:
+            data (pd.DataFrame): transformed dataframe.
+        """
+        data.loc[data[self.det_col] == 1, self.station_col] = data.loc[data[self.det_col] == 1, self.station_col].values + 3
+        return data
+    
+    def __repr__(self):
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with parameters: det_col={self.det_col}, station_col={self.station_col}'
                 f'{"-" * 30}\n')
