@@ -64,6 +64,7 @@ def experiment(model,
                accumulate_grad_batches=1,
                resume_from_checkpoint=None,  # path to checkpoint to resume
                num_gpus=None,
+               clip_grads=False
                ):
 
     os.makedirs(log_dir, exist_ok=True)
@@ -113,6 +114,9 @@ def experiment(model,
         #'progress_bar_refresh_rate': 100,
         #'log_every_n_steps': 50,
     }
+    
+    if clip_grads:
+        trainer_kwargs['gradient_clip_val'] = 0.5
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=f"{trainer_kwargs['logger'].log_dir}",
