@@ -70,8 +70,16 @@ def parse_single_arr_arg(arr_arg):
 def parse(input_file_mask,
           csv_params: Dict[str, object],
           events_quantity,
-          filter_func=None):
-    files_list = glob.glob(input_file_mask)
+          filter_func=None,
+          input_file_list=None
+          ):
+    assert not (input_file_mask and input_file_list), 'specify only input_file_mask or input_file_list'
+    if input_file_list:
+        files_list = []
+        for mask in input_file_list:
+            files_list += glob.glob(mask)
+    elif input_file_mask:
+        files_list = glob.glob(input_file_mask)
     assert len(files_list) > 0, f"no files found matching mask {input_file_mask}"
     assert isinstance(events_quantity, str), 'events_quantity should be a str. see comments in config to set it ' \
                                              'correctly. Got: %r with type %r ' % (
