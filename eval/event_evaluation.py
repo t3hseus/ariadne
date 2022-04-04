@@ -39,6 +39,8 @@ def read_df_from_hash(hash):
             return result_df
     return None
 
+#from .draw_graphs import plot_model_results
+#from .draw_graphs import to_precision
 
 class EventEvaluator:
     def __init__(self,
@@ -98,7 +100,7 @@ class EventEvaluator:
     def run_model(self, model_preprocess_func, model_run_func):
         assert len(self.data_df_transformed) > 0 and self.loaded_model_state, "call prepare() first"
         print('[run model] start')
-        COLUMNS = ['event_id', 'track_pred', 'px', 'py', 'pz'] + [f"hit_id_{n}" for n in range(self.n_stations)]
+        COLUMNS = ['event_id', 'track_pred', 'px', 'py', 'pz'] + [f"hit_id_{n}" for n in range(1,self.n_stations+1)]
         result_df_arr = []
         result_event_arr = []
         run_model_hash = self._hash_run_model([self.model_loader, model_run_func, model_preprocess_func])
@@ -113,6 +115,7 @@ class EventEvaluator:
         for events in self.data_df_transformed:
             with tqdm(total=events.event.nunique(), file=sys.stdout) as pbar:
                 for ev_id, event_df in events.groupby('event'):
+
                     pbar.set_description('processed: %d' % ev_id)
                     pbar.update(1)
                     cpu_time_for_event = 0.0
@@ -136,7 +139,9 @@ class EventEvaluator:
 
                     try:
                         start = timer()
-                        model_run_df = model_run_func(preprocess_result, self.loaded_model_state[1])
+                       
+                        start_ind = (event_df[ event_df['station'] == 1 ]['index_old']).sample(frac=1) 
+                        model_run_df = model_run_func(preprocess_result, self.loaded_model_state[1],start_ind,ev_id)
                         end = timer()
                         gpu_time_for_event = end - start
 
@@ -150,6 +155,9 @@ class EventEvaluator:
 
                     model_run_df['event_id'] = ev_id
                     tracks = event_df[event_df.track != -1]
+
+                    model_run_df['track_pred'] = True
+
                     model_run_df['px'] = tracks.px.min()
                     model_run_df['py'] = tracks.py.min()
                     model_run_df['pz'] = tracks.pz.min()
@@ -165,7 +173,7 @@ class EventEvaluator:
         result_df = pd.concat(result_df_arr, ignore_index=True)
         result_event_df = pd.concat(result_event_arr, ignore_index=True)
 
-        store_df_from_hash(result_df, run_model_hash)
+        #store_df_from_hash(result_df, run_model_hash)
         store_df_from_hash(result_event_df, events_hash)
         print('[run model] cache miss, finish')
         return result_df, result_event_df
@@ -178,7 +186,7 @@ class EventEvaluator:
             print('[build_all_tracks] cache hit, finish')
             return all_tracks_df, all_events_df
 
-        STATION_COLUMNS = [f"hit_id_{n}" for n in range(self.n_stations)]
+        STATION_COLUMNS = [f"hit_id_{n}" for n in range(1,self.n_stations+1)]
 
         # COLUMNS_DF = ['event', 'track', 'px', 'py', 'pz', 'pred', 'multiplicity'] + STATION_COLUMNS
 
@@ -248,13 +256,39 @@ class EventEvaluator:
 
     def solve_results(self, model_results, all_data):
         print('[solve results] start')
-        STATION_COLUMNS = [f"hit_id_{n}" for n in range(self.n_stations)]
+        STATION_COLUMNS = [f"hit_id_{n}" for n in range(1,self.n_stations+1)]
 
         all_tracks, all_events = all_data
         reco_tracks, reco_events = model_results
 
+        
+        ############################# HISTOGRAM CONSTRUCTION BEGINS
+        
+        '''
+        true_hits_frac = []
+
+        all_hits = all_tracks.loc[:,STATION_COLUMNS ]
+        for row_n in range(reco_tracks.shape[0]):
+            real_tracks = []
+            b = reco_tracks.loc[row_n, STATION_COLUMNS ]
+            for hit in b:
+                tr_num = all_tracks.loc[all_hits.eq(hit).any(1)] ['track']
+
+                real_tracks.append(tr_num)
+
+            res = np.unique(real_tracks, return_counts=True) [1]
+
+            true_hits_frac.append(  max(res) / sum(res)  )
+
+        import json
+        with open('true_hits_frac_3.json','w') as f:
+            f.write( json.dumps(true_hits_frac) )
+
+        '''
+        ############################# HISTOGRAM CONSTRUCTION ENDS
         # TODO: how to solve ghost hits?
-        tracks_pred = reco_tracks[reco_tracks.track_pred]
+        tracks_pred = reco_tracks[reco_tracks.track_pred == True]
+
         reco_tracks_impulses = tracks_pred[['px', 'py', 'pz']]
         reco_tracks_preds = tracks_pred[['event_id', 'track_pred'] + STATION_COLUMNS]
         reco_tracks_preds['idx_old'] = tracks_pred.index
@@ -291,7 +325,9 @@ class EventEvaluator:
 
         reco_tracks = results[results.pred != 0]
         true_tracks = results[results.pred == 1]
-        purity = len(true_tracks) / float(len(reco_tracks))
+        purity = 0
+        if len(reco_tracks):
+            purity = len(true_tracks) / float(len(reco_tracks))
         print(f'Track Purity (precision): {purity:.4f} ')
 
         all_tracks = results[results.pred != -1]
@@ -316,4 +352,6 @@ class EventEvaluator:
         print(f'Mean gpu time per event: {reco_events["gpu_time"].mean():.4f} sec'
               f' ({1. / reco_events["gpu_time"].mean():.2f} events per second) ')
         print('=' * 10 + 'EVALUATION RESULTS' + '=' * 10)
-        return results, reco_events
+
+       
+        return results#, reco_events, efficiency,purity

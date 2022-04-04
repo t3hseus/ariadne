@@ -14,96 +14,112 @@ def calc_dphi(phi1, phi2):
     return dphi
 
 
-def get_edges_from_supernodes(sn_from, sn_to):
-    prev_edges = sn_from.rename(columns={'to_ind': 'cur_ind'})
-    next_edges = sn_to.rename(columns={'from_ind': 'cur_ind'})
-    prev_edges['edge_index'] = prev_edges.index
-    next_edges['edge_index'] = next_edges.index
+def get_edges_from_supernodes(a, b,indices):
 
+    indices_prev = indices.copy()
+    indices_next = indices.copy()
+
+    indices_prev['cur_ind'] = indices_prev.pop('to_ind')
+    indices_next['cur_ind'] = indices_next.pop('from_ind')
+
+    indices_prev['edge_index'] = indices_prev.pop('index')
+    indices_next['edge_index'] = indices_next.pop('index')
+
+    cur_ind_a =  indices_prev['cur_ind']
+    cur_ind_b =  indices_next['cur_ind']
+
+    to_merge = np.empty(shape=(b.shape[0] * a.shape[0], 2), dtype=np.int32)
+    to_merge[:, 0] = np.tile(b[:, cur_ind_b ], (1, a.shape[0]))
+    
+    for i in range(a.shape[0]):
+        to_merge[i * b.shape[0]:(i + 1) * b.shape[0], 1] = a[ i,cur_ind_a ]
+
+    merge_ind = [(ind // b.shape[0], ind % b.shape[0]) for ind in np.where(to_merge[:, 0] == to_merge[:, 1])[0]]
+
+    line_graph_edges = np.empty(shape=(len(merge_ind),  a.shape[1]+b.shape[1] + 2  ))
+    for k, (i, j) in enumerate(merge_ind):
+        line_graph_edges[k, :-2] = np.hstack((a[i, :], b[j, :]))
     # merge segments by their common hit in the middle
-    line_graph_edges = pd.merge(prev_edges, next_edges, on='cur_ind', suffixes=('_p', '_c'))
 
-    line_graph_edges = line_graph_edges.assign(true_superedge=-1)
+    indices_merged = {**{k +'_p': v for k, v in indices_prev.items()}, ** {k +'_c': v + len( indices_prev ) for k, v in indices_next.items()} }
+
+    indices_merged['from_ind'] = indices_merged.pop('from_ind_p')
+    indices_merged['to_ind'] = indices_merged.pop('to_ind_c')
+    indices_merged['cur_ind'] = indices_merged.pop('cur_ind_c')
+
+    line_graph_edges[:,-2] = -1
+    indices_merged['true_superedge'] = line_graph_edges.shape[1] - 2
+    indices_merged['weight'] = line_graph_edges.shape[1] - 1
 
     # track the 'true' superedge. true_superedge is a combination of 2 consecutive true edges of 1 track
-    index_true_superedge = line_graph_edges[(line_graph_edges.track_p == line_graph_edges.track_c) &
-                                            (line_graph_edges.track_p != -1)]
-    line_graph_edges.loc[index_true_superedge.index, 'true_superedge'] = index_true_superedge.track_p.values
+    index_true_superedge = (line_graph_edges[:, indices_merged['track_p'] ]== line_graph_edges[:, indices_merged['track_c'] ]) & \
+                                            (line_graph_edges[:, indices_merged['track_p'] ] != -1)
+    
+    line_graph_edges[ index_true_superedge, indices_merged['true_superedge'] ] = line_graph_edges[ index_true_superedge, indices_merged['track_p'] ]
 
-    ba = line_graph_edges[['dx_p', 'dy_p', 'dz_p']].values
-    cb = line_graph_edges[['dx_c', 'dy_c', 'dz_c']].values
-    # this was an old weight function:
-    # norm_ba = np.linalg.norm(ba, axis=1)
-    # norm_cb = np.linalg.norm(cb, axis=1)
-    # dot = np.einsum('ij,ij->i', ba, cb)
-    # ^may be useful later but now weight function is just a norm:
-    w = np.linalg.norm(ba - cb, axis=1)
-    line_graph_edges['weight'] = w
+    ba = line_graph_edges[:, [ indices_merged['dx_p'], indices_merged['dy_p'], indices_merged['dz_p']]]
+    cb = line_graph_edges[:, [ indices_merged['dx_c'], indices_merged['dy_c'], indices_merged['dz_c']]]
+   
+    w = np.linalg.norm( (ba - cb).astype(np.float64), axis=1)
+
+    line_graph_edges[:,indices_merged['weight']] = w
     indexation = ['weight', 'true_superedge', 'edge_index_p', 'edge_index_c', 'from_ind', 'cur_ind', 'to_ind']
-    return line_graph_edges[indexation]
+    res = line_graph_edges[:,[indices_merged[ind] for ind in indexation]]
+    return line_graph_edges[:,[indices_merged[ind] for ind in indexation]],indexation
 
-def get_supernodes_df(one_station_segments,
+def get_supernodes_df(one_station_segments, column_index,
                       axes,
                       suffix_p, suffix_c,
                       station=-1,
                       STATION_COUNT=0,
                       pi_fix=False, ):
-    ret = pd.DataFrame()
+    
+    x0_y0_z0_ = one_station_segments[:,[ column_index[axes[0] + suffix_p], column_index[axes[1] + suffix_p], column_index[axes[2] + suffix_p]]]
+    x1_y1_z1_ = one_station_segments[:,[ column_index[axes[0] + suffix_c], column_index[axes[1] + suffix_c], column_index[axes[2] + suffix_c]]]
 
-    # a bit of overgeneralization, all values are from yaml config
-    # usually suffixes are "_p" and "_c" (word "_previousЭ and "_current" shorten)
-    # axes are the r, phi and z if there were transformation to the cylindrical coordinates
-
-    x0_y0_z0 = one_station_segments[[axes[0] + suffix_p, axes[1] + suffix_p, axes[2] + suffix_p]].values
-    x1_y1_z1 = one_station_segments[[axes[0] + suffix_c, axes[1] + suffix_c, axes[2] + suffix_c]].values
-    # compute the difference of the hits coordinates information
-    dx_dy_dz = x1_y1_z1 - x0_y0_z0
+    dx_dy_dz = x1_y1_z1_ - x0_y0_z0_
 
     # if we are in the cylindrical coordinates, we need to fix the radian angle values overflows
+
     if pi_fix:
-        dy_fixed = calc_dphi(one_station_segments[axes[1] + suffix_p].values,
-                             one_station_segments[axes[1] + suffix_c].values)
-        ret = ret.assign(dx=dx_dy_dz[:, 0], dy=dy_fixed,
+        dy_fixed = calc_dphi(one_station_segments[:,column_index[axes[1] + suffix_p] ],
+                             one_station_segments[:,column_index[axes[1] + suffix_c] ])
+  
+    ret_ = np.column_stack([dx_dy_dz[:, 0], dy_fixed,one_station_segments[:,column_index[axes[2] + suffix_p]] \
+                           ,one_station_segments[:,column_index[axes[2] + suffix_c]],\
+                           one_station_segments[:,column_index[axes[1] + suffix_p]], \
+                           one_station_segments[:,column_index[axes[1] + suffix_c]], \
+                           dx_dy_dz[:, 2],np.full( (one_station_segments.shape[0] , 1), (station + 1) / STATION_COUNT) ,\
+                           one_station_segments[:,column_index['index_old' + suffix_p] ],\
+                           one_station_segments[:,column_index['index_old' + suffix_c] ], \
+                           np.full( (one_station_segments.shape[0] , 1),-1), \
+                           np.full( (one_station_segments.shape[0] , 1),station), \
+                           one_station_segments[:, column_index['index']] ])
+    ret_columns = ['dx', 'dy', 'z_p', 'z_c', 'y_p', 'y_c', 'dz', 'z', 'from_ind', 'to_ind', 'track', 'station','index']
 
-                         z_p=one_station_segments[axes[2] + suffix_p].values,
-                         z_c=one_station_segments[axes[2] + suffix_c].values,
-                         y_p=one_station_segments[axes[1] + suffix_p].values,
-                         y_c=one_station_segments[axes[1] + suffix_c].values,
-
-                         dz=dx_dy_dz[:, 2], z=(station + 1) / STATION_COUNT)
-    else:
-        ret = ret.assign(dx=dx_dy_dz[:, 0], dy=dx_dy_dz[:, 1],
-
-                         z_p=one_station_segments[axes[2] + suffix_p].values,
-                         z_c=one_station_segments[axes[2] + suffix_c].values,
-                         y_p=one_station_segments[axes[1] + suffix_p].values,
-                         y_c=one_station_segments[axes[1] + suffix_c].values,
-
-                         dz=dx_dy_dz[:, 2], z=(station + 1) / STATION_COUNT)
-
-    # saving this information in the dataframe for later use and for visualization and evalutation purposes
-    ret = ret.assign(from_ind=one_station_segments[['index_old' + suffix_p]].values.astype(np.uint32))
-    ret = ret.assign(to_ind=one_station_segments[['index_old' + suffix_c]].values.astype(np.uint32))
-    ret = ret.assign(track=-1)
-    ret = ret.set_index(one_station_segments.index)
+    ret_columns = dict(zip(ret_columns, list(range(0, len(ret_columns)))))
 
     # saving this information in the dataframe for later use
     index_true_superedge = one_station_segments[
-        (one_station_segments['track' + suffix_p] == one_station_segments['track' + suffix_c]) & \
-        (one_station_segments['track' + suffix_p] != -1)]
-    ret.loc[index_true_superedge.index, 'track'] = index_true_superedge['track' + suffix_p].values
-    ret = ret.assign(station=station)
-    return ret
+        np.logical_and( one_station_segments[:, column_index['track' + suffix_p] ] == one_station_segments[:,column_index['track' + suffix_c]] , \
+        one_station_segments[:,column_index['track' + suffix_p] ]!= -1) ]
+   
+    ret_[ np.isin(  ret_[:,ret_columns['index'] ] , index_true_superedge[:,column_index['index'] ] ), ret_columns['track'] ] = index_true_superedge[:,
+                                                                       column_index['track' + suffix_p]]
+
+    return ret_,ret_columns
 
 
 def apply_nodes_restrictions(nodes,
-                             restrictions_0, restrictions_1):
-    return nodes[
-        (nodes.dy > restrictions_0[0]) & (nodes.dy < restrictions_0[1]) &
-        (nodes.dz > restrictions_1[0]) & (nodes.dz < restrictions_1[1])
-        ]
-
-
+                             restrictions_0, restrictions_1,indices):
+                             
+    mask1 = nodes[:, indices['dy']] > restrictions_0[0]
+    mask2 = nodes[:, indices['dy']] < restrictions_0[1]
+    mask3 = nodes[:, indices['dz']] > restrictions_1[0]
+    mask4 = nodes[:, indices['dz']] < restrictions_1[1]
+    
+    return nodes[ mask1 & mask2 & mask3 & mask4 ]
+   
 @gin.configurable(denylist=['segments', 'restrictions_func'])
 def get_pd_line_graph(segments,
                       restrictions_func,
@@ -163,6 +179,76 @@ def to_pandas_graph_from_df(
         pid2 = cartesian_product["track" + suffixes[1]].values
         cartesian_product['track'] = ((pid1 == pid2) & (pid1 != -1))
     return cartesian_product
+
+@gin.configurable()
+def get_plain_graph(
+        single_event_df: pd.DataFrame,
+        restrictions_0 = None,
+        restrictions_1 = None,
+        suffixes=None,
+        compute_is_true_track: bool = True,
+        save_index: bool = True
+) -> pd.DataFrame:
+    
+    if suffixes is None:
+        suffixes = ['_prev', '_current']
+
+   
+    assert single_event_df.event.nunique() == 1
+    
+    my_df =  np.c_[single_event_df.to_numpy(), single_event_df.index]
+    column_index = dict(zip(single_event_df.columns, list(range(0, len(single_event_df.columns)))))
+    column_index['index_old'] = my_df.shape[1] - 1
+    
+    stations = np.unique(my_df[:, column_index['station' ]])
+   
+    by_stations = []
+    
+    for station in stations:
+        station_hits = my_df[my_df[:, column_index['station']] == station]
+        
+        by_stations.append( station_hits )
+    
+    indices_merged = {**{k + suffixes[0]: v for k, v in column_index.items()},
+                      **{k + suffixes[1]: v + len(column_index) for k, v in column_index.items()}}
+
+
+    indices_merged['dy'] = len( indices_merged )
+    indices_merged['dz'] = len( indices_merged )
+
+    full_size = 10000
+    full = np.empty(shape=(full_size, len(indices_merged)))
+
+    last_row_nodes = 0
+    ev_ind = column_index['event']
+
+    for i in range(1, len(by_stations)):
+
+        a,b = by_stations[i - 1], by_stations[i]
+
+        to_merge = np.empty(shape=(b.shape[0] * a.shape[0], 2), dtype=np.int32)
+        to_merge[:, 0] = np.tile(b[:, ev_ind], (1, a.shape[0]))
+        for i in range(a.shape[0]):
+            to_merge[i * b.shape[0]:(i + 1) * b.shape[0], 1] = a[i, ev_ind]
+
+        merge_ind = [(ind // b.shape[0], ind % b.shape[0]) for ind in np.where(to_merge[:, 0] == to_merge[:, 1])[0]]
+
+        line_graph_edges = np.empty(shape=(len(merge_ind), a.shape[1] + b.shape[1] + 2))
+        for k, (i, j) in enumerate(merge_ind):
+            line_graph_edges[k, :-2] = np.hstack((a[i, :], b[j, :]))
+
+
+        line_graph_edges[:,indices_merged['dz'] ] = line_graph_edges[:,indices_merged['z' + suffixes[1]]] - line_graph_edges[:,indices_merged['z' + suffixes[0]]]
+        line_graph_edges[:,indices_merged['dy'] ] = calc_dphi(line_graph_edges[:,indices_merged['phi' + suffixes[0]]],
+                                            line_graph_edges[:,indices_merged['phi' + suffixes[1]]])
+
+        full[last_row_nodes: last_row_nodes + line_graph_edges.shape[0], :] = line_graph_edges
+
+        last_row_nodes = last_row_nodes + line_graph_edges.shape[0]
+     
+    full = apply_nodes_restrictions(full[ 0:last_row_nodes,:], restrictions_0, restrictions_1,indices_merged)
+    
+    return single_event_df, pd.DataFrame( full,columns = indices_merged )
 
 def apply_edge_restriction(pd_edges_df: pd.DataFrame,
                            edge_restriction: float):
