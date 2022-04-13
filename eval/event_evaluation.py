@@ -23,7 +23,7 @@ from ariadne_v2.data_chunk import DFDataChunk
 from ariadne_v2.inference import Transformer, IPreprocessor, EventInferrer, IModelLoader
 from ariadne_v2.jit_cacher import Cacher
 from ariadne_v2.parsing import parse
-
+import torch
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = '1'
 
 
@@ -112,19 +112,46 @@ class EventEvaluator:
             return result_df, result_event_df
 
         print('\n')
+        NUMBER_OF_LINES = 20000
+
         for events in self.data_df_transformed:
             with tqdm(total=events.event.nunique(), file=sys.stdout) as pbar:
-                for ev_id, event_df in events.groupby('event'):
 
-                    pbar.set_description('processed: %d' % ev_id)
-                    pbar.update(1)
+                events_np = events.to_numpy()
+
+                prev_row = 0
+                prev_ev_id = 0
+
+                events_left = True
+                while events_left:###########
+
+                    next_row = prev_row + NUMBER_OF_LINES
+
+
+                    if next_row > events_np.shape[0]:
+
+                        next_ev_id=events_np[-1,0]+1
+                        events_left = False
+                    else:
+                        next_ev_id = events_np[next_row,0]-1
+
+                    #pbar.set_description('processed: %d' % next_ev_id)
+                    #pbar.update(1)
+
                     cpu_time_for_event = 0.0
                     gpu_time_for_event = 0.0
                     try:
                         start = timer()
-                        preprocess_result = model_preprocess_func(event_df)
+
+                        ev_chunk = events_np[  np.isin( events_np[:,0] , np.arange(prev_ev_id,next_ev_id)  ) ]
+                        prev_row += ev_chunk.shape[0]
+
+                        preprocess_result = model_preprocess_func( torch.from_numpy( ev_chunk ).to('cuda') )
+
+
                         end = timer()
-                        cpu_time_for_event = end - start
+                        cpu_time_for_event = (end - start) / (next_ev_id - prev_ev_id)
+
 
                         if preprocess_result is None:
                             continue
@@ -134,41 +161,52 @@ class EventEvaluator:
                         error_message = traceback.format_exc()
 
                         print(f"got exception for preprocessing:\n message={error_message} \n\
-                                            on \nevent_id={ev_id}")
+                                            on \nevent_id={next_ev_id}")
                         continue
 
                     try:
-                        start = timer()
-                       
-                        start_ind = (event_df[ event_df['station'] == 1 ]['index_old']).sample(frac=1) 
-                        model_run_df = model_run_func(preprocess_result, self.loaded_model_state[1],start_ind,ev_id)
-                        end = timer()
-                        gpu_time_for_event = end - start
+
+                        ev_ids = np.unique( ev_chunk[:,0] )
+                        for ev_id_idx,res in enumerate( preprocess_result ):
+                            start = timer()
+                            ev_id = ev_ids[ev_id_idx]
+
+                            event_df = events[ events['event'] == ev_id ]
+                            start_ind = (event_df[ event_df['station'] == 1 ]['index_old']).sample(frac=1)
+                            model_run_df = model_run_func(res, self.loaded_model_state[1],start_ind,ev_id)
+
+
+                            model_run_df['event_id'] = ev_id
+                            tracks = event_df[event_df.track != -1]
+
+                            model_run_df['track_pred'] = True
+
+                            model_run_df['px'] = tracks.px.min()
+                            model_run_df['py'] = tracks.py.min()
+                            model_run_df['pz'] = tracks.pz.min()
+
+                            end = timer()
+                            gpu_time_for_event = end - start
+
+                            result_event_arr.append(pd.DataFrame({
+                                'event_id': ev_id,
+                                'cpu_time': cpu_time_for_event,
+                                'gpu_time': gpu_time_for_event,
+                                'multiplicity': tracks.track.nunique()}, index=[0]))
+                            model_run_df = model_run_df[COLUMNS]
+                            result_df_arr.append(model_run_df)
+
+                        prev_ev_id = next_ev_id.copy()
 
                     except KeyboardInterrupt as ex:
                         break
                     except:
                         error_message = traceback.format_exc()
                         print(f"got exception for model run:\n message={error_message} \n\
-                                           on \nevent_id={ev_id}")
+                                           on \nevent_id")
                         continue
 
-                    model_run_df['event_id'] = ev_id
-                    tracks = event_df[event_df.track != -1]
 
-                    model_run_df['track_pred'] = True
-
-                    model_run_df['px'] = tracks.px.min()
-                    model_run_df['py'] = tracks.py.min()
-                    model_run_df['pz'] = tracks.pz.min()
-
-                    result_event_arr.append(pd.DataFrame({
-                        'event_id': ev_id,
-                        'cpu_time': cpu_time_for_event,
-                        'gpu_time': gpu_time_for_event,
-                        'multiplicity': tracks.track.nunique()}, index=[0]))
-                    model_run_df = model_run_df[COLUMNS]
-                    result_df_arr.append(model_run_df)
 
         result_df = pd.concat(result_df_arr, ignore_index=True)
         result_event_df = pd.concat(result_event_arr, ignore_index=True)
@@ -196,8 +234,8 @@ class EventEvaluator:
         for events in self.data_df_transformed:
             with tqdm(total=events.event.nunique(), file=sys.stdout) as pbar:
                 for ev_id, event in events.groupby('event'):
-                    pbar.set_description('processed: %d' % ev_id)
-                    pbar.update(1)
+                    #pbar.set_description('processed: %d' % ev_id)
+                    #pbar.update(1)
 
                     if event.empty:
                         continue
@@ -214,7 +252,7 @@ class EventEvaluator:
                             local_index_values = track.index.values
                             global_index_values = track.index_old.values
 
-                            assert len(local_index_values) >= 3, f"track len <3 for event {ev_id_real} tr_id {tr_id}"
+                            #assert len(local_index_values) >= 3, f"track len <3 for event {ev_id_real} tr_id {tr_id}"
                             px_py_pz = track[['px', 'py', 'pz']].values[0]
                             hits_in_event.update(global_index_values)
 
