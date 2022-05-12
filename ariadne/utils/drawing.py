@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
+
 from scipy.interpolate import make_interp_spline, BSpline
 import os
 import logging

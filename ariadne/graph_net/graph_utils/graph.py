@@ -13,8 +13,9 @@ import numpy as np
 Graph = namedtuple('Graph', ['X', 'Ri', 'Ro', 'y'])
 
 def graph_to_sparse(graph):
-    Ri_rows, Ri_cols = graph.Ri.nonzero()
-    Ro_rows, Ro_cols = graph.Ro.nonzero()
+
+    Ri_rows, Ri_cols = graph.Ri.numpy().nonzero()
+    Ro_rows, Ro_cols = graph.Ro.numpy().nonzero()
     return dict(X=graph.X, y=graph.y,
                 Ri_rows=Ri_rows, Ri_cols=Ri_cols,
                 Ro_rows=Ro_rows, Ro_cols=Ro_cols)

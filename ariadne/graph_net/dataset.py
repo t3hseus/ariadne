@@ -228,8 +228,13 @@ def collate_fn(graphs):
     if batch_size == 1:
         g = graphs[0]
         # Prepend singleton batch dimension, convert inputs and target to torch
-        batch_inputs = [torch.from_numpy(m[None]).float() for m in [g.X, g.Ri, g.Ro]]
-        batch_target = torch.from_numpy(g.y[None]).float()
+
+        #batch_inputs = [torch.from_numpy(m[None]).float() for m in [g.X, g.Ri, g.Ro]]
+        #batch_target = torch.from_numpy(g.y[None]).float()
+
+        batch_inputs = [m[None].float() for m in [g.X, g.Ri, g.Ro]] # already have tensors at this point
+        batch_target = g.y[None].float()
+
         return {'inputs': batch_inputs}, batch_target
 
     # Get the matrix sizes in this batch
@@ -243,6 +248,7 @@ def collate_fn(graphs):
     batch_X = np.zeros((batch_size, max_nodes, n_features), dtype=np.float32)
     batch_Ri = np.zeros((batch_size, max_nodes, max_edges), dtype=np.float32)
     batch_Ro = np.zeros((batch_size, max_nodes, max_edges), dtype=np.float32)
+    #print(batch_size,max_nodes,max_edges)
     batch_y = np.zeros((batch_size, max_edges), dtype=np.float32)
 
     # Loop over samples and fill the tensors

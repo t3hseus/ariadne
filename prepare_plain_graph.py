@@ -117,7 +117,7 @@ def preprocess(
     if random_seed is not None:
         LOGGER.info('Setting random seed to %d', random_seed)
         seed_everything(random_seed)
-    for data_df, basename in parse():
+    for data_df, basename in parse(): #input_file_mask='./input_data/input_1000_fake_'+ str(file_id) + '.tsv'
         LOGGER.info("[Preprocess]: started processing a df with %d rows:" % len(data_df))
         processor: DataProcessor = target_processor(data_df=data_df,
                                                     output_dir=output_dir)
@@ -141,17 +141,22 @@ def preprocess(
         except KeyboardInterrupt as ex:
             LOGGER.warning("BREAKING by interrupt. got %d processed chunks" % len(preprocessed_chunks))
         processed_data = processor.postprocess_chunks(preprocessed_chunks)
+        del preprocessed_chunks
         processor.save_on_disk(processed_data)
+        del processed_data
+
 
 
 def main(argv):
     del argv
-    FLAGS.config = 'D:/ariadne-master/experiments/spd/rdgraphnet_prepare_v1.cfg'
+    FLAGS.config = './prepare_rd.cfg'
     if FLAGS.config is None:
         raise SystemError("Expected valid path to the GIN-config file supplied as '--config %PATH%' parameter")
     gin.parse_config(open(FLAGS.config))
     LOGGER.setLevel(FLAGS.log)
-    preprocess()
+
+    preprocess( )
+
     LOGGER.info("end processing")
 
 if __name__ == '__main__':
