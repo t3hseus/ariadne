@@ -19,7 +19,7 @@ def get_checkpoint_path(model_dir, version=None, checkpoint='latest'):
         model_dir = model_dir+'/'+version
     if checkpoint == 'latest':
         list_of_files = glob.glob(f"{model_dir}/*.ckpt")
-        checkpoint = max(list_of_files, key=os.path.getmtime).split('/')[-1]
+        checkpoint = max(list_of_files, key=os.path.getmtime).split('\\')[-1]
     return f'{model_dir}/{checkpoint}'
 
 def weights_update(model, checkpoint):

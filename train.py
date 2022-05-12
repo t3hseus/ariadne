@@ -3,7 +3,7 @@ import logging
 import os
 import traceback
 
-import _gin_bugfix
+#import _gin_bugfix
 import gin
 import numpy as np
 import torch
@@ -127,6 +127,7 @@ def experiment(model,
         trainer_kwargs['gpus'] = 1 if trainer_kwargs['gpus'] is None else trainer_kwargs['gpus']
         if trainer_kwargs['gpus'] > 1:
             # TODO: fix multi-GPU support
+            # TODO: fix multi-GPU support
             trainer_kwargs['distributed_backend'] = 'ddp'
             trainer_kwargs['accelerator'] = 'ddp'
     else:
@@ -150,13 +151,44 @@ def experiment(model,
 
     trainer.fit(model=model)
 
-
+import  re
 def main(argv):
     del argv
+    FLAGS.config = './train_rd.cfg'
     gin.parse_config(open(FLAGS.config))
+
     LOGGER.setLevel(FLAGS.log)
     experiment()
     LOGGER.info("end training")
+    return 0
+
+    EPOCH_NUM = 2
+
+    input_dir = './output/spd_sim_prepared/rd_fake_restriction'
+    parts= [ input_dir + '/' + file_name for file_name in os.listdir(input_dir)  if  re.match(r"part[0-9]+", file_name) ]
+
+    current_epoch = 1
+    resume = False
+    for i in range(EPOCH_NUM):
+
+        for p in parts:
+
+            gin.bind_parameter('GraphsDatasetMemory.input_dir', p)
+            gin.bind_parameter('experiment.epochs',current_epoch)
+
+            gin.bind_parameter('GraphDataLoader.n_train', len( os.listdir(p) ) - 2 )
+
+            current_epoch+=1
+            LOGGER.setLevel(FLAGS.log)
+            if not resume:
+                resume = True
+                experiment()
+            else:
+
+                dirs = [d for d in os.listdir('./lightning_logs/GraphNet_v1') ]
+                latest_dir = sorted(dirs, key=lambda x: os.path.getctime( './lightning_logs/GraphNet_v1/'+x), reverse=True)[:1]
+                experiment( resume_from_checkpoint='./lightning_logs/GraphNet_v1/'+latest_dir[0] )
+            LOGGER.info("end training")
 
 if __name__ == '__main__':
     app.run(main)

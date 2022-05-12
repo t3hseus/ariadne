@@ -112,28 +112,34 @@ class EventEvaluator:
             return result_df, result_event_df
 
         print('\n')
-        NUMBER_OF_LINES = 20000
+        NUMBER_OF_LINES = 600
+
+        events_per_iter = 5
 
         for events in self.data_df_transformed:
             with tqdm(total=events.event.nunique(), file=sys.stdout) as pbar:
 
                 events_np = events.to_numpy()
 
-                prev_row = 0
-                prev_ev_id = 0
+                #prev_row = 0
+                #prev_ev_id = 0
+
+                event_num = np.unique( events_np[:,0] ).shape[0]
 
                 events_left = True
+                cur_event = 0
                 while events_left:###########
-
-                    next_row = prev_row + NUMBER_OF_LINES
-
-
-                    if next_row > events_np.shape[0]:
-
-                        next_ev_id=events_np[-1,0]+1
+                    if cur_event + events_per_iter >= event_num:
+                        events_per_iter =  event_num - cur_event
                         events_left = False
-                    else:
-                        next_ev_id = events_np[next_row,0]-1
+                    #next_row = prev_row + NUMBER_OF_LINES
+
+                    #if next_row > events_np.shape[0]:
+
+                    #    next_ev_id=events_np[-1,0]+1
+                    #    events_left = False
+                    #else:
+                    #    next_ev_id = events_np[next_row,0]-1
 
                     #pbar.set_description('processed: %d' % next_ev_id)
                     #pbar.update(1)
@@ -143,15 +149,20 @@ class EventEvaluator:
                     try:
                         start = timer()
 
-                        ev_chunk = events_np[  np.isin( events_np[:,0] , np.arange(prev_ev_id,next_ev_id)  ) ]
-                        prev_row += ev_chunk.shape[0]
+                        #print(prev_row,next_row)
+                        ev_chunk = events_np[ (events_np[:,0]>=cur_event) & (events_np[:,0] < cur_event + events_per_iter)  ]  #[  np.isin( events_np[:,0] , np.arange(prev_ev_id,next_ev_id)  ) ]
 
+                        #prev_row += ev_chunk.shape[0]
+                        #prev_row += ev_chunk.shape[0]-1
+                        cur_event = cur_event + events_per_iter
                         preprocess_result = model_preprocess_func( torch.from_numpy( ev_chunk ).to('cuda') )
 
+                        #preprocess_result = model_preprocess_func( ev_chunk )  # .to('cuda') )
 
                         end = timer()
-                        cpu_time_for_event = (end - start) / (next_ev_id - prev_ev_id)
-
+                        cpu_time_for_event = (end - start) / (events_per_iter)
+                        #print (prev_ev_id, next_ev_id)
+                        #prev_ev_id = next_ev_id.copy()
 
                         if preprocess_result is None:
                             continue
@@ -161,7 +172,7 @@ class EventEvaluator:
                         error_message = traceback.format_exc()
 
                         print(f"got exception for preprocessing:\n message={error_message} \n\
-                                            on \nevent_id={next_ev_id}")
+                                            on \nevent_id={cur_event}")
                         continue
 
                     try:
@@ -173,7 +184,7 @@ class EventEvaluator:
 
                             event_df = events[ events['event'] == ev_id ]
                             start_ind = (event_df[ event_df['station'] == 1 ]['index_old']).sample(frac=1)
-                            model_run_df = model_run_func(res, self.loaded_model_state[1],start_ind,ev_id)
+                            model_run_df = model_run_func(res, self.loaded_model_state[1],ev_id)
 
 
                             model_run_df['event_id'] = ev_id
@@ -196,7 +207,7 @@ class EventEvaluator:
                             model_run_df = model_run_df[COLUMNS]
                             result_df_arr.append(model_run_df)
 
-                        prev_ev_id = next_ev_id.copy()
+                        #prev_ev_id = next_ev_id.copy()
 
                     except KeyboardInterrupt as ex:
                         break
