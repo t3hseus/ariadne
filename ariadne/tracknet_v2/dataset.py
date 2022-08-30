@@ -23,6 +23,7 @@ class PreprocessingBESDataset(Dataset):
             preprocessing (callable, optional): Optional transform to be applied
                 on a dataframe.
         """
+
         self.frame = pd.read_csv(csv_file)
         if preprocessing:
             self.frame = preprocessing(self.frame)
@@ -164,10 +165,14 @@ class TrackNetV2DatasetWithMask(Dataset):
                 self.tracks[idx][1:, 2:3]
             ])
 
-        mask = np.ones(input_dict['input_lengths']).astype(np.bool)
-        mask[:self._mask_first_n_steps] = True#False
+        mask_input = (input_sample[:, 0] != input_sample[:, 1])[:input_dict['input_lengths']]
+        input_dict['mask'] = mask_input
+
+        mask_target = (target[:, 0] != target[:, 1])[:input_dict['input_lengths']]
+        #print(mask)
+        #mask[:self._mask_first_n_steps] = True#False
 
         if self.use_index:
-            return input_dict, (target, mask), idx
+            return input_dict, (target, mask_target), idx
         # else
-        return input_dict, (target, mask)
+        return input_dict, (target, mask_target)

@@ -167,10 +167,25 @@ class TrackNetProcessorWithMask(DataProcessor):
         # max_station = max(stations)
         if stations > 1000:
             return ProcessedTracknetDataChunk(None, '')
+
+        z_values = {0:12.344, 1: 15.614, 2: 24.499, 3: 39.702, 4: 64.535, 5: 112.649, 6: 135.330,7: 160.6635, 8: 183.668}
+        constraints = {'x': [-81.1348, 86.1815], 'y': [-27.17125, 38.90473], 'z': [11.97, 183.82]}
+
+        z_values = np.array(list(z_values.values()), dtype='float32')
+        z_values = 2 * (z_values - constraints['z'][0]) / (constraints['z'][1] - constraints['z'][0]) - 1
+
         grouped_df = df[df['track'] != -1].groupby('track')
         for i, data in grouped_df:
-            track = data[list(self.columns)].values
-            track_len = len(track)
+            if len(data) == data['station'].max() + 1:
+                track = data[list(self.columns)].values
+                track_len = len(track)
+            else:
+                track_len = data['station'].max() + 1
+                track = np.column_stack([z_values]*3)
+                #track = np.zeros((track_len, 3))
+                track[data['station']] = data[list(self.columns)].values
+                track = track[:track_len]
+
             if track_len > self.min_track_len:
                 if track_len not in chunk_data_xs.keys():
                     chunk_data_xs[track_len] = []

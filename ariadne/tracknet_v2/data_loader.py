@@ -55,13 +55,16 @@ def collate_fn(samples):
     # prepare batch vars
     batch_inputs = np.zeros((batch_size, max_len, samples[0][0]['inputs'].shape[1]), dtype=np.float32)
     batch_targets = np.zeros((batch_size, max_len, samples[0][1][0].shape[1]), dtype=np.float32)
-    batch_masks = np.zeros((batch_size, max_len), dtype=np.bool)
+    batch_target_masks = np.zeros((batch_size, max_len), dtype=np.bool)
+    batch_input_masks = np.ones((batch_size, max_len), dtype=np.bool)
     # collect batches
     for i in range(batch_size):
         batch_inputs[i, :batch_input_lengths[i]] = samples[i][0]['inputs']
+        batch_input_masks[i, :batch_input_lengths[i]] = samples[i][0]['mask']
         batch_targets[i, :batch_input_lengths[i]] = samples[i][1][0]
-        batch_masks[i, :batch_input_lengths[i]] = samples[i][1][1]
+        batch_target_masks[i, :batch_input_lengths[i]] = samples[i][1][1]
     return {
         'inputs': torch.from_numpy(batch_inputs),
-        'input_lengths': torch.from_numpy(batch_input_lengths)
-    }, (torch.from_numpy(batch_targets), torch.from_numpy(batch_masks))
+        'input_lengths': torch.from_numpy(batch_input_lengths),
+        'mask': torch.from_numpy(batch_input_masks)
+    }, (torch.from_numpy(batch_targets), torch.from_numpy(batch_target_masks))

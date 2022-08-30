@@ -125,16 +125,61 @@ class TrackNETv2(nn.Module):
             nn.Softplus()
         )
 
-    def forward(self, inputs, input_lengths, return_gru_states=False):
+    def forward(self, inputs, input_lengths, mask=None, return_gru_states=False, return_x=False):
         input_lengths = input_lengths.int().cpu()
         x = inputs
 
+        """if mask is not None:
+            print(mask)
+            for station in range(1, mask.shape[1] - 1):
+                if not mask[:, station].all():
+                    with torch.no_grad():
+                        #print(inputs)
+                        #print(station)
+                        #print(mask)
+                        #print(self.forward(x[:, :station + 1], torch.full_like(input_lengths, station + 1)))
+                        print(station)
+                        print(mask[:, :station + 1])
+                        print((~mask).nonzero())
+                        print(x[:, station, :2][(~mask[:, station]).nonzero()])
+                        #print(self.forward(x[:, :], torch.full_like(input_lengths[:], station))[:, :, :2])
+                        #print(self.forward(x, input_lengths)[:, :, :2][:, station - 1][~mask[:, station]])
+                        output = self.forward(x, input_lengths)[:, :, :2][:, station - 1][~mask[:, station]].unsqueeze(0)
+                        print(output)
+
+                        print(x[:, station, :2][(~mask[:, station]).nonzero()].shape)
+                        print(output.shape)
+                        x[:, station, :2][(~mask[:, station]).nonzero()] = output.contiguous()
+                        print(x)"""
+        if mask is not None:
+            #print(mask)
+            #print(x)
+            for track_id in range(mask.shape[0]):
+                track_mask = mask[track_id]
+                if not track_mask.all():
+                    #print(track_mask)
+                    #print(x[track_id])
+                    with torch.no_grad():
+                        for station in range(1, track_mask.shape[0]):
+                            if not track_mask[station]:
+                                #print(x[track_id][station])
+                                output = self.forward(x[track_id].unsqueeze(0), torch.tensor([station], dtype=torch.int64))[0][-1, :2]
+                                #print(output)
+                                #print(output.shape)
+                                x[track_id][station][:2] = output
+            #print(x)
+        
+
+        if return_x:
+            return x
+        
         if self.conv:
             # BxTxC -> BxCxT
             inputs = inputs.transpose(1, 2).float()
             x = self.conv(inputs)
             # BxCxT -> BxTxC
             x = x.transpose(1, 2)
+
         if self.rnn:
             # Pack padded batch of sequences for RNN module
             packed = torch.nn.utils.rnn.pack_padded_sequence(
@@ -149,6 +194,7 @@ class TrackNETv2(nn.Module):
         outputs = torch.cat([xy_coords, r1_r2], dim=-1)
         if return_gru_states and self.rnn:
             return outputs, x
+
         return outputs
 
 

@@ -78,6 +78,8 @@ def get_supernodes_df(one_station_segments,
                          z_c=one_station_segments[axes[2] + suffix_c].values,
                          y_p=one_station_segments[axes[1] + suffix_p].values,
                          y_c=one_station_segments[axes[1] + suffix_c].values,
+                         x_p=one_station_segments[axes[0] + suffix_p].values,
+                         x_c=one_station_segments[axes[0] + suffix_c].values,
 
                          dz=dx_dy_dz[:, 2], z=(station + 1) / STATION_COUNT)
 
@@ -119,8 +121,8 @@ def get_pd_line_graph(segments,
     for i in range(1, len(by_stations)):
         # take segments (which will be nodes as a result) which go
         # from station i-1 to i AND from i to i+1
-        supernodes_from = get_supernodes_df(by_stations[i - 1], **spec_kwargs, station=i - 1, STATION_COUNT=3, pi_fix=True)
-        supernodes_to = get_supernodes_df(by_stations[i], **spec_kwargs, station=i, STATION_COUNT=3, pi_fix=True)
+        supernodes_from = get_supernodes_df(by_stations[i - 1], **spec_kwargs, station=i - 1, STATION_COUNT=9)
+        supernodes_to = get_supernodes_df(by_stations[i], **spec_kwargs, station=i, STATION_COUNT=9)
 
         if restrictions_func:
             # if restriction function is defined, apply it to edges (supernodes)
@@ -168,7 +170,6 @@ def apply_edge_restriction(pd_edges_df: pd.DataFrame,
                            edge_restriction: float):
     assert 'weight' in pd_edges_df
     return pd_edges_df[pd_edges_df.weight < edge_restriction]
-
 
 
 def construct_output_graph(hits,

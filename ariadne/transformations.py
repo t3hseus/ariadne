@@ -474,14 +474,14 @@ class ConstraintsNormalize(BaseTransformer):
         x_min, x_max = constraints[self.columns[0]]
         y_min, y_max = constraints[self.columns[1]]
         z_min, z_max = constraints[self.columns[2]]
-        assert all(df[self.columns[0]].between(x_min, x_max)), \
-            f'Some values in column {self.columns[0]} are not in {constraints[self.columns[0]]}'
+        #assert all(df[self.columns[0]].between(x_min, x_max)), \
+        #    f'Some values in column {self.columns[0]} are not in {constraints[self.columns[0]]}'
         x_norm = 2 * (df[self.columns[0]] - x_min) / (x_max - x_min) - 1
-        assert all(df[self.columns[1]].between(y_min, y_max)), \
-            f'Some values in column {self.columns[1]} are not in {constraints[self.columns[1]]}'
+        #assert all(df[self.columns[1]].between(y_min, y_max)), \
+        #    f'Some values in column {self.columns[1]} are not in {constraints[self.columns[1]]}'
         y_norm = 2 * (df[self.columns[1]] - y_min) / (y_max - y_min) - 1
-        assert all(df[self.columns[2]].between(z_min, z_max)), \
-            f'Some values in column {self.columns[2]} are not in {constraints[self.columns[2]]}'
+        #assert all(df[self.columns[2]].between(z_min, z_max)), \
+        #    f'Some values in column {self.columns[2]} are not in {constraints[self.columns[2]]}'
         z_norm = 2 * (df[self.columns[2]] - z_min) / (z_max - z_min) - 1
         return x_norm, y_norm, z_norm
 
@@ -616,6 +616,35 @@ class DropTracksWithHoles(BaseFilter):
 
         self.filter = lambda x: x[self.station_column].values.shape[0] == \
                                 len(np.arange(min_station_num, int(x[self.station_column].max())))+1
+        super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
+                         keep_filtered=keep_filtered)
+
+    def __repr__(self):
+        return(f'{"-" * 30}\n'
+               f'{self.__class__.__name__} with parameters:'
+               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
+               f'{"-" * 30}\n'
+               f'Number of broken tracks: {self.get_num_broken()} \n')
+
+
+@gin.configurable
+class DropEmptyFirstStation(BaseFilter):
+    """Drops tracks with no points on first station.
+      # Args:
+        keep_fakes (bool, True by default ): If True, points with no tracks are preserved, else they are deleted from data.
+        station_col (str, 'station' by default): Event column in data
+        track_col(str, 'track' by default): Track column in data
+        event_col (str, 'event' by default): Station column in data
+    """
+
+    def __init__(self,
+                 keep_filtered=True,
+                 station_col='station',
+                 track_col='track',
+                 event_col='event',
+                 min_station_num=0):
+
+        self.filter = lambda x: min_station_num in x[self.station_column].values
         super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
                          keep_filtered=keep_filtered)
 

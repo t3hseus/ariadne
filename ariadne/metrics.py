@@ -1,8 +1,8 @@
 import gin
 import torch
 import torch.nn.functional as f
-from pytorch_lightning.metrics import functional as metrics
-from pytorch_lightning.metrics import Metric
+from torchmetrics import functional as metrics
+from torchmetrics import Metric
 
 import torchmetrics.functional
 

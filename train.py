@@ -64,7 +64,8 @@ def experiment(model,
                accumulate_grad_batches=1,
                resume_from_checkpoint=None,  # path to checkpoint to resume
                num_gpus=None,
-               clip_grads=False
+               clip_grads=False,
+               auto_lr_find=False
                ):
 
     os.makedirs(log_dir, exist_ok=True)
@@ -107,12 +108,15 @@ def experiment(model,
         'max_epochs': epochs,
         'auto_select_gpus': True,
         'deterministic': True,
-        'terminate_on_nan': True,
+        'detect_anomaly': False,
         'accumulate_grad_batches': accumulate_grad_batches,
+        'auto_lr_find': auto_lr_find,
         'logger': tb_logger,
-        'gpus': num_gpus
+        'gpus': num_gpus,
+        #'overfit_batches': 1,
         #'progress_bar_refresh_rate': 100,
-        #'log_every_n_steps': 50,
+        #'log_every_n_steps': 1,
+        #'track_grad_norm': 2
     }
     
     if clip_grads:
@@ -125,10 +129,10 @@ def experiment(model,
     trainer_kwargs['callbacks'] = [checkpoint_callback]
     if torch.cuda.is_available():
         trainer_kwargs['gpus'] = 1 if trainer_kwargs['gpus'] is None else trainer_kwargs['gpus']
-        if trainer_kwargs['gpus'] > 1:
+        #if trainer_kwargs['gpus'] > 1:
             # TODO: fix multi-GPU support
-            trainer_kwargs['distributed_backend'] = 'ddp'
-            trainer_kwargs['accelerator'] = 'ddp'
+         #   trainer_kwargs['distributed_backend'] = 'ddp'
+         #   trainer_kwargs['accelerator'] = 'ddp'
     else:
         trainer_kwargs['gpus'] = None
         if num_gpus is not None:
