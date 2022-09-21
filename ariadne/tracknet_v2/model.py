@@ -84,6 +84,7 @@ class TrackNETv2(nn.Module):
     def __init__(self,
                  input_features=4,
                  conv_features=32,
+                 output_features=2,
                  rnn_type='gru',
                  batch_first=True,
                  use_causalconv=False,
@@ -118,37 +119,28 @@ class TrackNETv2(nn.Module):
             self.rnn = None
         # outputs
         self.xy_coords = nn.Sequential(
-            nn.Linear(conv_features, 2)
+            nn.Linear(conv_features, output_features)
         )
         self.r1_r2 = nn.Sequential(
-            nn.Linear(conv_features, 2),
+            nn.Linear(conv_features, output_features),
             nn.Softplus()
         )
 
-    def forward(self, inputs, input_lengths, return_gru_states=False):
+    def forward(self, inputs, input_lengths, mask=None, return_gru_states=False, return_x=False):
         input_lengths = input_lengths.int().cpu()
         x = inputs
-
-        if self.conv:
-            # BxTxC -> BxCxT
-            inputs = inputs.transpose(1, 2).float()
-            x = self.conv(inputs)
-            # BxCxT -> BxTxC
-            x = x.transpose(1, 2)
-        if self.rnn:
-            # Pack padded batch of sequences for RNN module
-            packed = torch.nn.utils.rnn.pack_padded_sequence(
-            x, input_lengths, enforce_sorted=False, batch_first=True)
-            # forward pass trough rnn
-            x, _ = self.rnn(packed)
-            # unpack padding
-            x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
+        # Pack padded batch of sequences for RNN module
+        packed = torch.nn.utils.rnn.pack_padded_sequence(
+        x, input_lengths, enforce_sorted=False, batch_first=True)
+        # forward pass trough rnn
+        x, _ = self.rnn(packed)
+        # unpack padding
+        x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
         # get result using only the output on the last timestep
         xy_coords = self.xy_coords(x)
         r1_r2 = self.r1_r2(x)
         outputs = torch.cat([xy_coords, r1_r2], dim=-1)
-        if return_gru_states and self.rnn:
-            return outputs, x
+
         return outputs
 
 

@@ -20,6 +20,23 @@ def ellipse_area(preds, target):
         return areas.masked_select(mask).mean().float()
     return areas.mean().float()
 
+@gin.configurable(allowlist=[])
+def ellipse_area_xyz(preds, target):
+    """Computes the area of predicted ellipses
+
+    # Arguments
+        preds: output of the model (x, y, z, r1, r2, r3)
+    """
+    # unpack target = (target, mask)
+    target, mask = target
+    if preds.size(2) != 6:
+        raise ValueError('Prediction must be 6-dimensional (x, y, z, r1, r2, r3), '
+                         f'but got preds.shape[2] = {preds.size(2)}')
+    areas = preds[:, :, 3] * preds[:, :, 4] * preds[:, :, 5] * math.pi
+    if mask is not None:
+        return areas.masked_select(mask).mean().float()
+    return areas.mean().float()
+
 
 @gin.configurable(allowlist=[])
 def point_in_ellipse(preds, target):
@@ -55,6 +72,42 @@ def point_in_ellipse(preds, target):
 
 
 @gin.configurable(allowlist=[])
+def point_in_ellipse_xyz(preds, target):
+    """Checks if the next point of track segment
+    is located in the predicted circle
+    1 - if yes, 0 - otherwise
+    """
+    if preds.shape[0] != target.shape[0]:
+        raise ValueError('Shape mismatch! Number of samples in '
+                        'the prediction and target must be equal. '
+                        f'{preds.size(0) != target.size(0)}')
+
+    if (preds.shape[-1] < 6):
+        raise ValueError('Prediction must be 6-dimensional (x, y, z, r1, r2, r3), '
+                         f'but got preds.shape[2] = {preds.size(2)}')
+
+    if target.shape[-1] < 3:
+        raise ValueError('Target must be 3-dimensional (x, y, z), '
+                             f'but got target.shape[2] = {target.size(2)}')
+    if preds.ndim < 3 and target.ndim == 3:
+        preds = preds.unsqueeze(1).repeat(1, target.shape[1], 1)
+
+    x_dist = (preds[:, :, 0] - target[:, :, 0]) ** 2
+    y_dist = (preds[:, :, 1] - target[:, :, 1]) ** 2
+    z_dist = (preds[:, :, 2] - target[:, :, 2]) ** 2
+    x_part = x_dist / torch.pow(preds[:, :, 3], 2)
+    y_part = y_dist / torch.pow(preds[:, :, 4], 2)
+    z_part = z_dist / torch.pow(preds[:, :, 5], 2)
+    
+    # left size of equation x_part + y_part = 1
+    left_side = x_part + y_part + z_part
+    #if target.size(2) == 3:
+    #    is_this_station = torch.eq(preds[:, :, 2], target[:, :, 2])
+    #    return torch.le(left_side, 1) * is_this_station
+    return torch.le(left_side, 1)
+
+
+@gin.configurable(allowlist=[])
 def efficiency(preds, target):
     """Checks if the next point of track segment
     is located in the predicted circle
@@ -63,6 +116,19 @@ def efficiency(preds, target):
     # unpack target = (target, mask)
     target, mask = target
     idx = point_in_ellipse(preds, target)
+    if mask is not None:
+        idx = idx.masked_select(mask)
+    return torch.sum(idx.float()) / len(idx)
+
+@gin.configurable(allowlist=[])
+def efficiency_xyz(preds, target):
+    """Checks if the next point of track segment
+    is located in the predicted circle
+    1 - if yes, 0 - otherwise
+    """
+    # unpack target = (target, mask)
+    target, mask = target
+    idx = point_in_ellipse_xyz(preds, target)
     if mask is not None:
         idx = idx.masked_select(mask)
     return torch.sum(idx.float()) / len(idx)

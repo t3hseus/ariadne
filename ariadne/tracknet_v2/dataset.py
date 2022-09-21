@@ -23,6 +23,7 @@ class PreprocessingBESDataset(Dataset):
             preprocessing (callable, optional): Optional transform to be applied
                 on a dataframe.
         """
+
         self.frame = pd.read_csv(csv_file)
         if preprocessing:
             self.frame = preprocessing(self.frame)
@@ -122,6 +123,8 @@ class TrackNetV2DatasetWithMask(Dataset):
     """
     def __init__(self,
                  data_path,
+                 input_features=2,
+                 mask_first_n_steps=-1,
                  min_track_len=3,
                  add_next_z_feat=False,
                  use_index=False,
@@ -136,13 +139,14 @@ class TrackNetV2DatasetWithMask(Dataset):
 
         """
         self.tracks = np.load(data_path, allow_pickle=True)
+        self.input_features = input_features
         if n_samples is not None:
             self.tracks = self.tracks[:n_samples]
         self.add_next_z_feat = add_next_z_feat
         self.use_index = use_index
         assert min_track_len > 2, "Track cannot be less than three hits"
         self.min_track_len = min_track_len
-        self._mask_first_n_steps = self.min_track_len - 2
+        self._mask_first_n_steps = mask_first_n_steps
 
     def __len__(self):
         return len(self.tracks)
@@ -157,17 +161,21 @@ class TrackNetV2DatasetWithMask(Dataset):
             'input_lengths': len(input_sample)
         }
         # except first timestep and only x and y coords
-        target = self.tracks[idx][1:, :2]
+        target = self.tracks[idx][1:, :self.input_features]
         if self.add_next_z_feat:
             input_dict['inputs'] = np.hstack([
                 input_sample,
                 self.tracks[idx][1:, 2:3]
             ])
 
-        mask = np.ones(input_dict['input_lengths']).astype(np.bool)
-        mask[:self._mask_first_n_steps] = True#False
+        mask_input = (input_sample[:, 0] != input_sample[:, 1])[:input_dict['input_lengths']]
+        input_dict['mask'] = mask_input
+
+        mask_target = (target[:, 0] != target[:, 1])[:input_dict['input_lengths']]
+        if self._mask_first_n_steps != -1:
+            mask_target[self._mask_first_n_steps:] = False
 
         if self.use_index:
-            return input_dict, (target, mask), idx
+            return input_dict, (target, mask_target), idx
         # else
-        return input_dict, (target, mask)
+        return input_dict, (target, mask_target)

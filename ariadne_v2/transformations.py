@@ -10,10 +10,13 @@ from sklearn.preprocessing import (
     MinMaxScaler,
     Normalizer
 )
+import torch
 
 from ariadne_v2 import jit_cacher
 from ariadne_v2.data_chunk import DFDataChunk
 from ariadne_v2.jit_cacher import Cacher
+
+from tqdm import tqdm
 
 LOGGER = logging.getLogger('ariadne.transforms')
 
@@ -323,7 +326,7 @@ class BakeStationValues:
             data (pd.DataFrame): transformed dataframe
         """
         for i, value in self.station_values.items():
-            data.loc[data['station'] == i, 'z'] = value
+            data.loc[data['station'] == i, self.column] = value
         return data
 
     def __repr__(self):
@@ -475,6 +478,7 @@ class ConstraintsNormalize(BaseTransformer):
                 data.loc[data['station'] == station, :] = \
                     self.transform_data_by_group(data['station'] == station, data,
                                                  [x_norm, y_norm, z_norm])
+        #data['event'] = data['event'] % 200
         return data
 
     def transform_data_by_group(self, grouping, data, normed):
@@ -501,14 +505,14 @@ class ConstraintsNormalize(BaseTransformer):
         x_min, x_max = constraints[self.columns[0]]
         y_min, y_max = constraints[self.columns[1]]
         z_min, z_max = constraints[self.columns[2]]
-        assert all(df[self.columns[0]].between(x_min, x_max)), \
-            f'Some values in column {self.columns[0]} are not in {constraints[self.columns[0]]}'
+        #assert all(df[self.columns[0]].between(x_min, x_max)), \
+        #    f'Some values in column {self.columns[0]} are not in {constraints[self.columns[0]]}'
         x_norm = 2 * (df[self.columns[0]] - x_min) / (x_max - x_min) - 1
-        assert all(df[self.columns[1]].between(y_min, y_max)), \
-            f'Some values in column {self.columns[1]} are not in {constraints[self.columns[1]]}'
+        #assert all(df[self.columns[1]].between(y_min, y_max)), \
+        #    f'Some values in column {self.columns[1]} are not in {constraints[self.columns[1]]}'
         y_norm = 2 * (df[self.columns[1]] - y_min) / (y_max - y_min) - 1
-        assert all(df[self.columns[2]].between(z_min, z_max)), \
-            f'Some values in column {self.columns[2]} are not in {constraints[self.columns[2]]}'
+        #assert all(df[self.columns[2]].between(z_min, z_max)), \
+        #    f'Some values in column {self.columns[2]} are not in {constraints[self.columns[2]]}'
         z_norm = 2 * (df[self.columns[2]] - z_min) / (z_max - z_min) - 1
         return x_norm, y_norm, z_norm
 
@@ -660,6 +664,35 @@ class DropTracksWithHoles(BaseFilter):
                 f'{"-" * 30}\n'
                 f'Number of broken tracks: {self.get_num_broken()} \n')
 
+    
+@gin.configurable
+class DropEmptyFirstStation(BaseFilter):
+    """Drops tracks with no points on first station.
+      # Args:
+        keep_fakes (bool, True by default ): If True, points with no tracks are preserved, else they are deleted from data.
+        station_col (str, 'station' by default): Event column in data
+        track_col(str, 'track' by default): Track column in data
+        event_col (str, 'event' by default): Station column in data
+    """
+
+    def __init__(self,
+                 keep_filtered=True,
+                 station_col='station',
+                 track_col='track',
+                 event_col='event',
+                 min_station_num=0):
+
+        self.filter = lambda x: min_station_num in x[self.station_column].values
+        super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
+                         keep_filtered=keep_filtered)
+
+    def __repr__(self):
+        return(f'{"-" * 30}\n'
+               f'{self.__class__.__name__} with parameters:'
+               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
+               f'{"-" * 30}\n'
+               f'Number of broken tracks: {self.get_num_broken()} \n')
+
 
 @gin.configurable
 class DropFakes(BaseTransformer):
@@ -680,6 +713,7 @@ class DropFakes(BaseTransformer):
         # Returns:
             data (pd.DataFrame): transformed dataframe
         """
+        #data = data[data.station < 9]
         data = self.drop_fakes(data)
         return data
 
@@ -932,3 +966,92 @@ class FixStationsBMN(BaseTransformer):
         return (f'{"-" * 30}\n'
                 f'{self.__class__.__name__} with parameters: det_col={self.det_col}, station_col={self.station_col}'
                 f'{"-" * 30}\n')
+
+
+@gin.configurable
+class AddVirtualPoints:
+    """Adds virtual points for tracks with holes using given TrackNET model.
+    Args:
+        model (TrackNETv2): TrackNET instance
+        z_values: values for stations
+    """
+
+    def __init__(self, model_loader, z_values, device, columns=['x', 'y', 'z']):
+        self.model = model_loader()[1][0]
+        self.z_values = z_values
+        self.columns = columns
+        self.device = device
+
+    def __call__(self, df):
+        grouped_df = df[df['track'] != -1].groupby(['track', 'event'])
+        #print(df)
+        print(len(df))
+        new_hits = []
+        max_index = df.index.max()
+        for i, data in tqdm(grouped_df):
+            if len(data) != data['station'].max() + 1:
+                new_hits.append(self.get_new_hits(data, max_index))
+                max_index += len(new_hits[-1])
+        df = pd.concat([df, *new_hits], ignore_index=True)
+        print(len(df))
+        return df
+
+    def get_new_hits(self, data, max_index):
+        track_len = data['station'].max() + 1
+        track = np.column_stack([self.z_values]*3)
+        track[data['station']] = data[list(self.columns)].values
+        track = track[:track_len]
+        track_torch = torch.unsqueeze(torch.from_numpy(track), 0).to(self.device)
+        mask = torch.from_numpy((track[:, 0] != track[:, 1])[:track_len].reshape(1, -1)).to(self.device)
+        new_track = self.model(track_torch, torch.tensor([track_len], dtype=torch.int64), mask=mask, return_x=True)
+        new_hits = new_track[~mask].cpu().numpy()
+
+        new_df = pd.DataFrame({
+            'event': [data.event.iloc[0]] * len(new_hits),
+            'x': new_hits[:, 0],
+            'y': new_hits[:, 1],
+            'z': new_hits[:, 2],
+            'station': np.where(~(track[:, 0] != track[:, 1])[:track_len])[0],
+            'track': [data.track.iloc[0]] * len(new_hits),
+            'index': list(range(max_index + 1, max_index + 1 + len(new_hits)))
+        })
+        return new_df
+
+    def __repr__(self):
+        return (f'{"-" * 30}\n'
+                f'{self.__class__.__name__} with parameters: model={self.model}, z_values={self.z_values}, device={self.device}'
+                f'{"-" * 30}\n')
+
+    
+    
+@gin.configurable
+class DropOverPhi(BaseFilter):
+    """Drops tracks with no points on first station.
+      # Args:
+        keep_fakes (bool, True by default ): If True, points with no tracks are preserved, else they are deleted from data.
+        station_col (str, 'station' by default): Event column in data
+        track_col(str, 'track' by default): Track column in data
+        event_col (str, 'event' by default): Station column in data
+    """
+
+    def __init__(self,
+                 keep_filtered=True,
+                 station_col='station',
+                 track_col='track',
+                 event_col='event',
+                 min_station_num=0):
+
+        self.filter = self.filter_overphi
+        super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
+                         keep_filtered=keep_filtered)
+        
+    def filter_overphi(self, x):
+        differ = x.phi.values[1:] - x.phi.values[:-1]
+        return (np.abs(differ) < 1).all()
+
+    def __repr__(self):
+        return(f'{"-" * 30}\n'
+               f'{self.__class__.__name__} with parameters:'
+               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
+               f'{"-" * 30}\n'
+               f'Number of broken tracks: {self.get_num_broken()} \n')

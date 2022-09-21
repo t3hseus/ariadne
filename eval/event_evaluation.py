@@ -159,6 +159,7 @@ class EventEvaluator:
                         'cpu_time': cpu_time_for_event,
                         'gpu_time': gpu_time_for_event,
                         'multiplicity': tracks.track.nunique()}, index=[0]))
+
                     model_run_df = model_run_df[COLUMNS]
                     result_df_arr.append(model_run_df)
 
@@ -205,8 +206,9 @@ class EventEvaluator:
                         if tr_id != -1:
                             local_index_values = track.index.values
                             global_index_values = track.index_old.values
+                            station_values = track.station.values
 
-                            assert len(local_index_values) >= 3, f"track len <3 for event {ev_id_real} tr_id {tr_id}"
+                            #assert len(local_index_values) >= 3, f"track len <3 for event {ev_id_real} tr_id {tr_id}"
                             px_py_pz = track[['px', 'py', 'pz']].values[0]
                             hits_in_event.update(global_index_values)
 
@@ -225,6 +227,8 @@ class EventEvaluator:
                                 station_id = track.loc[index_val].station
                                 new_dict[f"hit_id_{int(station_id)}"] = global_index_values[idx]
 
+                            #if new_dict[f"hit_id_0"] == -1:
+                            #    continue
                             true_tracks_arr.append(pd.DataFrame(new_dict, index=[0]))
 
                     all_events_arr.append(pd.DataFrame({
@@ -246,12 +250,14 @@ class EventEvaluator:
         print('[build_all_tracks] cache miss, finish')
         return all_tracks_df, all_events_df
 
-    def solve_results(self, model_results, all_data):
+    def solve_results(self, model_results, all_data, match_percentage=1.):
         print('[solve results] start')
         STATION_COLUMNS = [f"hit_id_{n}" for n in range(self.n_stations)]
 
         all_tracks, all_events = all_data
         reco_tracks, reco_events = model_results
+        
+        reco_tracks.track_pred = reco_tracks.track_pred.astype('bool')
 
         # TODO: how to solve ghost hits?
         tracks_pred = reco_tracks[reco_tracks.track_pred]
@@ -259,13 +265,30 @@ class EventEvaluator:
         reco_tracks_preds = tracks_pred[['event_id', 'track_pred'] + STATION_COLUMNS]
         reco_tracks_preds['idx_old'] = tracks_pred.index
 
-        results = pd.merge(all_tracks, reco_tracks_preds, how='outer',
-                           on=['event_id'] + STATION_COLUMNS)
+        #results = pd.merge(all_tracks, reco_tracks_preds, how='outer',
+        #                   on=['event_id'] + STATION_COLUMNS)
+        
+        cols = ['event_id', 'track', 'px', 'py', 'pz', 'pred', 'track_pred', 'idx_old'] + STATION_COLUMNS
+        cols_1 = ['event_id'] + STATION_COLUMNS
+        combs_lst = []
+        
+        need_match = math.ceil(self.n_stations * match_percentage)
+        for station_comb in combinations(STATION_COLUMNS, need_match):
+            comb = pd.merge(all_tracks, reco_tracks_preds, how='outer',
+                           on=['event_id'] + list(station_comb),
+                           suffixes=[None, '_y'])
+            for col in STATION_COLUMNS:
+                if col + '_y' in comb.columns:
+                    comb[col].fillna(comb[col + '_y'], inplace=True)
+            combs_lst.append(comb[cols])
+        results = pd.concat(combs_lst)
+        results = results.drop_duplicates()
+
 
         not_found_tracks = (results.track_pred != False) & (results.track_pred != True)
         results.loc[not_found_tracks, 'track_pred'] = False
 
-        results.loc[results.track_pred, ['pred']] = 1
+        results.loc[results.track_pred, ['pred']] = 1       
 
         ghosts_idx_all = pd.isna(results.track)
         ghosts_idx_reco = results[ghosts_idx_all].idx_old.astype('int')
@@ -273,6 +296,15 @@ class EventEvaluator:
         results.loc[ghosts_idx_all, ['px', 'py', 'pz']] = ghosts_impulses[['px', 'py', 'pz']].values
         results.loc[ghosts_idx_all, 'track'] = -1
         results.loc[ghosts_idx_all, 'pred'] = -1
+        
+        results.sort_values(['track', 'pred'])
+        
+        matched = results.query('pred == 1').drop_duplicates(subset=['event_id', 'track'])
+        matched_idxs = results.query('pred == 1').idx_old.values
+        tracks = pd.concat([results.query('pred == 0'), matched]).drop_duplicates(subset=['event_id', 'track'], keep='last')
+        ghosts = results.query('pred == -1')
+        results = pd.concat([tracks, ghosts[~ghosts.idx_old.isin(matched_idxs)]])
+        
         results = results.drop(['track_pred', 'idx_old'], axis=1)
         results['pred'] = results['pred'].astype('int')
         results['track'] = results['track'].astype('int')

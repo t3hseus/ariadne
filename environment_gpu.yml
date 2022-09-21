@@ -17,10 +17,10 @@ dependencies:
   - nose
   - notebook
   - torchvision
-  - cudatoolkit
+  - cudatoolkit=10.2
   - pytorch
   - pytorch-lightning
   - torchmetrics
   - gin-config
   - absl-py
-  - faiss
+  - faiss-gpu

@@ -145,7 +145,7 @@ class TrackNetProcessorWithMask(DataProcessor):
 
     def generate_chunks_iterable(self) -> Iterable[TracknetDataChunk]:
         if len(self.det_indices) > 1:
-            self.data_df.loc[self.data_df.det == 1, 'station'] = self.data_df.loc[self.data_df.det == 1, 'station'].values + 3
+            #self.data_df.loc[self.data_df.det == 1, 'station'] = self.data_df.loc[self.data_df.det == 1, 'station'].values + 3
             if self.filter_first_stations > 0:
                 self.data_df = self.data_df.loc[self.data_df['station'] >= self.filter_first_stations, :]
                 self.data_df.loc[:, 'station'] = self.data_df.loc[:, 'station'].values - self.filter_first_stations
@@ -167,10 +167,12 @@ class TrackNetProcessorWithMask(DataProcessor):
         # max_station = max(stations)
         if stations > 1000:
             return ProcessedTracknetDataChunk(None, '')
+        
         grouped_df = df[df['track'] != -1].groupby('track')
         for i, data in grouped_df:
             track = data[list(self.columns)].values
             track_len = len(track)
+
             if track_len > self.min_track_len:
                 if track_len not in chunk_data_xs.keys():
                     chunk_data_xs[track_len] = []
