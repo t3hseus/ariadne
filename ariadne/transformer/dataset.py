@@ -68,16 +68,19 @@ class SubsetWithItemLen(Subset, ItemLengthGetter):
 def collate_fn(points: Collection[Points], sample_len=512, shuffle=True):
     batch_size = len(points)
     n_feat = 3
-    if shuffle:
-        np.random.shuffle(points)
     n_dim = np.array([(p.X.shape[1]) for p in points])
     max_dim = sample_len  # n_dim.max()
     batch_inputs = np.zeros((batch_size, n_feat, max_dim), dtype=np.float32)
     batch_mask = np.zeros((batch_size, max_dim), dtype=np.float32)
     batch_targets = np.zeros((batch_size, max_dim), dtype=np.float32)
     for i, p in enumerate(points):
-        batch_inputs[i, :, :n_dim[i]] = p.X
-        batch_targets[i, :n_dim[i]] = np.float32(p.track != -1)
+        perm_ids = np.arange(0, p.X.shape[1])
+        assert perm_ids[-1] == p.X.shape[1] - 1, 'You need to specify other upper bound!'
+        if shuffle:
+            perm_ids = np.random.permutation(p.X.shape[1])
+        batch_inputs[i, :, :n_dim[i]] = p.X[:, perm_ids]
+        batch_targets[i, :n_dim[i]] = np.float32(p.track[perm_ids] != -1)
+
         batch_mask[i, :n_dim[i]] = 1.
     batch_inputs = np.swapaxes(batch_inputs, -1, -2)
     batch_targets = np.expand_dims(batch_targets, -1)
