@@ -1055,3 +1055,27 @@ class DropOverPhi(BaseFilter):
                f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n'
                f'{"-" * 30}\n'
                f'Number of broken tracks: {self.get_num_broken()} \n')
+    
+    
+@gin.configurable
+class CombineEvents(object):
+    """Combine N events to one.
+    """
+
+    def __init__(self, combine_n=1, track_col='track', event_col='event'):
+        self.combine_n = combine_n
+        self.event_column = event_col
+        self.track_column = track_col
+
+    def __call__(self, data):
+        data[self.track_column][data[self.track_column] >= 0] = data[self.track_column][data[self.track_column] >= 0] + 10 * data[self.event_column][data[self.track_column] >= 0]
+        n_events = len(data[self.event_column].unique()) // self.combine_n
+        data[self.event_column] = data[self.event_column] % n_events
+        return data
+
+    def __repr__(self):
+        return(f'{"-" * 30}\n'
+               f'{self.__class__.__name__} with parameters:'
+               f'    track_column={self.track_column}, event_column={self.event_column}\n'
+               f'{"-" * 30}\n'
+               f'Number of combined events: {self.combine_n} \n')

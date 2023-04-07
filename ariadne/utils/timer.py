@@ -1,27 +1,28 @@
 import torch
 
 
-@torch.jit.script
+#@torch.jit.script
 class CudaTimer:
-    def __init__(self):
-        self.times : Dict[str, List[float]] = dict()
-        self.cuda_events = {'sample': (torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True))}
-        self.stream = torch.cuda.current_stream(torch.cuda.current_device())
+    times = dict()
     
-    def start(self, name: str):
-        if name not in self.times:
-            self.times[name] : List[float] = [0.0]
-            self.times[name].remove(0.0)
-            self.cuda_events[name] = (torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True))
-        self.cuda_events[name][0].record(self.stream)
+    def clear():
+        for key in list(CudaTimer.times):
+            del CudaTimer.times[key]
 
-    def end(self, name: str):
-        self.cuda_events[name][1].record(self.stream)
-        torch.cuda.synchronize()
-        self.times[name].append(self.cuda_events[name][0].elapsed_time(self.cuda_events[name][1]))
-        
-    def clear(self):
-        for key in self.cuda_events:
-            del self.cuda_events[key]
-        for key in self.times:
-            del self.times[key]
+    def timeit(name=''):
+        def decorator(func):
+            def timer(*args, **kwargs):
+                stream = torch.cuda.current_stream(torch.cuda.current_device())
+                cuda_start = torch.cuda.Event(enable_timing=True)
+                cuda_end = torch.cuda.Event(enable_timing=True)
+                if name not in CudaTimer.times:
+                    CudaTimer.times[name] = []
+
+                cuda_start.record(stream)
+                result = func(*args, **kwargs)
+                cuda_end.record(stream)
+                torch.cuda.synchronize()
+                CudaTimer.times[name].append(cuda_start.elapsed_time(cuda_end))
+                return result
+            return timer
+        return decorator

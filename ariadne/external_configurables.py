@@ -1,11 +1,11 @@
 import torch
 import gin
-import adamp
+#import adamp
 
 # optimizers
 gin.external_configurable(torch.optim.Adam, denylist=['params'], name='Adam')
 gin.external_configurable(torch.optim.AdamW, denylist=['params'], name='AdamW')
-gin.external_configurable(adamp.AdamP, denylist=['params'], name='AdamP')
+#gin.external_configurable(adamp.AdamP, denylist=['params'], name='AdamP')
 gin.external_configurable(torch.optim.SGD, denylist=['params'], name='SGD')
 gin.external_configurable(torch.optim.RMSprop, denylist=['params'], name='RMSprop')
 gin.external_configurable(torch.optim.Adagrad, denylist=['params'], name='Adagrad')

@@ -15,6 +15,7 @@ import numpy as np
 import math
 import pandas as pd
 from itertools import combinations
+import torch
 
 from tqdm import tqdm
 
@@ -102,24 +103,32 @@ class EventEvaluator:
         result_df_arr = []
         result_event_arr = []
         run_model_hash = self._hash_run_model([self.model_loader, model_run_func, model_preprocess_func])
-        result_df = read_df_from_hash(run_model_hash)
+        result_df = None#read_df_from_hash(run_model_hash) #
         events_hash = self._hash_run_model_events([self.model_loader, model_run_func, model_preprocess_func])
-        result_event_df = read_df_from_hash(events_hash)
+        result_event_df = None#read_df_from_hash(events_hash) #
         if result_df is not None and result_event_df is not None:
             print('[run model] cache hit, finish')
             return result_df, result_event_df
 
         print('\n')
+        #pr_torch = torch.profiler.profile(
+        #    on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/tracknet_inference'),
+        #    record_shapes=True,)
+            #with_stack=True)
+        #pr_torch.start()
         for events in self.data_df_transformed:
-            with tqdm(total=events.event.nunique(), file=sys.stdout) as pbar:
+            
+            preprocessed_list = []
+            with tqdm(total=events.event.nunique(), file=sys.stdout, smoothing=0) as pbar:
                 for ev_id, event_df in events.groupby('event'):
-                    pbar.set_description('processed: %d' % ev_id)
+                    pbar.set_description('preprocessing: processed: %d' % ev_id)
                     pbar.update(1)
                     cpu_time_for_event = 0.0
-                    gpu_time_for_event = 0.0
+                    
                     try:
                         start = timer()
                         preprocess_result = model_preprocess_func(event_df)
+                        preprocessed_list.append(preprocess_result)
                         end = timer()
                         cpu_time_for_event = end - start
 
@@ -134,9 +143,15 @@ class EventEvaluator:
                                             on \nevent_id={ev_id}")
                         continue
 
+            with tqdm(total=events.event.nunique(), file=sys.stdout, smoothing=0) as pbar:
+                #for ev_id, event_df in events.groupby('event'):
+                for idx, (ev_id, event_df) in enumerate(events.groupby('event')):
+                    pbar.set_description('model run: processed: %d' % ev_id)
+                    pbar.update(1)
+                    gpu_time_for_event = 0.0
                     try:
                         start = timer()
-                        model_run_df = model_run_func(preprocess_result, self.loaded_model_state[1])
+                        model_run_df = model_run_func(preprocessed_list[idx], self.loaded_model_state[1])
                         end = timer()
                         gpu_time_for_event = end - start
 
@@ -160,14 +175,16 @@ class EventEvaluator:
                         'gpu_time': gpu_time_for_event,
                         'multiplicity': tracks.track.nunique()}, index=[0]))
 
-                    model_run_df = model_run_df[COLUMNS]
+                    model_run_df = model_run_df[COLUMNS].reset_index(drop=True)
                     result_df_arr.append(model_run_df)
-
+        #            pr_torch.step()
+        #pr_torch.stop()
+        
         result_df = pd.concat(result_df_arr, ignore_index=True)
         result_event_df = pd.concat(result_event_arr, ignore_index=True)
 
-        store_df_from_hash(result_df, run_model_hash)
-        store_df_from_hash(result_event_df, events_hash)
+        #store_df_from_hash(result_df, run_model_hash)
+        #store_df_from_hash(result_event_df, events_hash)
         print('[run model] cache miss, finish')
         return result_df, result_event_df
 
@@ -204,6 +221,7 @@ class EventEvaluator:
 
                     for tr_id, track in event.groupby('track'):
                         if tr_id != -1:
+                            track = track.sort_values('station')
                             local_index_values = track.index.values
                             global_index_values = track.index_old.values
                             station_values = track.station.values
@@ -222,7 +240,7 @@ class EventEvaluator:
                             }
                             for station_id, col in enumerate(STATION_COLUMNS):
                                 new_dict[col] = -1
-
+                                
                             for idx, index_val in enumerate(local_index_values):
                                 station_id = track.loc[index_val].station
                                 new_dict[f"hit_id_{int(station_id)}"] = global_index_values[idx]
@@ -293,7 +311,7 @@ class EventEvaluator:
         ghosts_idx_all = pd.isna(results.track)
         ghosts_idx_reco = results[ghosts_idx_all].idx_old.astype('int')
         ghosts_impulses = reco_tracks_impulses.loc[ghosts_idx_reco]
-        results.loc[ghosts_idx_all, ['px', 'py', 'pz']] = ghosts_impulses[['px', 'py', 'pz']].values
+        results.loc[ghosts_idx_all, ['px', 'py', 'pz']] = np.nan#ghosts_impulses[['px', 'py', 'pz']].values
         results.loc[ghosts_idx_all, 'track'] = -1
         results.loc[ghosts_idx_all, 'pred'] = -1
         
