@@ -34,13 +34,14 @@ class PerceiverFocalLoss(nn.Module):
         super().__init__()
         self.alpha = alpha
         self.gamma = gamma
-        self.MIN_EPS = 0.01
 
     def forward(self, preds, target):
-        mask = target['mask']
-        BCE_loss = F.binary_cross_entropy_with_logits(preds,
-                                                      target['y'], reduction='none')
-        pt = torch.exp(-BCE_loss)  # prevents nans when probability 0
-        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
-        F_loss = F_loss * mask.unsqueeze(-1)
-        return F_loss.sum() / mask.sum()
+        mask = target["mask"]
+        bce_loss = F.binary_cross_entropy_with_logits(
+            preds, target['y'], pos_weight=torch.Tensor((1.0, )), reduction='none'
+        )
+
+        pt = torch.exp(-bce_loss)  # prevents nans when probability 0
+        f_loss = self.alpha * (1 - pt) ** self.gamma * bce_loss
+        f_loss = f_loss * mask.unsqueeze(-1)
+        return f_loss.sum() / mask.sum()
