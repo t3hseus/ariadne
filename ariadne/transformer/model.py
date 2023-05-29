@@ -55,14 +55,16 @@ class Preprocessor(AbstractPreprocessor):
 
     def __init__(self, config):
         super().__init__()
+
         self.config = config
-        self.conv1 = nn.Conv1d(4, self.config.d_model, kernel_size=1, bias=False)
+        self.conv1 = nn.Conv1d(5, self.config.d_model, kernel_size=1)
         self.conv2 = nn.Conv1d(
-            self.config.d_model, self.config.d_model, kernel_size=1, bias=False
+            self.config.d_model, self.config.d_model, kernel_size=1
         )
 
         self.bn1 = nn.BatchNorm1d(self.config.d_model)
         self.bn2 = nn.BatchNorm1d(self.config.d_model)
+
 
     @property
     def num_channels(self) -> int:
@@ -76,9 +78,9 @@ class Preprocessor(AbstractPreprocessor):
         Output
             x: [B, out_channels, N], None, None - to neet HF interface
         """
+
         x = F.relu(self.conv1(x.transpose(1, -1)))
         x = F.relu(self.conv2(x))
-
         return x.transpose(1, -1), None, None
 
 
@@ -87,6 +89,7 @@ class HFPerceiver(nn.Module):
     """ Perceiver model based on HF Perceiver. """
     def __init__(self, d_model=32, num_heads=2, d_latents=24, num_latents=1024):
         super().__init__()
+
         config = PerceiverConfig(
             d_model=d_model,
             num_heads=num_heads,
@@ -111,7 +114,13 @@ class HFPerceiver(nn.Module):
             config=config, input_preprocessor=preprocessor, decoder=decoder
 
         )
-        self.postprocessor = nn.Linear(config.d_latents, 1)
+        self.postprocessor = nn.Sequential(
+            nn.Conv1d(config.d_latents, int(config.d_latents/2), kernel_size=1),
+            nn.ReLU(),
+            nn.Conv1d(int(config.d_latents/2), 1, kernel_size=1))
+
+
+
         # self.postprocessor = nn.Sequential(
         #     nn.Linear(4, 1024),
         #     nn.ReLU(),
@@ -135,7 +144,7 @@ class HFPerceiver(nn.Module):
         )
         # outputs = inputs['x']
         # return self.postprocessor(outputs.last_hidden_state)
-        return self.postprocessor(outputs.logits)
+        return self.postprocessor(outputs.logits.transpose(-1, 1)).transpose(-1, 1)
 
 
 def get_perceiver_decoder(config):
@@ -186,3 +195,12 @@ class Performer(nn.Module):
         x = self.model(x)
         x = self.decoder(x)
         return x
+
+
+
+def get_emb(sin_inp):
+    """
+    Gets a base embedding for one dimension with sin and cos intertwined
+    """
+    emb = torch.stack((sin_inp.sin(), sin_inp.cos()), dim=-1)
+    return torch.flatten(emb, -2, -1)

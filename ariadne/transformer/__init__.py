@@ -4,3 +4,4 @@ from . import loss
 from . import data_loader
 from . import metrics
 from . import dataset
+from . import optimizer

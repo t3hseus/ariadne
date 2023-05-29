@@ -75,7 +75,7 @@ def collate_fn(points: Collection[Points], sample_len=512, shuffle=True):
     n_feat = 3
     n_dim = np.array([(p.X.shape[1]) for p in points])
     max_dim = sample_len  # n_dim.max()
-    batch_inputs = np.zeros((batch_size, n_feat + 1, max_dim), dtype=np.float32) - 9.
+    batch_inputs = np.zeros((batch_size, n_feat + 2, max_dim), dtype=np.float32) - 9.
     batch_mask = np.zeros((batch_size, max_dim), dtype=np.float32)
 
     batch_targets = np.zeros((batch_size, max_dim), dtype=np.float32)
@@ -85,7 +85,7 @@ def collate_fn(points: Collection[Points], sample_len=512, shuffle=True):
         assert perm_ids[-1] == p.X.shape[1] - 1, 'You need to specify upper bound!'
         if shuffle:
             perm_ids = np.random.permutation(p.X.shape[1])
-        batch_inputs[i, :-1, :n_dim[i]] = p.X[:, perm_ids]
+        batch_inputs[i, :-2, :n_dim[i]] = p.X[:, perm_ids]
         batch_targets[i, :n_dim[i]] = np.float32(p.track[perm_ids] != -1)
 
     # max_dim = 512
@@ -96,7 +96,10 @@ def collate_fn(points: Collection[Points], sample_len=512, shuffle=True):
     batch_targets = np.expand_dims(batch_targets, -1)
 
     x = torch.from_numpy(batch_inputs)
-    dists = torch.kthvalue(torch.cdist(x, x), 2, dim=-1).values
+    all_dists = torch.cdist(x, x)
+    dists = torch.kthvalue(all_dists, 2, dim=-1).values
+    x[..., -2] = dists
+    dists = torch.kthvalue(all_dists, 3, dim=-1).values
     x[..., -1] = dists
 
     return (
