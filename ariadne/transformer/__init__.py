@@ -1,7 +1,1 @@
-from . import processor
-from . import model
-from . import loss
-from . import data_loader
-from . import metrics
-from . import dataset
-from . import optimizer
+from . import data_loader, dataset, loss, metrics, model, optimizer, processor
