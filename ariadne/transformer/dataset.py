@@ -1,7 +1,7 @@
 import math
 import os
 from dataclasses import dataclass
-from typing import Collection, Dict
+from typing import Collection
 
 import gin
 import numpy as np
@@ -96,7 +96,7 @@ def collate_fn(points: Collection[Points], sample_len=512, shuffle=True):
     batch_mask = np.zeros((batch_size, max_dim), dtype=np.float32)
     batch_targets = np.zeros((batch_size, max_dim), dtype=np.float32)
     for i, p in enumerate(points):
-        batch_mask[i, : n_dim[i]] = 1.0
+        batch_mask[i, :n_dim[i]] = 1.0
         perm_ids = np.arange(0, n_dim[i])
         assert perm_ids[-1] == n_dim[i] - 1, "You need to specify upper bound!"
         if shuffle:
@@ -111,12 +111,6 @@ def collate_fn(points: Collection[Points], sample_len=512, shuffle=True):
     batch_inputs = np.swapaxes(batch_inputs, -1, -2)
     batch_targets = np.expand_dims(batch_targets, -1)
     x = torch.from_numpy(batch_inputs)
-    all_dists = torch.cdist(x, x)
-    dists = torch.kthvalue(all_dists, 2, dim=-1).values
-    # x[..., -2] = dists
-    dists = torch.kthvalue(all_dists, 3, dim=-1).values
-    # x[..., -1] = dists
-
     return (
         {"x": x, "mask": torch.from_numpy(batch_mask)},
         {"y": torch.from_numpy(batch_targets), "mask": torch.from_numpy(batch_mask)},
