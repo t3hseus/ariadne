@@ -36,7 +36,10 @@ class CloudProcessor(DataProcessor):
 
     def generate_chunks_iterable(self) -> Iterable[PointsDataChunk]:
         self.data_df["event_group"] = self.data_df["event"] // self.n_events_per_chunk
-        return self.data_df.groupby(["event_group"])
+        if self.n_events_per_chunk > 1:
+            return self.data_df.groupby(["event_group"])
+        else:
+            return self.data_df.groupby(["event"])
 
     def construct_chunk(self, chunk_df: pd.DataFrame) -> PointsDataChunk:
         processed = self.transformer(chunk_df)
