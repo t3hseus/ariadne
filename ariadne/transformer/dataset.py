@@ -192,8 +192,8 @@ def process_pointcloud(
 
     for i in range(len(voxel_coords)):
         voxel = np.zeros((max_points_per_voxel, 6), dtype=np.float32)
-        padded_voxel_targets = np.zeros(max_points_per_voxel, dtype=np.int)
-        mask = np.zeros(max_points_per_voxel, dtype=np.int)
+        padded_voxel_targets = np.zeros(max_points_per_voxel, dtype=np.int32)
+        mask = np.zeros(max_points_per_voxel, dtype=np.int32)
 
         pts = point_cloud[inv_ind == i]
         this_voxel_targets = targets[inv_ind == i]

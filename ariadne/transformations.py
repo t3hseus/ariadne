@@ -239,7 +239,7 @@ class BaseCoordConverter(BaseTransformer):
                f'{self.convert_function}\n'
                f'{"-" * 30}\n')
 
-@gin.configurable
+@gin.configurable()
 class PreserveOriginal:
     """Preserves original state of given columns.
     May be needed to use original state of column

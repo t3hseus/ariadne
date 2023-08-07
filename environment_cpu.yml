@@ -1,27 +1,34 @@
 name: ariadne_cpu
 channels:
   - pytorch
+  - nvidia
+  - huggingface
   - conda-forge
   - anaconda-fusion
   - defaults
 dependencies:
-  - python=3.8.*
-  - numpy
+  - python=3.9.*
   - matplotlib
   - pyyaml
   - pandas
   - seaborn
   - ipywidgets
-  - scikit-learn
   - h5py<3.2
-  - nose=1.3.7
+  - scikit-learn
+  - nose
   - notebook
-  - torchvision
-  - cpuonly=1.0
-  - pytorch
-  - pyqt=5.12.*
-  - pytorch-lightning
-  - torchmetrics
-  - gin-config
-  - absl-py
-  - faiss
+  - faiss-cpu=1.7.2
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - adamp
+      - performer-pytorch
+      - torch
+      - torchvision
+      - pytorch-lightning
+      - numpy
+      - gin-config==0.4.0
+      - torchmetrics
+      - absl-py
+      - transformers
+      - tensorboard

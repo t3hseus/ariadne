@@ -82,6 +82,8 @@ def experiment(model,
     if random_seed is not None:
         LOGGER.info('Setting random seed to %d', random_seed)
         seed_everything(random_seed)
+    
+    torch.use_deterministic_algorithms(mode=True, warn_only=True)
 
     LOGGER.info('Create model for training')
     # create model for trainingimport logging
@@ -105,14 +107,14 @@ def experiment(model,
         LOGGER.info(f"Number events for validation {model.data_loader.get_num_val_events()}")
     # configure trainer
     trainer_kwargs = {
-        'max_epochs': epochs,
-        'auto_select_gpus': True,
-        'deterministic': True,
-        'detect_anomaly': False,
-        'accumulate_grad_batches': accumulate_grad_batches,
-        'auto_lr_find': auto_lr_find,
-        'logger': tb_logger,
-        'gpus': num_gpus,
+        "max_epochs": epochs,
+        #'deterministic': True,
+        #'detect_anomaly': False,
+        "accumulate_grad_batches": accumulate_grad_batches,
+        #'auto_lr_find': auto_lr_find,
+        "logger": tb_logger,
+        "accelerator": "auto",
+        "num_nodes": num_gpus,
         #'overfit_batches': 1,
         #'progress_bar_refresh_rate': 100,
         #'log_every_n_steps': 1,
@@ -128,31 +130,31 @@ def experiment(model,
     )
     trainer_kwargs['callbacks'] = [checkpoint_callback]
     if torch.cuda.is_available():
-        trainer_kwargs['gpus'] = 1 if trainer_kwargs['gpus'] is None else trainer_kwargs['gpus']
+        trainer_kwargs['num_nodes'] = 1 if trainer_kwargs['num_nodes'] is None else trainer_kwargs['num_nodes']
         #if trainer_kwargs['gpus'] > 1:
             # TODO: fix multi-GPU support
          #   trainer_kwargs['distributed_backend'] = 'ddp'
          #   trainer_kwargs['accelerator'] = 'ddp'
     else:
-        trainer_kwargs['gpus'] = None
+        trainer_kwargs['num_nodes'] = 0
         if num_gpus is not None:
             LOGGER.warning(f"Warning! You set num_gpus={num_gpus} but torch.cuda.is_available() is '{torch.cuda.is_available()}'."
                            f"Training will be on the CPU!")
 
     if fp16_training:
         # TODO: use torch.nn.functional.binary_cross_entropy_with_logits which is safe to autocast
-        trainer_kwargs['precision'] = 16
-        trainer_kwargs['amp_level'] = '02'
+        trainer_kwargs['precision'] = "bf16-mixed"
+
     try:
-        trainer = Trainer(resume_from_checkpoint=resume_from_checkpoint, **trainer_kwargs)
+        trainer = Trainer(**trainer_kwargs)
     except Exception as exc:
         #if one of keys is not in checkpoint etc
         LOGGER.error(f"Got exception! exc: {exc}. \n{traceback.format_exc()}")
         model.model = weights_update(model=model.model,
                            checkpoint=torch.load(resume_from_checkpoint))
-        trainer = Trainer(resume_from_checkpoint=None, **trainer_kwargs)
+        trainer = Trainer(**trainer_kwargs)
 
-    trainer.fit(model=model)
+    trainer.fit(model=model, ckpt_path=resume_from_checkpoint)
 
 
 def main(argv):

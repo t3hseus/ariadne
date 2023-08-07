@@ -1,6 +1,6 @@
 import gin
 import torch
-from pytorch_lightning.metrics import functional as metrics
+from torchmetrics import functional as metrics
 
 from ariadne.point_net.model import MIN_EPS_HOLDER
 

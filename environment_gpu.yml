@@ -1,12 +1,13 @@
 name: ariadne_gpu
 channels:
   - pytorch
+  - nvidia
+  - huggingface
   - conda-forge
   - anaconda-fusion
   - defaults
 dependencies:
   - python=3.9.*
-  - numpy
   - matplotlib
   - pyyaml
   - pandas
@@ -16,11 +17,17 @@ dependencies:
   - scikit-learn
   - nose
   - notebook
-  - torchvision
-  - cudatoolkit
-  - pytorch
-  - pytorch-lightning
-  - torchmetrics
-  - gin-config
-  - absl-py
-  - faiss
+  - faiss-cpu=1.7.2
+  - pip
+  - pip:
+      - adamp
+      - performer-pytorch
+      - torch
+      - torchvision
+      - pytorch-lightning
+      - numpy
+      - gin-config==0.4.0
+      - torchmetrics
+      - absl-py
+      - transformers
+      - tensorboard
