@@ -1,7 +1,7 @@
 import gin
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as f
 
 
 class PointTransformerLast(nn.Module):
@@ -25,11 +25,11 @@ class PointTransformerLast(nn.Module):
         # conv2d 3 -> 128 channels 1, 1
         # b * npoint, c, nsample
         # permute reshape
-        batch_size, _, N = x.size()
+        batch_size, _, _ = x.size()
 
         # B, D, N
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
+        x = f.relu(self.bn1(self.conv1(x)))
+        x = f.relu(self.bn2(self.conv2(x)))
         x1 = self.sa1(x, mask=mask)
         x2 = self.sa2(x1, mask=mask)
         x3 = self.sa3(x2, mask=mask)
@@ -74,7 +74,8 @@ class SALayer(nn.Module):
         x = x + x_r
         return x
 
-    def _generate_square_subsequent_mask(self, sequence_mask):
+    @staticmethod
+    def _generate_square_subsequent_mask(sequence_mask):
         mask = (torch.triu(torch.ones(sequence_mask, sequence_mask)) == 1).transpose(
             0, 1
         )
@@ -95,7 +96,6 @@ class PCTSegment(nn.Module):
         input_channels: int = 3,
         output_channels: int = 1,
         initial_permute: bool = True,
-        n_patches: int = 4,
     ):
         super().__init__()
         self.n_points = n_points
@@ -146,7 +146,7 @@ class PCTSegment(nn.Module):
         x = self.encoder(x)
         x = self.pt_last(x, mask=mask)
         # global feature
-        y = F.adaptive_max_pool1d(x, 1).view(batch_size, -1)
+        y = f.adaptive_max_pool1d(x, 1).view(batch_size, -1)
         y = self.decoder_global(y)
         y = y.unsqueeze(1).transpose(2, 1)  # add new dimension
         y = y.repeat(1, 1, self.n_points)

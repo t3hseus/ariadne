@@ -2,10 +2,10 @@ from typing import Callable
 
 import gin
 import torch
-from torch.utils.data import DataLoader, Subset, random_split
+from torch.utils.data import DataLoader, random_split, Subset
 
 from ariadne.data_loader import BaseDataLoader
-from ariadne.transformer.dataset import CloudDataset, SubsetWithItemLen
+from ariadne.transformer.dataset import CloudDataset
 
 
 @gin.configurable
@@ -49,5 +49,10 @@ class CloudDataLoader(BaseDataLoader):
             collate_fn=self.collate_fn,
         )
 
-    def get_one_sample(self) -> dict:
-        return {"x": torch.rand(1, 3, 100)}
+
+class SubsetWithItemLen(Subset):
+    def __init__(self, dataset, indices):
+        super(SubsetWithItemLen, self).__init__(dataset, indices)
+
+    def get_item_length(self, item_index):
+        return len(self.dataset[self.indices[item_index]].track)

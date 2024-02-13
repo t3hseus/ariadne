@@ -6,32 +6,14 @@ from typing import Collection
 import gin
 import numpy as np
 import torch
-from torch.utils.data import Dataset, Subset
 
 from ariadne.point_net.point.points import Points, load_points
 
 
-class MemoryDataset(Dataset):
-    def __init__(self, input_dir):
-        super(MemoryDataset, self).__init__()
-        self.input_dir = input_dir
-
-    def load_data(self):
-        raise NotImplementedError
-
-
-class ItemLengthGetter(object):
-    def __init__(self):
-        pass
-
-    def get_item_length(self, item_index):
-        raise NotImplementedError
-
-
 @gin.configurable
-class CloudDataset(MemoryDataset, ItemLengthGetter):
+class CloudDataset:
     def __init__(self, input_dir, n_samples=None, pin_mem=False, sample_len=2048):
-        super().__init__(os.path.expandvars(input_dir))
+        self.input_dir = os.path.expandvars(input_dir)
         self.n_samples = n_samples
         self.filenames = []
         self.points = {}
@@ -61,14 +43,6 @@ class CloudDataset(MemoryDataset, ItemLengthGetter):
         return len(self.filenames)
 
 
-class SubsetWithItemLen(Subset, ItemLengthGetter):
-    def __init__(self, dataset, indices):
-        super(SubsetWithItemLen, self).__init__(dataset, indices)
-
-    def get_item_length(self, item_index):
-        return len(self.dataset[self.indices[item_index]].track)
-
-
 @dataclass
 class GridConfigNew:
     # points cloud range
@@ -95,19 +69,16 @@ def collate_fn(points: Collection[Points], sample_len=512, shuffle=True):
     batch_inputs = np.zeros((batch_size, n_feat, max_dim), dtype=np.float32)
     batch_mask = np.zeros((batch_size, max_dim), dtype=np.float32)
     batch_targets = np.zeros((batch_size, max_dim), dtype=np.float32)
-    for i, p in enumerate(points):
-        batch_mask[i, :n_dim[i]] = 1.0
-        perm_ids = np.arange(0, n_dim[i])
-        assert perm_ids[-1] == n_dim[i] - 1, "You need to specify upper bound!"
+    for point_idx, point in enumerate(points):
+        batch_mask[point_idx, : n_dim[point_idx]] = 1.0
+        perm_ids = np.arange(0, n_dim[point_idx])
+        assert perm_ids[-1] == n_dim[point_idx] - 1, "You need to specify upper bound!"
         if shuffle:
-            perm_ids = np.random.permutation(n_dim[i])
+            perm_ids = np.random.permutation(n_dim[point_idx])
 
-        batch_inputs[i, :, : n_dim[i]] = p.X[:, perm_ids]
-        batch_targets[i, : n_dim[i]] = np.float32(p.track[perm_ids] != -1)
-    # max_dim = 512
-    # batch_inputs = batch_inputs[:, :, :max_dim]
-    # batch_targets = batch_targets[:, :max_dim]
-    # batch_mask = batch_mask[:, :max_dim]
+        batch_inputs[point_idx, :, : n_dim[point_idx]] = point.X[:, perm_ids]
+        track = np.float32(point.track[perm_ids] != -1)
+        batch_targets[point_idx, : n_dim[point_idx]] = track
     batch_inputs = np.swapaxes(batch_inputs, -1, -2)
     batch_targets = np.expand_dims(batch_targets, -1)
     x = torch.from_numpy(batch_inputs)
@@ -141,7 +112,7 @@ def voxel_collate_fn(
     batch_targets = []
     batch_masks = []
 
-    for i, p in enumerate(points):
+    for p in points:
         perm_ids = np.arange(0, len(p.track))
         assert perm_ids[-1] == len(p.track) - 1, "You need to specify upper bound!"
         if shuffle:
@@ -150,7 +121,7 @@ def voxel_collate_fn(
 
         targets = (p.track[perm_ids] != -1).astype(np.float32)
         batch_dict = process_pointcloud(
-            point_cloud=batch, targets=targets, cfg=cfg, max_points_per_voxel=sample_len
+            points=batch, targets=targets, cfg=cfg, max_points_per_voxel=sample_len
         )
         batch_inputs.extend(batch_dict["x"])
         batch_targets.extend(batch_dict["labels"])
@@ -158,12 +129,7 @@ def voxel_collate_fn(
     batch_inputs = np.array(batch_inputs)
     batch_masks = np.array(batch_masks)
     batch_targets = np.array(batch_targets).astype(np.float32)
-    # batch_inputs = np.swapaxes(batch_inputs, -1, -2)
     batch_targets = np.expand_dims(batch_targets, -1)
-    # max_dim = 512
-    # batch_inputs = batch_inputs[:, :, :max_dim]
-    # batch_targets = batch_targets[:, :max_dim]
-    # batch_mask = batch_mask[:, :max_dim]
 
     x = torch.from_numpy(batch_inputs)
 
@@ -174,7 +140,7 @@ def voxel_collate_fn(
 
 
 def process_pointcloud(
-    point_cloud,
+    points,
     targets,
     cfg: GridConfigNew,
     max_points_per_voxel: int = 512,
@@ -183,35 +149,35 @@ def process_pointcloud(
     voxel_targets = []
     voxel_masks = []
     grid_coords = (
-        (point_cloud - np.array([cfg.xrange[0], cfg.yrange[0], cfg.zrange[0]]))
+        (points - np.array([cfg.xrange[0], cfg.yrange[0], cfg.zrange[0]]))
         / (cfg.vx, cfg.vy, cfg.vz)
     ).astype(np.int32)
-    voxel_coords, inv_ind, voxel_counts = np.unique(
+    voxel_coords, inv_idx, voxel_counts = np.unique(
         grid_coords, axis=0, return_inverse=True, return_counts=True
     )
 
-    for i in range(len(voxel_coords)):
+    for coord_idx in range(len(voxel_coords)):
         voxel = np.zeros((max_points_per_voxel, 6), dtype=np.float32)
         padded_voxel_targets = np.zeros(max_points_per_voxel, dtype=np.int32)
-        mask = np.zeros(max_points_per_voxel, dtype=np.int32)
+        real_points_mask = np.zeros(max_points_per_voxel, dtype=np.int32)
 
-        pts = point_cloud[inv_ind == i]
-        this_voxel_targets = targets[inv_ind == i]
+        pts = points[inv_idx == coord_idx]
+        this_voxel_targets = targets[inv_idx == coord_idx]
 
-        if voxel_counts[i] > max_points_per_voxel:
+        if voxel_counts[coord_idx] > max_points_per_voxel:
             pts = pts[:max_points_per_voxel, :]
             targets = targets[:max_points_per_voxel]
-            mask[:max_points_per_voxel] = 1
-            voxel_counts[i] = max_points_per_voxel
+            real_points_mask[:max_points_per_voxel] = 1
+            voxel_counts[coord_idx] = max_points_per_voxel
         # augment the points
         voxel[: pts.shape[0], :] = np.concatenate(
             (pts, pts[:, :3] - np.mean(pts[:, :3], 0)), axis=1
         )
-        mask[: pts.shape[0]] = 1.0
+        real_points_mask[: pts.shape[0]] = 1.0
         padded_voxel_targets[: pts.shape[0]] = this_voxel_targets
         voxel_features.append(voxel)
         voxel_targets.append(padded_voxel_targets)
-        voxel_masks.append(mask)
+        voxel_masks.append(real_points_mask)
     return {
         "x": voxel_features,
         "labels": voxel_targets,
@@ -230,24 +196,13 @@ if __name__ == "__main__":
     #     max_point_number=50
     # )
     config = GridConfigNew(
-        xrange=(0.0, 2.0), yrange=(0.0, 2.0), zrange=(0.0, 2.0), vd=0.5, vh=0.5, vw=0.5
+        xrange=(0.0, 2.0), yrange=(0.0, 2.0), zrange=(0.0, 2.0), vx=0.5, vy=0.5, vz=0.5
     )
     # print(point_cloud)
 
     voxel_dict = process_pointcloud(
-        point_cloud=point_cloud, cfg=config, targets=labels, max_points_per_voxel=50
+        points=point_cloud, cfg=config, targets=labels, max_points_per_voxel=50
     )
     # print(voxel_dict)
     for k, i in voxel_dict.items():
         print(k, [item.shape for item in i])
-    print("uniform")
-    point_cloud = np.random.uniform(0, 1.99, (2, 100, 3))
-    labels = np.random.binomial(200, 0.3, (2, 100))
-    mask = np.ones((2, 100))
-    config = GridConfig(
-        scene_size=[2.0, 2.0, 2.0], voxel_size=[0.5, 0.5, 0.5], max_point_number=50
-    )
-
-    voxel_dict = process_pointcloud(point_cloud=point_cloud, cfg=config, labels=labels)
-    for k, i in voxel_dict.items():
-        print(k, i.shape)
