@@ -1,13 +1,13 @@
 import numpy as np
 from collections import namedtuple
 
-Points = namedtuple('Points', ['X', 'track'])
+Points = namedtuple('Points', ['X', 'n_tracks'])
 
 def points_to_sparse(points):
-    return dict(X=points.X, track=points.track)
+    return dict(X=points.X, n_tracks=points.n_tracks)
 
-def sparse_to_points(X, track):
-    return Points(X, track)
+def sparse_to_points(X, n_tracks):
+    return Points(X, n_tracks)
 
 def save_points(points, filename):
     np.savez(filename, **points_to_sparse(points))

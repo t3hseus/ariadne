@@ -51,8 +51,11 @@ class CloudProcessor(DataProcessor):
         output_name = os.path.join(self.output_dir, f"points_{idx}_{chunk_id}")
         # out = (chunk_df[['r', 'phi', 'z']].values / [1., np.pi, 1.]).T
         out = chunk_df[["x", "y", "z"]].values.T
+        # out = Points(
+        #     X=out.astype(np.float32), track=chunk_df["track"].values.astype(np.float32)
+        # )
         out = Points(
-            X=out.astype(np.float32), track=chunk_df["track"].values.astype(np.float32)
+            X=out.astype(np.float32), n_tracks=len(np.unique(chunk_df["track"].values.astype(np.float32)))
         )
         return TransformedPointsDataChunk(out, output_name)
 
