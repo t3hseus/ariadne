@@ -138,29 +138,30 @@ def voxel_collate_fn(
         {"y": torch.from_numpy(batch_targets), "mask": torch.from_numpy(batch_masks)},
     )
 
-def track_collate_fn(samples, shuffle=True):
-    max_hits = max(len(sample['X']) for sample in samples)
-    batch_size = len(samples)
-    n_feat = samples[0]['X'].shape[0]
+@gin.configurable("track_params_collate_fn")
+def track_params_collate_fn(samples: Collection[Points], max_length=512, shuffle=True):
+    max_hits = max(len(sample['X']) for sample in samples) 
+    max_length = min(max_hits, max_length) 
+    batch_size = len(samples) 
+    n_feat = samples[0]['X'].shape[0] 
 
-    batch_inputs = np.zeros((batch_size, n_feat, max_hits), dtype=np.float32)
-    batch_masks = np.zeros((batch_size, max_hits), dtype=np.float32)
-    batch_targets = np.zeros((batch_size, max_hits), dtype=np.float32)
+    batch_inputs = np.zeros((batch_size, max_length, n_feat), dtype=np.float32)
+    batch_masks = np.zeros((batch_size, max_length), dtype=np.float32) 
+    batch_targets = np.zeros((batch_size, max_length), dtype=np.float32)
 
     for idx, sample in enumerate(samples):
         n_hits = sample['X'].shape[1]
         perm_ids = np.random.permutation(n_hits) if shuffle else np.arange(n_hits)
         
-        batch_inputs[idx, :, :n_hits] = sample['X'][:, perm_ids]
+        batch_inputs[idx, :n_hits, :] = sample['X'][perm_ids] # fixed
         batch_masks[idx, :n_hits] = 1 
         batch_targets[idx, :n_hits] = np.float32(sample['track'][perm_ids] != -1)
     
-    batch_inputs = np.swapaxes(batch_inputs, -1, -2)
     batch_targets = np.expand_dims(batch_targets, -1)
 
     return (
         {"x": torch.from_numpy(batch_inputs), "mask": torch.from_numpy(batch_masks)},
-        {"y": torch.from_numpy(batch_targets), "mask": torch.from_numpy(batch_masks)},
+        {"y": torch.from_numpy(batch_targets)},
     )
 
 def process_pointcloud(
