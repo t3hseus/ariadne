@@ -12,7 +12,7 @@ from ariadne.transformer.dataset import CloudDataset
 class CloudDataLoader(BaseDataLoader):
     def __init__(
         self,
-        dataset: CloudDataset.__class__,
+        dataset: CloudDataset,#.__class__,
         collate_fn: Callable,
         n_train: int,
         n_valid: int,
@@ -20,7 +20,8 @@ class CloudDataLoader(BaseDataLoader):
         batch_size: int = 1,
     ):
         super(CloudDataLoader, self).__init__(-1)
-        self.dataset = dataset(n_samples=n_valid + n_train)
+        #self.dataset = dataset(n_samples=n_valid + n_train)
+        self.dataset = dataset
         self.batch_size = batch_size
         if with_random:
             self.train_data, self.val_data = random_split(
