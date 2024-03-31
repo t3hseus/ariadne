@@ -95,9 +95,12 @@ class PCTSegment(nn.Module):
         n_points: int = 512,
         input_channels: int = 3,
         output_channels: int = 1,
+        num_classes: int = 9,
         initial_permute: bool = True,
+        is_classifier: bool = False,
     ):
         super().__init__()
+        self.is_classifier = is_classifier
         self.n_points = n_points
         self.initial_permute = initial_permute
         channels = n_points // 4
@@ -109,12 +112,12 @@ class PCTSegment(nn.Module):
             nn.BatchNorm1d(channels),
             nn.LeakyReLU(negative_slope=0.2),
         )
+
         self.decoder_global = nn.Sequential(
             nn.Linear(n_points, n_points, bias=False),
             nn.BatchNorm1d(n_points),
             nn.LeakyReLU(negative_slope=0.2),
         )
-
         self.linear2 = nn.Linear(n_points, channels)
         self.bn7 = nn.BatchNorm1d(channels)
         self.dp2 = nn.Dropout(p=dropout)
@@ -136,7 +139,25 @@ class PCTSegment(nn.Module):
             nn.BatchNorm1d(n_points),
             nn.LeakyReLU(negative_slope=0.2),
         )
-        self.linear_last = nn.Linear(256, output_channels)
+
+        self.lbrd1 = nn.Sequential(
+            nn.Linear(n_points, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(negative_slope=0.2),
+            # nn.Dropout(p=0.5)
+        )
+
+        self.lbrd2 = nn.Sequential(
+            nn.Linear(256, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(negative_slope=0.2),
+            # nn.Dropout(p=0.5)
+        )
+        if self.is_classifier:
+            self.classifier = nn.Linear(256, num_classes)
+        else:
+            self.linear_last = nn.Linear(256, output_channels)
+        
 
     def forward(self, x, mask=None):
         if self.initial_permute:
@@ -148,11 +169,17 @@ class PCTSegment(nn.Module):
         # global feature
         y = f.adaptive_max_pool1d(x, 1).view(batch_size, -1)
         y = self.decoder_global(y)
-        y = y.unsqueeze(1).transpose(2, 1)  # add new dimension
-        y = y.repeat(1, 1, self.n_points)
-        # segmentation
-        x = torch.cat((x, y), 1).permute(0, 2, 1)
-        x = self.lbr1(x)
-        x = self.lbr2(x)
-        x = self.linear_last(x)
+        
+        if self.is_classifier:
+            x = self.lbrd1(y)
+            x = self.lbrd2(x)
+            x = self.classifier(x)
+        else:
+            y = y.unsqueeze(1).transpose(2, 1)  # add new dimension
+            y = y.repeat(1, 1, self.n_points)
+            # segmentation
+            x = torch.cat((x, y), 1).permute(0, 2, 1)
+            x = self.lbr1(x)
+            x = self.lbr2(x)
+            x = self.linear_last(x)
         return x
