@@ -21,7 +21,7 @@ class CloudDataLoader(BaseDataLoader):
     ):
         super(CloudDataLoader, self).__init__(-1)
         #self.dataset = dataset(n_samples=n_valid + n_train)
-        self.dataset = dataset
+        self.dataset = dataset()
         self.batch_size = batch_size
         if with_random:
             self.train_data, self.val_data = random_split(
