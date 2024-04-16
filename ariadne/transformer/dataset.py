@@ -137,6 +137,8 @@ def voxel_collate_fn(
         {"x": x, "mask": torch.from_numpy(batch_masks)},
         {"y": torch.from_numpy(batch_targets), "mask": torch.from_numpy(batch_masks)},
     )
+    
+    
 
 @gin.configurable("track_params_collate_fn")
 def track_params_collate_fn(samples: Collection[Points], 
@@ -151,7 +153,7 @@ def track_params_collate_fn(samples: Collection[Points],
 
     batch_inputs = np.zeros((batch_size, max_length, n_feat), dtype=np.float32)
     batch_masks = np.zeros((batch_size, max_length), dtype=np.float32) 
-    batch_targets = np.zeros((batch_size, 9), dtype=np.int32)
+    batch_targets = np.zeros((batch_size, 10), dtype=np.int32)
 
     for idx, sample in enumerate(samples):
         
@@ -162,12 +164,17 @@ def track_params_collate_fn(samples: Collection[Points],
         batch_masks[idx, :n_hits] = 1 
         if sample.n_tracks > max_tracks: max_tracks = sample.n_tracks 
         
-    batch_targets[:, max_tracks] = 1
+    batch_targets[:, max_tracks-1] = 1
 
+    # return (
+    #     {"x": torch.from_numpy(batch_inputs), "mask": torch.from_numpy(batch_masks)},
+    #     {"y": torch.from_numpy(batch_targets)},
+    # )
+    
     return (
         {"x": torch.from_numpy(batch_inputs), "mask": torch.from_numpy(batch_masks)},
-        {"y": torch.from_numpy(batch_targets)},
-    )
+        torch.from_numpy(batch_targets.astype(float))
+           )
 
 def process_pointcloud(
     points,

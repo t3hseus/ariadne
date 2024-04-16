@@ -95,7 +95,7 @@ class PCTSegment(nn.Module):
         n_points: int = 512,
         input_channels: int = 3,
         output_channels: int = 1,
-        num_classes: int = 9,
+        num_classes: int = 10,
         initial_permute: bool = True,
         is_classifier: bool = False,
     ):
@@ -144,14 +144,14 @@ class PCTSegment(nn.Module):
             nn.Linear(n_points, 256),
             nn.BatchNorm1d(256),
             nn.LeakyReLU(negative_slope=0.2),
-            # nn.Dropout(p=0.5)
+            nn.Dropout(p=0.5)
         )
 
         self.lbrd2 = nn.Sequential(
             nn.Linear(256, 256),
             nn.BatchNorm1d(256),
             nn.LeakyReLU(negative_slope=0.2),
-            # nn.Dropout(p=0.5)
+            nn.Dropout(p=0.5)
         )
         if self.is_classifier:
             self.classifier = nn.Linear(256, num_classes)

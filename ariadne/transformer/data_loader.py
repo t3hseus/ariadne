@@ -18,6 +18,7 @@ class CloudDataLoader(BaseDataLoader):
         n_valid: int,
         with_random: bool = True,
         batch_size: int = 1,
+        # drop_last: bool = False,
     ):
         super(CloudDataLoader, self).__init__(-1)
         #self.dataset = dataset(n_samples=n_valid + n_train)

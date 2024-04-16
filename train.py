@@ -15,6 +15,7 @@ from absl import app
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.strategies import DDPStrategy
 from ariadne.lightning import TrainModel
 from ariadne.utils.model import get_checkpoint_path, weights_update
 
@@ -119,6 +120,7 @@ def experiment(model,
         #'progress_bar_refresh_rate': 100,
         #'log_every_n_steps': 1,
         #'track_grad_norm': 2
+        "strategy": DDPStrategy(find_unused_parameters=True)
     }
     
     if clip_grads:

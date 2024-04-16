@@ -46,3 +46,24 @@ class PerceiverFocalLoss(nn.Module):
         f_loss = self.alpha * (1 - pt) ** self.gamma * bce_loss
         f_loss = f_loss * mask.unsqueeze(-1)
         return f_loss.sum() / mask.sum()
+
+    
+# @gin.configurable
+# class TrackParamsLoss(nn.Module):
+#     """Focal loss with masked outputs and targets"""
+
+#     def __init__(self, alpha, gamma):
+#         super().__init__()
+#         self.alpha = alpha
+#         self.gamma = gamma
+
+#     def forward(self, preds, target):
+#         mask = target["mask"]
+#         bce_loss = F.CrossEntropyLoss(
+#             preds, target["y"], reduction="none"
+#         )
+
+#         pt = torch.exp(-bce_loss)  # prevents nans when probability 0
+#         f_loss = self.alpha * (1 - pt) ** self.gamma * bce_loss
+#         f_loss = f_loss * mask.unsqueeze(-1)
+#         return f_loss.sum() / mask.sum()

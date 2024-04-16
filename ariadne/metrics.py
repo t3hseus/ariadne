@@ -63,37 +63,40 @@ def accuracy(preds, target, activation=False, is_softmax=False):
     )
 
 ## NEW METRICS
-@gin.configurable('new_precision', allowlist=['is_softmax','activation'])
-def precision_new(preds, target, activation=False, is_softmax=False):
+@gin.configurable('new_precision', allowlist=['is_softmax','activation', 'task', 'num_classes'])
+def precision_new(preds, target, activation=False, is_softmax=False, task='binary', num_classes=None):
     return _compute_metric(
         preds=preds,
         target=target,
         is_softmax=is_softmax,
         metric_func=torchmetrics.functional.precision,
-        multiclass=False,
+        task=task,
+        num_classes=num_classes,
         activation=activation
     )
 
-@gin.configurable('new_recall', allowlist=['is_softmax','activation'])
-def recall_new(preds, target, activation=False, is_softmax=False):
+@gin.configurable('new_recall', allowlist=['is_softmax','activation', 'task', 'num_classes'])
+def recall_new(preds, target, activation=False, is_softmax=False, task='binary', num_classes=None):
     return _compute_metric(
         preds=preds,
         target=target,
         is_softmax=is_softmax,
         metric_func=torchmetrics.functional.recall,
         activation=activation,
-        multiclass=False
+        task=task,
+        num_classes=num_classes
     )
 
-@gin.configurable('new_f1_score', allowlist=['is_softmax','activation'])
-def f1_score_new(preds, target, activation=False, is_softmax=False):
+@gin.configurable('new_f1_score', allowlist=['is_softmax','activation', 'task', 'num_classes'])
+def f1_score_new(preds, target, activation=False, is_softmax=False, task='binary', num_classes=None):
     return _compute_metric(
         preds=preds,
         target=target,
         is_softmax=is_softmax,
-        metric_func=torchmetrics.functional.f1,
+        metric_func=torchmetrics.functional.f1_score,
         activation=activation,
-        multiclass=False
+        task=task,
+        num_classes=num_classes
     )
 
 @gin.configurable('new_accuracy', allowlist=['is_softmax','activation'])
