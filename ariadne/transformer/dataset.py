@@ -165,11 +165,6 @@ def track_params_collate_fn(samples: Collection[Points],
         if sample.n_tracks > max_tracks: max_tracks = sample.n_tracks 
         
     batch_targets[:, max_tracks-1] = 1
-
-    # return (
-    #     {"x": torch.from_numpy(batch_inputs), "mask": torch.from_numpy(batch_masks)},
-    #     {"y": torch.from_numpy(batch_targets)},
-    # )
     
     return (
         {"x": torch.from_numpy(batch_inputs), "mask": torch.from_numpy(batch_masks)},
