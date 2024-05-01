@@ -38,12 +38,13 @@ class Normalizer:
         x_norm = 2 * (hits[:, 0] - self.x_min) / (self.x_max - self.x_min) - 1
         y_norm = 2 * (hits[:, 1] - self.y_min) / (self.y_max - self.y_min) - 1
         z_norm = 2 * (hits[:, 2] - self.z_min) / (self.z_max - self.z_min) - 1
+
         normalized_hits = np.hstack([
             x_norm.reshape(-1, 1),
             y_norm.reshape(-1, 1),
             z_norm.reshape(-1, 1)
         ])
-        return normalized_hits
+        return normalized_hits.T
 
 
 class SPDTimesliceTracksDataset(Dataset):
@@ -76,15 +77,12 @@ class SPDTimesliceTracksDataset(Dataset):
         # generate sample
         time_slice = self.spd_gen.generate_spd_event()
 
-        hits = np.concatenate([time_slice['hits'], time_slice['fakes']]).T
+        hits = np.concatenate([time_slice['hits'], time_slice['fakes']])
         labels = np.concatenate([time_slice["track_ids"], np.full((time_slice['fakes'].shape[0],), fill_value = -1, dtype = int)])
         
         if self.hits_normalizer:
             hits = self.hits_normalizer(hits)
-        
-        norm = Normalizer()
-        hits = norm(hits)
-            
+
         n_tracks = np.unique(time_slice["track_ids"]).shape[0]
 
         return hits, labels, n_tracks
