@@ -11,7 +11,7 @@ from ariadne.lightning import TrainModel
 from ariadne.transformer.dataset import CloudDataset, track_params_collate_fn
 from ariadne.transformer.data_loader import CloudDataLoader
 from ariadne.point_net.point.points import sparse_to_points
-from ariadne.transformer.spd_dataset import SPDTimesliceTracksDataset
+from ariadne.transformer.spd_dataset import SPDTimesliceTracksDataset, Normalizer
 # from ariadne.transformations import ConstraintsNormalize
 
 import numpy as np
@@ -50,7 +50,7 @@ def experiment(model,
                    metrics=metrics, 
                    optimizer=optimizer, 
                    data_loader=data_loader
-                   ).load_from_checkpoint(checkpoint_path='/lustre/home/user/p/photonz/ariadne/lightning_logs/PCTSegment/version_186/epoch=408-step=143968.ckpt', model=model, 
+                   ).load_from_checkpoint(checkpoint_path='/lustre/home/user/p/photonz/ariadne/lightning_logs/PCTSegment/version_260/epoch=49-step=17600.ckpt', model=model, 
                    criterion=criterion, 
                    metrics=metrics, 
                    optimizer=optimizer, 
@@ -150,36 +150,12 @@ def plotly_build_plot(y_pred, y_true, hits, labels, i):
     fig.write_html(f"results/plot_{i}.html")
     print("Done! no.", i)
 
-def mpl_build_plot(y_pred, y_true, hits, labels, i):
-    
-    # Создаем новый график
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-
-    # Извлекаем координаты X, Y и Z
-    x_coords = hits[0, :]
-    y_coords = hits[1, :]
-    z_coords = hits[2, :]
-
-    # Рисуем точки
-    ax.scatter(x_coords, y_coords, z_coords, c='b', marker='o')
-
-    # Настройка меток осей
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    
-    plt.savefig(f"results/plot_{i}.png")
-
-    
-    print('Done!')
-
 
 def main(argv):
     del argv
     gin.parse_config(open(FLAGS.config))
     
-    dataset = SPDTimesliceTracksDataset(n_events_timeslice=1, n_samples=1)
+    dataset = SPDTimesliceTracksDataset(n_events_timeslice=1, n_samples=1, hits_normalizer=Normalizer())
 
     model = experiment()
     
@@ -198,14 +174,15 @@ def main(argv):
         mask = inputs['mask'].to('cuda')
         input_tensor = {'x': x, 'mask': mask}
         
-        y_true = torch.argmax(n_tracks, dim = 1)
+        # y_true = torch.argmax(n_tracks, dim = 1)
+        y_true = n_tracks
 
         output = model(input_tensor)
         y_pred = torch.argmax(output, dim = 1)
         
-        print(y_pred.item(), y_true.item())
+        print('pred:', y_pred.item(), 'fact', y_true.item())
 
-        # if i == 10: break
+        if i == 10: break
 
         plotly_build_plot(y_pred.item(), y_true.item(), hits, labels, i)
     

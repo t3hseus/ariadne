@@ -157,8 +157,8 @@ def experiment(model,
         trainer = Trainer(**trainer_kwargs)
 
     trainer.fit(model=model, ckpt_path=resume_from_checkpoint)
-
-
+    
+    
 def main(argv):
     del argv
     gin.parse_config(open(FLAGS.config))
